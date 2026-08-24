@@ -69,6 +69,7 @@ digits = {
 def variants(name):
     values = [name]
     token = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", name)
+    token = re.sub(r"([A-Za-z])([0-9])", r"\1 \2", token)
     token = re.sub(r"[-_.]+", " ", token)
     token = re.sub(r"\s+", " ", token).strip()
     if token and token != name:

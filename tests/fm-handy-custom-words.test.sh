@@ -14,24 +14,34 @@ cat > "$SETTINGS" <<'JSON'
 }
 JSON
 
-output=$("$ROOT/bin/fm-handy-custom-words.sh" --settings "$SETTINGS" PodleSubscriptions 2271-Labs)
+output=$("$ROOT/bin/fm-handy-custom-words.sh" --settings "$SETTINGS" PodleSubscriptions 2271-Labs FirstmateAlpha2)
 python3 - "$SETTINGS" <<'PY'
 import json
 import sys
 with open(sys.argv[1], encoding="utf-8") as stream:
     data = json.load(stream)
 words = data["custom_words"]
-expected = ["existing", "2271 Labs", "PodleSubscriptions", "Podle Subscriptions", "2271-Labs", "two two seven one Labs"]
+expected = [
+    "existing",
+    "2271 Labs",
+    "PodleSubscriptions",
+    "Podle Subscriptions",
+    "2271-Labs",
+    "two two seven one Labs",
+    "FirstmateAlpha2",
+    "Firstmate Alpha 2",
+    "Firstmate Alpha two",
+]
 assert words == expected, words
 assert data["other_setting"] == {"enabled": True}
 PY
 case "$output" in
-  *"Added 4 Handy custom word(s)"*) ;;
+  *"Added 7 Handy custom word(s)"*) ;;
   *) fail "unexpected helper output: $output" ;;
 esac
 
 # A second invocation must not rewrite the list or add duplicates.
-second=$("$ROOT/bin/fm-handy-custom-words.sh" --settings "$SETTINGS" PodleSubscriptions 2271-Labs)
+second=$("$ROOT/bin/fm-handy-custom-words.sh" --settings "$SETTINGS" PodleSubscriptions 2271-Labs FirstmateAlpha2)
 case "$second" in
   *"already contains"*) ;;
   *) fail "helper was not idempotent: $second" ;;
