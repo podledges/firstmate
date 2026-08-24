@@ -33,6 +33,10 @@ Resolve the project name, destination, delivery posture, and autonomy posture be
 Keep a newly added clone and its registry entry consistent, and roll back only artifacts created by the incomplete operation when a later initialization step fails and that rollback is safe.
 Do not overwrite or repurpose an existing path.
 
+After resolving the local project name, run `bin/fm-handy-custom-words.sh <project-name>` for the local project name before completing an add, create, clone, or register operation when the Handy settings file exists or the captain explicitly configured an alternate path.
+Use `--settings <path>` for an explicit nonstandard path, or `HANDY_SETTINGS_PATH` when invoking the helper.
+If the settings file is unavailable, record a concise non-blocking note and complete the project operation; a malformed or incompatible file should be reported as a Handy integration problem without rolling back an otherwise successful project add.
+
 ## Delivery posture
 
 The registry records the project's standing posture, which is the captain's default for the work rather than any task's answer; `AGENTS.md` section 7 owns how each task's concrete mode and yolo are resolved at intake and passed explicitly to the brief, the spawn, and any promotion.
@@ -56,6 +60,7 @@ Default it off for every project and every posture, and enable it only on the ca
 
 Confirm the source URL, local project name, delivery posture, and autonomy posture, stating the resolved default for each rather than asking the captain to invent one.
 Clone into `projects/<name>` and add the registry entry only after the destination is known to be unused.
+Run the Handy custom-words helper described in Preconditions for the resolved local project name as part of the add flow.
 A `no-mistakes` or `no-mistakes-prod-only` project must have an `origin` remote and must complete the initialization procedure below, because a conditional policy's product-facing work runs the pipeline while its internal-only work still takes the direct PR.
 A `direct-PR` project needs an `origin` remote but skips no-mistakes initialization.
 A `local-only` project may have no remote and skips no-mistakes initialization.
@@ -65,9 +70,9 @@ A `local-only` project may have no remote and skips no-mistakes initialization.
 Creating a GitHub repository is outward-facing.
 Before making that remote change, propose the repository name, owner or organization, visibility, and delivery posture, defaulting visibility to private and the posture to `no-mistakes-prod-only`, then obtain the captain's explicit consent for those exact values; a stated default never replaces that consent.
 Use `gh-axi` for the approved GitHub operation and consult its current help rather than relying on remembered flags.
-After remote creation succeeds, clone it locally, add the registry entry, and initialize it according to its delivery posture.
+After remote creation succeeds, clone it locally, add the registry entry, run the Handy custom-words helper for the local name, and initialize it according to its delivery posture.
 
-For a purely `local-only` project, create a local Git repository under its unused `projects/<name>` path, add the registry entry, and make no GitHub call.
+For a purely `local-only` project, create a local Git repository under its unused `projects/<name>` path, add the registry entry, run the Handy custom-words helper for the local name, and make no GitHub call.
 The captain's request to create that local project authorizes this local initialization, but it does not authorize an unmentioned remote repository.
 
 ## Initialize
