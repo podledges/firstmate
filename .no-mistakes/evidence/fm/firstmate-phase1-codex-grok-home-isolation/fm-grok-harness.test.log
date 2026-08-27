@@ -1,0 +1,4 @@
+ok - grok private hook requires a firstmate registry token
+ok - grok teardown removes pointer and private token state
+ok - codex launch uses a process-local Firstmate-private home
+ok - fm-lock recognizes grok harness processes
