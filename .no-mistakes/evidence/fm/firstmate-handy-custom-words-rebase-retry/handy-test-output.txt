@@ -1,0 +1,1 @@
+ok - Handy custom words are safely updated, variant-expanded, and idempotent
