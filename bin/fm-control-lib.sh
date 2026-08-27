@@ -34,6 +34,10 @@
 #      stopped. A verb whose postcondition cannot be proven on the recorded
 #      backend is refused rather than performed blind.
 #
+# The fixed private agent-home path used by the Grok artifact table is owned by
+# bin/fm-agent-home-lib.sh. Sourcing that pure function library preserves this
+# file's no-state-read and no-command side-effect contract.
+#
 # `resume` is deliberately NOT a verb. It is not deterministic across the
 # verified adapters: codex and grok resume only from a session id printed at
 # exit, opencode resumes the most recent session for the cwd with --continue,
@@ -41,6 +45,14 @@
 # all. `relaunch` covers the same need deterministically for every adapter,
 # because the brief on disk - not a harness-private session - is the durable
 # instruction.
+
+case "${BASH_SOURCE[0]}" in
+  */*) FM_CONTROL_LIB_DIR=${BASH_SOURCE[0]%/*} ;;
+  *) FM_CONTROL_LIB_DIR=. ;;
+esac
+# shellcheck source=bin/fm-agent-home-lib.sh
+. "$FM_CONTROL_LIB_DIR/fm-agent-home-lib.sh"
+unset FM_CONTROL_LIB_DIR
 
 # The complete control-plane verb allowlist, one per line.
 fm_control_verbs() {
@@ -240,11 +252,14 @@ fm_control_harness_turnend_token_path() {  # <harness> <state-dir> <id>
   esac
 }
 
-fm_control_harness_turnend_auth_path() {  # <harness> <token>
-  local harness=${1-} token=${2-}
+fm_control_harness_turnend_auth_path() {  # <harness> <token> [firstmate-home]
+  local harness=${1-} token=${2-} firstmate_home=${3:-${FM_HOME:-}} grok_home
   case "$token" in ''|*[!A-Za-z0-9._-]*) return 0 ;; esac
   case "$harness" in
-    grok) printf '%s\n' "${GROK_HOME:-$HOME/.grok}/hooks/fm-turn-end.d/$token" ;;
+    grok)
+      grok_home=$(fm_agent_home_path "$firstmate_home" grok) || return 1
+      printf '%s/hooks/fm-turn-end.d/%s\n' "$grok_home" "$token"
+      ;;
     kimi) printf '%s\n' "$HOME/.kimi-code/fm-turn-end.d/$token" ;;
     *) return 0 ;;
   esac

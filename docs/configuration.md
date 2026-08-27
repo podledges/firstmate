@@ -240,12 +240,26 @@ When `config/crew-dispatch.json` exists, crewmate and scout spawns require an ex
 The inherited-local-material contract is owned by [`secondmate-provisioning`](../.agents/skills/secondmate-provisioning/SKILL.md); its harness-relevant consequence is that a secondmate's own crewmates use the primary's dispatch profiles and static harness value.
 Those inherited values are defaults and rules only; `fm-spawn` still permits a consciously chosen explicit runtime outside the config.
 `config/secondmate-harness` is not inherited because secondmates do not launch secondmates.
-For grok, `fm-spawn.sh` installs one firstmate-owned global turn-end hook under `$GROK_HOME/hooks/`, or `~/.grok/hooks/` when `GROK_HOME` is unset, and drops a per-task `.fm-grok-turnend` pointer in the worktree, with teardown removing the task token and pointer.
+Codex and Grok launch isolation is owned by [Private Codex and Grok homes](#private-codex-and-grok-homes).
 For Kimi crews, `fm-spawn.sh` runs `fm-kimi-turnend-hook.sh install`, drops a per-task `.fm-kimi-turnend` pointer in the worktree, and records the matching private registry token for teardown.
 Kimi continues to use the captain's normal Kimi home, including the existing config, skills, and memory; Firstmate does not create an isolated Kimi home.
 The Kimi installer requires an existing regular non-symlink `~/.kimi-code/config.toml`, `python3` with `tomllib`, and `jq`; it validates but never serializes the captain's TOML and refuses before writing when the config is missing, malformed, or surprising or when either tool requirement is unavailable.
 Its `remove` action excises only the marker-delimited Firstmate region and removes Firstmate's hook files.
 For Pi and pi-signed secondmate launches, `fm-spawn.sh` starts the selected executable with `-e` pointed at the secondmate home's own tracked `.pi/extensions/fm-primary-pi-watch.ts` and `.pi/extensions/fm-primary-turnend-guard.ts`, both already present from the secondmate home's git worktree.
+
+### Private Codex and Grok homes
+
+Firstmate owns private Codex and Grok roots at `$FM_HOME/data/agent-homes/codex` and `$FM_HOME/data/agent-homes/grok`.
+The root and both tool directories are created with mode `0700` before a launch.
+Every Codex or Grok process started by `fm-spawn.sh`, including a control-plane relaunch, receives the matching `CODEX_HOME` or `GROK_HOME` as a process-local environment prefix.
+The Grok primary turn-end guard uses the same private `GROK_HOME` for its bounded same-session resume.
+A secondmate primary uses private roots beneath its own Firstmate home, and that secondmate's workers use the same home-local contract.
+Ambient `CODEX_HOME` and `GROK_HOME` values are ignored for these paths, and Firstmate never exports either variable into the login shell or persistent pane shell.
+The captain's ordinary `~/.codex` and `~/.grok` trees therefore remain personal and are not read, written, linked, or managed by this contract.
+The tracked primary hooks remain at project scope in `.codex/hooks.json` and `.grok/hooks/`.
+`fm-spawn.sh` installs its always-trusted Grok worker turn-end hook and private token registry only beneath `$FM_HOME/data/agent-homes/grok/hooks/`; worktree pointers remain task-local and gitignored.
+Codex and Grok may each require a one-time login inside the isolated home after this behavior is enabled.
+Do not symlink `auth.json` between a personal home and a Firstmate-private home because both CLIs treat it as writable private state.
 
 ## Crew dispatch profiles (config/crew-dispatch.json)
 
@@ -698,7 +712,6 @@ FM_COMPOSER_IDLE_RE=    # optional fleet-wide idle-placeholder regex override (b
 FM_COMPOSER_CAPTURE_LINES=20   # fleet-wide bound for tail-capture composer reads; tmux instead supplies its bounded visible pane, while the other adapters use this small window so stale scrollback banners stay out of the candidate set
 FM_COMPOSER_PI_MAX_LINES=8     # fleet-wide: maximum rows admitted between Pi's identity-corroborated separator pair; taller or ambiguous candidates stay unknown
 FM_COMPOSER_GHOST_LUMA_MAX=128   # fleet-wide: max perceived luminance (0.299R+0.587G+0.114B, 0-255) for a TRUECOLOR foreground to count as de-emphasised ghost/placeholder text and be stripped; dim/faint (SGR 2) is stripped regardless. Assumes a dark terminal theme (bin/fm-composer-lib.sh's fm_composer_strip_ghost, used by styled tmux, herdr, and Zellij reads)
-GROK_HOME=              # optional Grok config home for firstmate's global grok turn-end hook; defaults to ~/.grok
 FM_SEND_RETRIES=3       # fm-send Enter-retry attempts after typing the line once
 FM_SEND_SLEEP=0.4       # seconds between fm-send submit checks
 FM_SEND_SETTLE=1        # seconds fm-send waits after a successful text submit; 0 disables

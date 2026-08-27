@@ -35,6 +35,7 @@ X_LINK="$ROOT/bin/fm-x-link.sh"
 TMP_ROOT=$(fm_test_tmproot fm-control-relaunch)
 mkdir -p "$TMP_ROOT"
 TMP_ROOT=$(cd "$TMP_ROOT" && pwd)
+REAL_SLEEP=$(command -v sleep)
 TASK_TMPS=()
 
 relaunch_cleanup() {
@@ -86,7 +87,7 @@ case "${1:-}" in
         'export GOTMPDIR='*)
           if [ -n "${FM_FAKE_TRACE_PREPARE:-}" ]; then
             : > "$FM_FAKE_TRACE_PREPARE"
-            while [ ! -e "$FM_FAKE_META_WRITER_READY" ]; do /bin/sleep 0.01; done
+            while [ ! -e "$FM_FAKE_META_WRITER_READY" ]; do "$FM_REAL_SLEEP" 0.01; done
           fi
           ;;
         'export TRACEPARENT='*)
@@ -103,7 +104,7 @@ case "${1:-}" in
         *pane_current_path*)
           if [ -n "${FM_FAKE_CWD_RACE_READY:-}" ]; then
             : > "$FM_FAKE_CWD_RACE_READY"
-            /bin/sleep 1
+            "$FM_REAL_SLEEP" 1
           fi
           cat "$D/cwd"; printf '\n'; exit 0 ;;
       esac
@@ -163,8 +164,8 @@ add_ship_task() {
 run_control() {  # <case-dir> <args...>
   local dir=$1; shift
   env PATH="$dir/fakebin:$PATH" FM_HOME="$dir/home" FM_FAKE_DIR="$dir/fake" \
-    FM_SPAWN_NO_GUARD=1 GROK_HOME="$dir/grokhome" \
-    FM_CONTROL_POLL=0.01 FM_CONTROL_EXIT_WAIT=0.05 FM_CONTROL_LAUNCH_WAIT=0.05 \
+    FM_SPAWN_NO_GUARD=1 CODEX_HOME="$dir/codexhome" GROK_HOME="$dir/grokhome" \
+    FM_REAL_SLEEP="$REAL_SLEEP" FM_CONTROL_POLL=0.01 FM_CONTROL_EXIT_WAIT=0.05 FM_CONTROL_LAUNCH_WAIT=0.05 \
     FM_REAL_GIT="${FM_REAL_GIT:-}" FM_FAKE_GIT_FAILURE="${FM_FAKE_GIT_FAILURE:-}" \
     FM_REAL_MV="${FM_REAL_MV:-}" FM_FAKE_COMPLETE_JOURNAL_MV_FAIL="${FM_FAKE_COMPLETE_JOURNAL_MV_FAIL:-}" \
     FM_FAKE_META_PUBLISH_MV_FAIL="${FM_FAKE_META_PUBLISH_MV_FAIL:-}" \
@@ -177,8 +178,8 @@ run_control() {  # <case-dir> <args...>
 run_spawn() {  # <case-dir> <args...>
   local dir=$1; shift
   env PATH="$dir/fakebin:$PATH" FM_HOME="$dir/home" FM_FAKE_DIR="$dir/fake" \
-    FM_SPAWN_NO_GUARD=1 GROK_HOME="$dir/grokhome" \
-    "$SPAWN" "$@" 2>&1
+    FM_SPAWN_NO_GUARD=1 CODEX_HOME="$dir/codexhome" GROK_HOME="$dir/grokhome" \
+    FM_REAL_SLEEP="$REAL_SLEEP" "$SPAWN" "$@" 2>&1
 }
 
 meta_field() {  # <case-dir> <id> <key>
@@ -226,7 +227,7 @@ if [ -n "${FM_FAKE_META_WRITER_TARGET:-}" ] \
    && [ "$target_path" = "$FM_FAKE_META_WRITER_TARGET" ] \
    && grep -q '^x_request=' "$source_path" 2>/dev/null; then
   : > "$FM_FAKE_META_WRITER_READY"
-  while [ ! -e "$FM_FAKE_META_WRITER_RELEASE" ]; do /bin/sleep 0.01; done
+  while [ ! -e "$FM_FAKE_META_WRITER_RELEASE" ]; do "$FM_REAL_SLEEP" 0.01; done
 fi
 exec "$FM_REAL_MV" "$@"
 SH
@@ -273,6 +274,28 @@ test_same_harness_relaunch_keeps_identity_and_reuses_the_endpoint() {
   pass "fm-control relaunch: a same-harness relaunch replaces the agent in the same endpoint and worktree"
 }
 
+test_codex_and_grok_relaunches_use_process_local_private_homes() {
+  local harness id dir out rc variable private_home
+  for harness in codex grok; do
+    case "$harness" in
+      codex) id=rl35; variable=CODEX_HOME ;;
+      grok) id=rl36; variable=GROK_HOME ;;
+    esac
+    dir=$(new_case "$harness-home" "$id")
+    add_ship_task "$dir" "$id" "$harness"
+    printf '%s' "$harness" > "$dir/fake/command"
+    printf '%s' "$harness" > "$dir/fake/becomes"
+    out=$(run_control "$dir" "$id" relaunch --note "continue in isolated home"); rc=$?
+    expect_code 0 "$rc" "$harness relaunch should succeed"$'\n'"$out"
+    private_home="$dir/home/data/agent-homes/$harness"
+    assert_grep "$variable='$private_home'" "$dir/fake/literal" \
+      "$harness relaunch did not carry its Firstmate-private home"
+    assert_no_grep "$dir/${harness}home" "$dir/fake/literal" \
+      "$harness relaunch inherited the ambient personal home"
+  done
+  pass "fm-control relaunch: Codex and Grok replacements use process-local private homes"
+}
+
 test_relaunch_preserves_durable_task_metadata() {
   local dir out rc
   dir=$(new_case durable-meta rl19)
@@ -315,7 +338,7 @@ test_relaunch_serializes_concurrent_durable_metadata_publication() {
     run_control "$dir" rl28 relaunch --note "continue after publication" > "$dir/control.out" &
   control_pid=$!
   while [ ! -e "$prepare" ] && [ "$i" -lt 200 ]; do
-    /bin/sleep 0.01
+    "$REAL_SLEEP" 0.01
     i=$((i + 1))
   done
   [ -e "$prepare" ] || {
@@ -324,7 +347,7 @@ test_relaunch_serializes_concurrent_durable_metadata_publication() {
     fail "relaunch did not reach trace delivery"
   }
   env PATH="$dir/fakebin:$PATH" FM_HOME="$dir/home" FM_ROOT_OVERRIDE="$ROOT" \
-    FM_REAL_MV="$(command -v mv)" \
+    FM_REAL_MV="$(command -v mv)" FM_REAL_SLEEP="$REAL_SLEEP" \
     FM_FAKE_META_WRITER_TARGET="$dir/home/state/rl28.meta" \
     FM_FAKE_META_WRITER_READY="$ready" \
     FM_FAKE_META_WRITER_RELEASE="$release" \
@@ -333,7 +356,7 @@ test_relaunch_serializes_concurrent_durable_metadata_publication() {
   link_pid=$!
   i=0
   while { [ ! -e "$ready" ] || [ ! -e "$exported" ]; } && [ "$i" -lt 200 ]; do
-    /bin/sleep 0.01
+    "$REAL_SLEEP" 0.01
     i=$((i + 1))
   done
   [ -e "$ready" ] && [ -e "$exported" ] || {
@@ -452,9 +475,9 @@ test_harness_switch_resolves_a_prefixed_recorded_harness() {
   dir=$(new_case prefixcontrol rl32)
   add_ship_task "$dir" rl32 grok-2
   printf 'grok-2' > "$dir/fake/command"
-  mkdir -p "$dir/grokhome/hooks/fm-turn-end.d"
+  mkdir -p "$dir/home/data/agent-homes/grok/hooks/fm-turn-end.d"
   printf 'fm.abcdefabcdef\n' > "$dir/home/state/rl32.grok-turnend-token"
-  auth="$dir/grokhome/hooks/fm-turn-end.d/fm.abcdefabcdef"
+  auth="$dir/home/data/agent-homes/grok/hooks/fm-turn-end.d/fm.abcdefabcdef"
   printf '%s\n' "$dir/home/state/rl32.turn-ended" > "$auth"
   printf 'token=fm.abcdefabcdef\n' > "$dir/wt/.fm-grok-turnend"
 
@@ -545,9 +568,9 @@ test_prior_harness_turnend_registry_entry_is_cleared() {
   local dir auth
   dir=$(new_case grokauth rl9)
   add_ship_task "$dir" rl9 grok
-  mkdir -p "$dir/grokhome/hooks/fm-turn-end.d"
+  mkdir -p "$dir/home/data/agent-homes/grok/hooks/fm-turn-end.d"
   printf 'fm.abcdefabcdef\n' > "$dir/home/state/rl9.grok-turnend-token"
-  auth="$dir/grokhome/hooks/fm-turn-end.d/fm.abcdefabcdef"
+  auth="$dir/home/data/agent-homes/grok/hooks/fm-turn-end.d/fm.abcdefabcdef"
   printf '%s\n' "$dir/home/state/rl9.turn-ended" > "$auth"
   printf 'grok' > "$dir/fake/command"
   printf 'grok' > "$dir/fake/becomes"
@@ -591,19 +614,21 @@ test_turnend_auth_paths_are_owned_by_the_control_adapter() {
   token_path=$(fm_control_harness_turnend_token_path grok "$state" x)
   [ "$token_path" = "$state/x.grok-turnend-token" ] \
     || fail "the grok token path should be computed without reading it"
-  grok_path=$(GROK_HOME="$dir/gh" fm_control_harness_turnend_auth_path grok fm.111111111111)
-  [ "$grok_path" = "$dir/gh/hooks/fm-turn-end.d/fm.111111111111" ] \
-    || fail "grok's registry path should resolve under GROK_HOME, got '$grok_path'"
+  grok_path=$(FM_HOME="$dir/fm" GROK_HOME="$dir/personal-grok" \
+    fm_control_harness_turnend_auth_path grok fm.111111111111)
+  [ "$grok_path" = "$dir/fm/data/agent-homes/grok/hooks/fm-turn-end.d/fm.111111111111" ] \
+    || fail "grok's registry path should resolve under the Firstmate-private home, got '$grok_path'"
   kimi_path=$(HOME="$dir/kh" fm_control_harness_turnend_auth_path kimi fm.222222222222)
   [ "$kimi_path" = "$dir/kh/.kimi-code/fm-turn-end.d/fm.222222222222" ] \
     || fail "kimi's registry path should resolve under the home store, got '$kimi_path'"
-  grok_path=$(GROK_HOME="$dir/gh" fm_control_harness_turnend_auth_path grok 'not a token/../..')
+  grok_path=$(FM_HOME="$dir/fm" GROK_HOME="$dir/personal-grok" \
+    fm_control_harness_turnend_auth_path grok 'not a token/../..')
   [ -z "$grok_path" ] || fail "a malformed token must resolve to no path, got '$grok_path'"
   pass "fm-control-lib: one owner resolves each harness's turn-end registry entry, and refuses a malformed token"
 }
 
 test_secondmate_relaunch_picks_up_the_configured_harness_pin() {
-  local dir home out rc
+  local dir home auth out rc
   dir=$(new_case smpin sm3)
   home="$dir/home"
   mkdir -p "$home/config"
@@ -611,15 +636,19 @@ test_secondmate_relaunch_picks_up_the_configured_harness_pin() {
   mkdir -p "$home/data/sm3"
   printf '# secondmate brief\n' > "$home/data/sm3/brief.md"
   fm_git_worktree "$dir/proj" "$dir/smhome" sm-branch
-  mkdir -p "$dir/smhome/state" "$dir/smhome/data" "$dir/smhome/bin"
+  mkdir -p "$dir/smhome/state" "$dir/smhome/data" "$dir/smhome/bin" \
+    "$dir/smhome/data/agent-homes/grok/hooks/fm-turn-end.d"
   printf 'sm3\n' > "$dir/smhome/.fm-secondmate-home"
+  printf 'fm.333333333333\n' > "$home/state/sm3.grok-turnend-token"
+  auth="$dir/smhome/data/agent-homes/grok/hooks/fm-turn-end.d/fm.333333333333"
+  printf '%s\n' "$home/state/sm3.turn-ended" > "$auth"
   printf '# agents\n' > "$dir/smhome/AGENTS.md"
   {
     echo "window=fmses:fm-sm3"
     echo "endpoint_task_id=sm3"
     echo "worktree=$dir/smhome"
     echo "project=$dir/smhome"
-    echo "harness=claude"
+    echo "harness=grok"
     echo "kind=secondmate"
     echo "mode=secondmate"
     echo "yolo=off"
@@ -629,6 +658,7 @@ test_secondmate_relaunch_picks_up_the_configured_harness_pin() {
   } > "$home/state/sm3.meta"
   printf '%s\n' "fm-sm3" > "$dir/fake/windows"
   printf '%s' "$dir/smhome" > "$dir/fake/cwd"
+  printf 'grok' > "$dir/fake/command"
   printf 'codex' > "$dir/fake/becomes"
   out=$(run_control "$dir" sm3 relaunch); rc=$?
   expect_code 0 "$rc" "a configured secondmate harness should relaunch"$'\n'"$out"
@@ -639,6 +669,10 @@ test_secondmate_relaunch_picks_up_the_configured_harness_pin() {
   [ "$(journal_field "$dir" sm3 to_effort)" = high ] \
     || fail "the configured effort token should come with the pin"
   assert_not_contains "$out" "not a verified harness" "codex is a verified harness"
+  assert_grep "CODEX_HOME='$dir/smhome/data/agent-homes/codex'" "$dir/fake/literal" \
+    "the replacement did not use the secondmate's own private Codex home"
+  assert_absent "$auth" \
+    "the relaunch did not retire prior Grok wiring from the secondmate's private home"
   pass "fm-control relaunch: a secondmate relaunch re-resolves its durable configured harness pin"
 }
 
@@ -794,9 +828,9 @@ test_prefixed_prior_harness_wiring_is_still_retired() {
   local dir auth
   dir=$(new_case prefixwiring rl30)
   add_ship_task "$dir" rl30 grok-2
-  mkdir -p "$dir/grokhome/hooks/fm-turn-end.d"
+  mkdir -p "$dir/home/data/agent-homes/grok/hooks/fm-turn-end.d"
   printf 'fm.abcdefabcdef\n' > "$dir/home/state/rl30.grok-turnend-token"
-  auth="$dir/grokhome/hooks/fm-turn-end.d/fm.abcdefabcdef"
+  auth="$dir/home/data/agent-homes/grok/hooks/fm-turn-end.d/fm.abcdefabcdef"
   printf '%s\n' "$dir/home/state/rl30.turn-ended" > "$auth"
   printf 'token=fm.abcdefabcdef\n' > "$dir/wt/.fm-grok-turnend"
   printf 'zsh' > "$dir/fake/command"
@@ -941,7 +975,7 @@ test_prepublication_failure_keeps_concurrent_durable_metadata() {
       > "$dir/control.out" &
   control_pid=$!
   while [ ! -e "$dir/cwd-race-ready" ] && [ "$i" -lt 200 ]; do
-    /bin/sleep 0.01
+    "$REAL_SLEEP" 0.01
     i=$((i + 1))
   done
   [ -e "$dir/cwd-race-ready" ] || {
@@ -1313,6 +1347,7 @@ test_spawn_relaunch_refuses_a_pane_outside_the_worktree() {
 }
 
 test_same_harness_relaunch_keeps_identity_and_reuses_the_endpoint
+test_codex_and_grok_relaunches_use_process_local_private_homes
 test_relaunch_preserves_durable_task_metadata
 test_relaunch_serializes_concurrent_durable_metadata_publication
 test_disabled_relaunch_clears_prior_trace_context
