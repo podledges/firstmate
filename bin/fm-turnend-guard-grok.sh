@@ -70,6 +70,7 @@ command -v grok >/dev/null 2>&1 || exit 0
 # shellcheck source=bin/fm-agent-home-lib.sh
 . "$ROOT/bin/fm-agent-home-lib.sh"
 FIRSTMATE_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
+case "${GROK_HOME:-}" in */data/agent-homes/grok) FIRSTMATE_HOME=${GROK_HOME%/data/agent-homes/grok} ;; esac
 fm_agent_homes_prepare "$FIRSTMATE_HOME" || exit 0
 FM_GROK_HOME=$(fm_agent_home_path "$FIRSTMATE_HOME" grok) || exit 0
 
