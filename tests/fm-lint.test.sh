@@ -541,8 +541,17 @@ test_missing_shellcheck_fails_closed() {
   for tool in bash dirname; do
     ln -s "$(command -v "$tool")" "$fakebin/$tool"
   done
+  sc="$ROOT/.fm-shellcheck/shellcheck"
+  sc_backup=
+  if [ -x "$sc" ]; then
+    sc_backup="$tmp/sc.backup"
+    mv "$sc" "$sc_backup"
+  fi
   rc=0
   out=$(PATH="$fakebin" CI=true GITHUB_ACTIONS=true "$LINT" 2>&1) || rc=$?
+  if [ -n "$sc_backup" ]; then
+    mv "$sc_backup" "$sc"
+  fi
   [ "$rc" -eq 1 ] || fail "missing ShellCheck expected exit 1, got $rc"$'\n'"$out"
   assert_contains "$out" "ShellCheck not found" \
     "missing ShellCheck did not name the required linter"
