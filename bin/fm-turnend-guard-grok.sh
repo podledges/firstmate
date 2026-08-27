@@ -8,6 +8,9 @@
 # precedence over the legacy snake-case spelling when both are present.
 set -u
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+
 PAYLOAD=$(cat 2>/dev/null || true)
 [ -n "$PAYLOAD" ] || exit 0
 
@@ -66,7 +69,7 @@ SESSION_ID=$(printf '%s' "$PAYLOAD" | jq -er '
 command -v grok >/dev/null 2>&1 || exit 0
 # shellcheck source=bin/fm-agent-home-lib.sh
 . "$ROOT/bin/fm-agent-home-lib.sh"
-FIRSTMATE_HOME=${FM_HOME:-$ROOT}
+FIRSTMATE_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 fm_agent_homes_prepare "$FIRSTMATE_HOME" || exit 0
 FM_GROK_HOME=$(fm_agent_home_path "$FIRSTMATE_HOME" grok) || exit 0
 
