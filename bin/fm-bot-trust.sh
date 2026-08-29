@@ -23,7 +23,7 @@ import os
 import re
 import secrets
 import sys
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 NUMBERS = {
     "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4,
@@ -78,6 +78,7 @@ def probability(text):
         number = Decimal(parsed)
     if not number.is_finite() or number < 0 or number > 100:
         fail("probability must be between 0 and 100")
+    number = number.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     return number
 
 
