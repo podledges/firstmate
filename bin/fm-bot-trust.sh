@@ -78,7 +78,6 @@ def probability(text):
         number = Decimal(parsed)
     if not number.is_finite() or number < 0 or number > 100:
         fail("probability must be between 0 and 100")
-    number = number.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     return number
 
 
@@ -212,7 +211,8 @@ def main():
     if args.input is not None:
         fail("probability mode accepts exactly one probability expression")
     chance = probability(mode)
-    threshold = int(chance * 100)
+    scaled = (chance * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    threshold = int(scaled) or (1 if chance > 0 else 0)
     result = 1 if random_below(10000) < threshold else 0
     print(result)
     if args.explain:
