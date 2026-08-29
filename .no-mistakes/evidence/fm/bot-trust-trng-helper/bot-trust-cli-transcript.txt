@@ -1,0 +1,78 @@
+=== Bot Trust CLI End-to-End Verification Transcript ===
+Date: Sat Aug 29 10:59:14 PM UTC 2026
+Branch: 
+Commit: 51d1281a89eb9b550949599b4aea7d2bb13ab391
+
+# 1. Agent-facing usage guidance (help output)
+usage: bin/fm-bot-trust.sh [-h] [--explain] [mode] [input]
+
+OS-backed secure randomness for explicit probability decisions.
+
+positional arguments:
+  mode        probability (default), select, or tree
+  input
+
+options:
+  -h, --help  show this help message and exit
+  --explain   print a human-readable explanation after the stable result
+
+Examples: bin/fm-bot-trust.sh '70 %'; bin/fm-bot-trust.sh select outcomes.md;
+printf '1 | yes\n3 | no\n' | bin/fm-bot-trust.sh select -
+
+# 2. Binary probability mode - standard and small fractional percentages (precision fix verification)
+# Using deterministic random via FM_BOT_TRUST_RANDOM_HEX=00 (yields 0, which triggers hit if threshold>=1)
+
+FM_BOT_TRUST_RANDOM_HEX=00 ./bin/fm-bot-trust.sh '50%'
+1
+
+FM_BOT_TRUST_RANDOM_HEX=00 ./bin/fm-bot-trust.sh '0.005%'
+1
+
+FM_BOT_TRUST_RANDOM_HEX=00 ./bin/fm-bot-trust.sh '0.004%'
+1
+
+FM_BOT_TRUST_RANDOM_HEX=00 ./bin/fm-bot-trust.sh '0.001%'
+1
+
+FM_BOT_TRUST_RANDOM_HEX=00 ./bin/fm-bot-trust.sh '0%'
+0
+
+# With --explain to show output format (no trailing .00 regression)
+FM_BOT_TRUST_RANDOM_HEX=00 ./bin/fm-bot-trust.sh --explain '50%'
+1
+probability=50% source=OS-backed secure randomness
+
+FM_BOT_TRUST_RANDOM_HEX=00 ./bin/fm-bot-trust.sh --explain '0.005%'
+1
+probability=0.005% source=OS-backed secure randomness
+
+FM_BOT_TRUST_RANDOM_HEX=ffff ./bin/fm-bot-trust.sh '50%'
+0
+
+# 3. Weighted select mode
+FM_BOT_TRUST_RANDOM_HEX=00 ./bin/fm-bot-trust.sh select /tmp/choices.md
+red
+
+FM_BOT_TRUST_RANDOM_HEX=2dc6c0 ./bin/fm-bot-trust.sh select /tmp/choices.md
+blue
+
+printf '1 | stdin-test\n' | FM_BOT_TRUST_RANDOM_HEX=00 ./bin/fm-bot-trust.sh select -
+stdin-test
+
+# 4. Markdown-style tree decisions
+FM_BOT_TRUST_RANDOM_HEX=2dc6c0 ./bin/fm-bot-trust.sh tree /tmp/tree.md
+leaf-b
+
+FM_BOT_TRUST_RANDOM_HEX=00 ./bin/fm-bot-trust.sh tree /tmp/tree2.md
+deep-leaf
+
+# 5. Error handling examples
+./bin/fm-bot-trust.sh '101%' 2>&1 || true
+fm-bot-trust: probability must be between 0 and 100
+
+./bin/fm-bot-trust.sh 'maybe percent' 2>&1 || true
+fm-bot-trust: expected a number from 0 to 100, such as 70% or seventy five percent
+
+# Cleanup temps
+
+=== End of transcript ===
