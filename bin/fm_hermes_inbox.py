@@ -193,7 +193,7 @@ def verify_note(path, expected):
         emit(result("unavailable", code="corrupt_note"), 4)
 
 
-def prepare(root, inbox):
+def ensure_paths(root, inbox):
     if os.getuid() != os.geteuid():
         emit(result("unavailable", code="home_unavailable"), 4)
     try:
@@ -201,7 +201,7 @@ def prepare(root, inbox):
         if stat.S_ISLNK(root_st.st_mode) or not stat.S_ISDIR(root_st.st_mode) or root_st.st_uid != os.geteuid() or stat.S_IMODE(root_st.st_mode) & 0o022:
             raise UnsafePath
         state = os.path.dirname(inbox)
-        private_dir(state)
+        private_dir(state, create=True)
         private_dir(inbox, create=True)
         hermes = os.path.join(inbox, ".hermes")
         private_dir(hermes, create=True)
@@ -211,7 +211,11 @@ def prepare(root, inbox):
             raise UnsafePath
     except (OSError, UnsafePath):
         emit(result("unavailable", code="unsafe_path"), 4)
+    return receipts
 
+
+def prepare(root, inbox):
+    receipts = ensure_paths(root, inbox)
     request = parse_request()
     canonical = json.dumps({"version": 1, "request_id": request["request_id"], "text": request["text"]}, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     request_key = hashlib.sha256(request["request_id"].encode("utf-8")).hexdigest()
@@ -274,13 +278,16 @@ def prepare(root, inbox):
 
 def main():
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("prepare")
+    parser.add_argument("command", choices=("ensure", "prepare"))
     parser.add_argument("--root", required=True)
     parser.add_argument("--inbox", required=True)
     args = parser.parse_args()
-    if args.prepare != "prepare":
-        raise SystemExit(2)
-    prepare(os.path.realpath(args.root), os.path.abspath(args.inbox))
+    root = os.path.realpath(args.root)
+    inbox = os.path.abspath(args.inbox)
+    if args.command == "ensure":
+        ensure_paths(root, inbox)
+    else:
+        prepare(root, inbox)
 
 
 if __name__ == "__main__":
