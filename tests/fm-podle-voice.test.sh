@@ -23,7 +23,7 @@ FM_STATE_OVERRIDE="$TMP_ROOT/state" \
 FM_OPERATIONAL_INPUT_SCRIPT="$ROOT/bin/fm-operational-input.sh" \
 EXT="$TMP_ROOT/fm-primary-turnend-guard.ts" \
   node --input-type=module <<'JS'
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const handlers = new Map();
@@ -58,12 +58,14 @@ await command.handler("on", ctx);
 await command.handler("", ctx);
 if (readFileSync(`${process.env.FM_STATE_OVERRIDE}/.podle-voice`, "utf8") !== "off\n") throw new Error("bare command did not toggle");
 await command.handler("", ctx);
+await handlers.get("agent_start")({ type: "agent_start" }, ctx);
 entries = [
   { type: "message", id: "u1", message: { role: "user", content: "captain request" } },
   { type: "message", id: "a1", message: { role: "assistant", content: [{ type: "text", text: "Reply aloud" }] } },
 ];
 await handlers.get("agent_settled")({ type: "agent_settled" }, ctx);
 if (executions.length !== 1 || executions[0].command !== "firstmate-tts" || executions[0].args[0] !== "Reply aloud") throw new Error("captain reply was not spoken");
+await handlers.get("agent_start")({ type: "agent_start" }, ctx);
 entries = [
   ...entries,
   { type: "message", id: "u2", message: { role: "user", content: "\u2063FIRSTMATE_OP: v1 watcher: internal" } },
@@ -72,6 +74,7 @@ entries = [
 await handlers.get("agent_settled")({ type: "agent_settled" }, ctx);
 if (executions.length !== 1) throw new Error("internal response was spoken");
 executionCode = 1;
+await handlers.get("agent_start")({ type: "agent_start" }, ctx);
 entries = [
   { type: "message", id: "u3", message: { role: "user", content: "another captain request" } },
   { type: "message", id: "a3", message: { role: "assistant", content: "Failure stays textual" } },
@@ -79,5 +82,28 @@ entries = [
 await handlers.get("agent_settled")({ type: "agent_settled" }, ctx);
 if (!notifications.some((item) => item.level === "error" && item.message.includes("firstmate-tts"))) throw new Error("TTS failure lacked actionable setup error");
 if (!existsSync(`${process.env.FM_STATE_OVERRIDE}/.podle-voice`)) throw new Error("private preference disappeared");
-console.log("ok - Pi voice commands, private persistence, reply filtering, and failure fallback");
+const reloadedHandlers = new Map();
+const reloaded = await import(`${pathToFileURL(process.env.EXT).href}?reload=${Date.now()}`);
+reloaded.default({ ...pi, on(name, handler) { reloadedHandlers.set(name, handler); } });
+await reloadedHandlers.get("agent_start")({ type: "agent_start" }, ctx);
+await reloadedHandlers.get("agent_settled")({ type: "agent_settled" }, ctx);
+if (executions.length !== 2) throw new Error("reload replayed a reply from an aborted turn");
+const secondmateHome = `${process.env.FM_STATE_OVERRIDE}/../secondmate`;
+mkdirSync(secondmateHome, { recursive: true });
+writeFileSync(`${secondmateHome}/.fm-secondmate-home`, "voice-test\n");
+process.env.FM_HOME = secondmateHome;
+process.env.FM_STATE_OVERRIDE = `${secondmateHome}/state`;
+const secondmateCommands = new Map();
+const secondmateHandlers = new Map();
+const secondmate = await import(`${pathToFileURL(process.env.EXT).href}?secondmate=${Date.now()}`);
+secondmate.default({
+  ...pi,
+  on(name, handler) { secondmateHandlers.set(name, handler); },
+  registerCommand(name, command) { secondmateCommands.set(name, command); },
+});
+if (secondmateCommands.has("podle-voice")) throw new Error("voice command was enabled for a secondmate");
+await secondmateHandlers.get("agent_start")({ type: "agent_start" }, ctx);
+await secondmateHandlers.get("agent_settled")({ type: "agent_settled" }, ctx);
+if (executions.length !== 2) throw new Error("secondmate output was spoken");
+console.log("ok - Pi voice commands, captain-only reply filtering, and failure fallback");
 JS

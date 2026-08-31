@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -64,6 +64,7 @@ function markLoaded(): void {
 const sessionstartDeliveryBytes = 512 * 1024;
 const voicePreferenceFile = `${state}/.podle-voice`;
 const voiceCommandTimeoutMs = 5000;
+let assistantIdAtAgentStart = "";
 let lastSpokenAssistantId = "";
 
 type SessionStartContext = {
@@ -155,6 +156,16 @@ async function injectSessionstart(pi: ExtensionAPI, source: string): Promise<voi
   }
 }
 
+function captainFacingSession(): boolean {
+  try {
+    const marker = `${fmHome}/.fm-secondmate-home`;
+    if (lstatSync(marker).isSymbolicLink()) return true;
+    return !/^[A-Za-z0-9._-]+$/.test(readFileSync(marker, "utf8").replaceAll(/\s/g, ""));
+  } catch {
+    return true;
+  }
+}
+
 function voiceEnabled(): boolean {
   try {
     return readFileSync(voicePreferenceFile, "utf8").trim() === "on";
@@ -201,6 +212,17 @@ function latestCaptainReply(ctx: { sessionManager?: { getBranch?: () => SessionE
   const text = messageText(latestAssistant?.message?.content).trim();
   if (!text) return null;
   return { id: latestAssistant?.id ?? text, text };
+}
+
+function latestAssistantId(ctx: { sessionManager?: { getBranch?: () => SessionEntry[] } }): string {
+  const entries = ctx.sessionManager?.getBranch?.() ?? [];
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (entry.type === "message" && entry.message?.role === "assistant") {
+      return entry.id ?? messageText(entry.message.content);
+    }
+  }
+  return "";
 }
 
 async function speakReply(
@@ -263,7 +285,7 @@ function runCdCheck(command: string): Promise<{ code: number; stderr: string }> 
 }
 
 export default function (pi: ExtensionAPI) {
-  pi.registerCommand?.("podle-voice", {
+  if (captainFacingSession()) pi.registerCommand?.("podle-voice", {
     description: "Toggle or inspect local speech for captain-facing Pi replies.",
     getArgumentCompletions: (prefix: string) => ["on", "off", "status"]
       .filter((value) => value.startsWith(prefix))
@@ -313,9 +335,13 @@ export default function (pi: ExtensionAPI) {
     return { block: true, reason: result.stderr.trim() || "denied by the watcher-arm PreToolUse seatbelt" };
   });
 
+  pi.on("agent_start", async (_event, ctx) => {
+    assistantIdAtAgentStart = latestAssistantId(ctx);
+  });
+
   pi.on("agent_settled", async (_event, ctx) => {
-    const reply = latestCaptainReply(ctx);
-    if (reply) await speakReply(pi, ctx, reply);
+    const reply = captainFacingSession() ? latestCaptainReply(ctx) : null;
+    if (reply && reply.id !== assistantIdAtAgentStart) await speakReply(pi, ctx, reply);
     if (guardFollowupActive) {
       guardFollowupActive = false;
       return;
