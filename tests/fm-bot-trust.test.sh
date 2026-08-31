@@ -6,6 +6,7 @@ set -eu
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 BOT_TRUST="$ROOT/bin/fm-bot-trust.sh"
+BOT_TRUST_FILTER="$ROOT/bin/fm-bot-trust-filter.sh"
 TMP_ROOT=$(fm_test_tmproot fm-bot-trust)
 
 expect_failure() {
@@ -33,6 +34,41 @@ test_binary_probability() {
   pass "binary probabilities parse, validate, and return stable outcomes"
 }
 
+test_probability_filter() {
+  [ "$(FM_BOT_TRUST_RANDOM_HEX=00 "$BOT_TRUST_FILTER" 'flip a coin with a 70% chance')" = 1 ] \
+    || fail "natural-language percentage was not routed to Bot Trust"
+  [ "$(FM_BOT_TRUST_RANDOM_HEX=270f "$BOT_TRUST_FILTER" 'choose randomly with a 70 percent probability')" = 0 ] \
+    || fail "spelled percent suffix was not routed to Bot Trust"
+  [ "$(FM_BOT_TRUST_RANDOM_HEX=00 "$BOT_TRUST_FILTER" '70 percent')" = 1 ] \
+    || fail "bare exact percentage was not routed to Bot Trust"
+
+  local output rc
+  set +e
+  output=$(FM_BOT_TRUST_RANDOM_HEX=not-hex "$BOT_TRUST_FILTER" 'the project is 70% complete' 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -eq 1 ] || fail "incidental percentage was treated as a probability request"
+  [ -z "$output" ] || fail "non-matching input produced output"
+
+  set +e
+  output=$(FM_BOT_TRUST_RANDOM_HEX=not-hex "$BOT_TRUST_FILTER" 'the chance of rain is 70%' 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -eq 1 ] || fail "factual probability statement was treated as a decision request"
+  [ -z "$output" ] || fail "factual probability statement produced output"
+
+  set +e
+  output=$(FM_BOT_TRUST_RANDOM_HEX=not-hex "$BOT_TRUST_FILTER" 'choose with a 30% or 70% chance' 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -eq 1 ] || fail "multiple percentages were treated as an exact probability"
+  [ -z "$output" ] || fail "ambiguous input produced output"
+
+  expect_failure 'probability must be between 0 and 100' "$BOT_TRUST_FILTER" 'flip with a 101% chance'
+  expect_failure 'probability must be between 0 and 100' "$BOT_TRUST_FILTER" 'choose randomly with a -1% probability'
+  pass "natural-language probability filtering routes only exact explicit percentages"
+}
+
 test_weighted_and_tree_modes() {
   local choices tree
   choices="$TMP_ROOT/choices.md"
@@ -51,4 +87,5 @@ test_weighted_and_tree_modes() {
 }
 
 test_binary_probability
+test_probability_filter
 test_weighted_and_tree_modes
