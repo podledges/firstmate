@@ -37,7 +37,9 @@ This preference is local to each Firstmate home and is not part of secondmate in
 
 The Pi-only `/podle-voice` command controls optional local speech for completed captain-facing replies.
 The bare command toggles the preference, while `/podle-voice on`, `/podle-voice off`, and `/podle-voice status` set or report it idempotently.
-The preference defaults off and is stored only as `state/.podle-voice` in the captain's primary Firstmate home resolved from `FM_HOME`, so it is never tracked, inherited, sent in public responses, or read from project repositories.
+The preference defaults off and is stored only as `.podle-voice` in the primary home's `state/` directory, resolved from `FM_HOME`, then `FM_ROOT_OVERRIDE`, then the tracked code root derived from the extension path.
+`FM_STATE_OVERRIDE` selects the state directory only for tests and specialized local setups.
+The preference is never tracked, inherited, sent in public responses, or read from project repositories.
 Secondmate and crewmate sessions do not expose this command or invoke speech.
 When enabled, the Pi extension invokes the local `firstmate-tts` command with a bounded timeout after a reply settles.
 Missing or failing local speech preserves the text reply and displays one actionable setup error; no network, listener, credential, or background service is required.
