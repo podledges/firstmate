@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -62,6 +62,9 @@ function markLoaded(): void {
 // separate session_compact event fires after a compaction. "new" is Pi's /clear
 // while reload, resume, and fork all keep prior context.
 const sessionstartDeliveryBytes = 512 * 1024;
+const voicePreferenceFile = `${state}/.podle-voice`;
+const voiceCommandTimeoutMs = 5000;
+let lastSpokenAssistantId = "";
 
 type SessionStartContext = {
   sessionManager?: {
@@ -152,6 +155,69 @@ async function injectSessionstart(pi: ExtensionAPI, source: string): Promise<voi
   }
 }
 
+function voiceEnabled(): boolean {
+  try {
+    return readFileSync(voicePreferenceFile, "utf8").trim() === "on";
+  } catch {
+    return false;
+  }
+}
+
+function setVoiceEnabled(enabled: boolean): void {
+  mkdirSync(state, { recursive: true });
+  const temporary = `${voicePreferenceFile}.${process.pid}.tmp`;
+  writeFileSync(temporary, `${enabled ? "on" : "off"}\n`);
+  renameSync(temporary, voicePreferenceFile);
+}
+
+function messageText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter((item): item is { type: "text"; text: string } =>
+      typeof item === "object" && item !== null &&
+      (item as { type?: unknown }).type === "text" &&
+      typeof (item as { text?: unknown }).text === "string")
+    .map((item) => item.text)
+    .join("\n");
+}
+
+type SessionEntry = {
+  id?: string;
+  type?: string;
+  message?: { role?: string; content?: unknown };
+};
+
+function latestCaptainReply(ctx: { sessionManager?: { getBranch?: () => SessionEntry[] } }): { id: string; text: string } | null {
+  const entries = ctx.sessionManager?.getBranch?.() ?? [];
+  let latestUser = "";
+  let latestAssistant: SessionEntry | undefined;
+  for (const entry of entries) {
+    if (entry.type !== "message" || !entry.message) continue;
+    if (entry.message.role === "user") latestUser = messageText(entry.message.content);
+    if (entry.message.role === "assistant") latestAssistant = entry;
+  }
+  if (classifyFirstmateCurrentOperationalText(latestUser)) return null;
+  const text = messageText(latestAssistant?.message?.content).trim();
+  if (!text) return null;
+  return { id: latestAssistant?.id ?? text, text };
+}
+
+async function speakReply(
+  pi: ExtensionAPI,
+  ctx: { ui?: { notify?: (message: string, level: "info" | "warning" | "error") => void } },
+  reply: { id: string; text: string },
+): Promise<void> {
+  if (!voiceEnabled() || reply.id === lastSpokenAssistantId) return;
+  lastSpokenAssistantId = reply.id;
+  try {
+    const result = await pi.exec("firstmate-tts", [reply.text], { timeout: voiceCommandTimeoutMs });
+    if (result.code !== 0) throw new Error("firstmate-tts returned a failure");
+  } catch {
+    ctx.ui?.notify?.("Voice mode is on, but firstmate-tts failed; install or fix the local TTS command.", "error");
+  }
+}
+
 function runGuard(): Promise<{ code: number; stderr: string }> {
   return new Promise((resolveResult) => {
     const child = spawn(`${root}/bin/fm-turnend-guard.sh`, {
@@ -197,6 +263,27 @@ function runCdCheck(command: string): Promise<{ code: number; stderr: string }> 
 }
 
 export default function (pi: ExtensionAPI) {
+  pi.registerCommand?.("podle-voice", {
+    description: "Toggle or inspect local speech for captain-facing Pi replies.",
+    getArgumentCompletions: (prefix: string) => ["on", "off", "status"]
+      .filter((value) => value.startsWith(prefix))
+      .map((value) => ({ value, label: value })),
+    handler: async (args, ctx) => {
+      const choice = String(args ?? "").trim();
+      if (choice !== "" && choice !== "on" && choice !== "off" && choice !== "status") {
+        ctx.ui.notify?.("Usage: /podle-voice [on|off|status]", "warning");
+        return;
+      }
+      if (choice === "status") {
+        ctx.ui.notify?.(`Voice mode is ${voiceEnabled() ? "on" : "off"}.`, "info");
+        return;
+      }
+      const enabled = choice === "" ? !voiceEnabled() : choice === "on";
+      setVoiceEnabled(enabled);
+      ctx.ui.notify?.(`Voice mode is ${enabled ? "on" : "off"}.`, "info");
+    },
+  });
+
   pi.on?.("session_start", async (event, ctx) => {
     const reason = String((event as { reason?: unknown }).reason ?? "");
     const source = reason === "startup"
@@ -226,7 +313,9 @@ export default function (pi: ExtensionAPI) {
     return { block: true, reason: result.stderr.trim() || "denied by the watcher-arm PreToolUse seatbelt" };
   });
 
-  pi.on("agent_settled", async () => {
+  pi.on("agent_settled", async (_event, ctx) => {
+    const reply = latestCaptainReply(ctx);
+    if (reply) await speakReply(pi, ctx, reply);
     if (guardFollowupActive) {
       guardFollowupActive = false;
       return;
