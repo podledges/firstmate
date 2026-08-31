@@ -17,6 +17,7 @@ set -u
 . "$ROOT/bin/fm-supervision-lib.sh"
 
 TMP_ROOT=$(fm_test_tmproot fm-turnend-guard)
+REAL_CAT=$(command -v cat)
 fm_git_identity fmtest fmtest@example.invalid
 
 REQUIRED_REASON='watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn'
@@ -109,6 +110,7 @@ install_guard_scripts() {
   mkdir -p "$dir/bin"
   cp "$ROOT/bin/fm-turnend-guard.sh" "$dir/bin/fm-turnend-guard.sh"
   cp "$ROOT/bin/fm-turnend-guard-grok.sh" "$dir/bin/fm-turnend-guard-grok.sh"
+  cp "$ROOT/bin/fm-agent-home-lib.sh" "$dir/bin/fm-agent-home-lib.sh"
   cp "$ROOT/bin/fm-operational-input.sh" "$dir/bin/fm-operational-input.sh"
   cp "$ROOT/bin/fm-supervision-instructions.sh" "$dir/bin/fm-supervision-instructions.sh"
   cp "$ROOT/bin/fm-harness.sh" "$dir/bin/fm-harness.sh"
@@ -654,10 +656,14 @@ test_grok_adapter_forces_one_resume_when_unhealthy() {
 } >> "$log"
 EOF
   chmod +x "$fakebin/grok"
-  out=$(printf '{"sessionId":"session-test","hookEventName":"stop"}' | PATH="$fakebin:$PATH" GROK_WORKSPACE_ROOT="$dir" bash "$dir/bin/fm-turnend-guard-grok.sh" 2>&1); status=$?
+  out=$(printf '{"sessionId":"session-test","hookEventName":"stop"}' | PATH="$fakebin:$PATH" \
+    GROK_HOME="$TMP_ROOT/personal-grok" GROK_WORKSPACE_ROOT="$dir" \
+    bash "$dir/bin/fm-turnend-guard-grok.sh" 2>&1); status=$?
   expect_code 0 "$status" "grok adapter must fail open after queuing a forced resume"
   [ -z "$out" ] || fail "grok adapter printed output: $out"
   assert_contains "$(cat "$log")" 'active=1' "grok adapter must mark its forced resume as loop-guarded"
+  assert_contains "$(cat "$log")" "home=$dir/data/agent-homes/grok" \
+    "grok adapter must ignore an ambient personal home for its resume process"
   assert_contains "$(cat "$log")" '<--resume>' "grok adapter must resume the current session"
   assert_contains "$(cat "$log")" '<session-test>' "grok adapter must pass the hook session id"
   assert_not_contains "$(cat "$log")" '<--permission-mode>' "grok adapter must not add a stronger permission mode"
@@ -765,7 +771,7 @@ test_grok_adapter_missing_jq_and_no_supervision_allow() {
   : > "$dir/state/task1.meta"
   fakebin=$(fm_fakebin "$TMP_ROOT/grok-nojq-bin")
   log="$TMP_ROOT/grok-nojq.log"
-  for tool in bash cat printf; do
+  for tool in bash cat printf dirname; do
     tool_path=$(command -v "$tool") || fail "test host must provide $tool"
     ln -s "$tool_path" "$fakebin/$tool"
   done
@@ -1255,12 +1261,12 @@ test_hook_claude_mode_terminal_boundary_excludes_starting_owner() {
   cat > "$fakebin/cat" <<'SH'
 #!/usr/bin/env bash
 if [ "$1" = "$FM_TERMINAL_ROLE_PATH" ] \
-  && [ "$(/bin/cat "$1" 2>/dev/null || true)" = terminal-check ] \
+  && [ "$("$FM_REAL_CAT" "$1" 2>/dev/null || true)" = terminal-check ] \
   && (set -C; : > "$FM_TERMINAL_ONCE") 2>/dev/null; then
   printf 'ready\n' > "$FM_TERMINAL_READY"
   IFS= read -r _ < "$FM_TERMINAL_RELEASE"
 fi
-exec /bin/cat "$@"
+exec "$FM_REAL_CAT" "$@"
 SH
   chmod +x "$fakebin/cat"
   (
@@ -1270,6 +1276,7 @@ SH
         FM_TERMINAL_READY="$ready" \
         FM_TERMINAL_RELEASE="$release" \
         FM_TERMINAL_ONCE="$once" \
+        FM_REAL_CAT="$REAL_CAT" \
         CLAUDECODE=1 FM_HOME="$dir" bash "$dir/bin/fm-turnend-guard.sh" --claude \
           > "$guard_out" 2>&1
     printf '%s\n' "$?" > "$guard_status"

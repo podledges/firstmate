@@ -59,7 +59,7 @@ set -u
 # was launched from; every case states the marker it means to test.
 unset CLAUDECODE PI_CODING_AGENT FM_PI_HARNESS GROK_AGENT CURSOR_AGENT CURSOR_INVOKED_AS
 
-BASE_PATH=${FM_TEST_BASE_PATH:-/usr/bin:/bin:/usr/sbin:/sbin}
+BASE_PATH=${FM_TEST_BASE_PATH:-$PATH}
 fm_git_identity fmtest fmtest@example.com
 TMP_ROOT=$(fm_test_tmproot fm-secondmate-harness)
 export FM_BACKEND=tmux
@@ -679,6 +679,41 @@ spawn_secondmate_capture() {
     FM_PROJECTS_OVERRIDE="$world/home/projects" FM_CONFIG_OVERRIDE="$world/home/config" \
     FM_SPAWN_NO_GUARD=1 FM_FAKE_LAUNCH_LOG="$launchlog" \
     "$ROOT/bin/fm-spawn.sh" "$id" "$home" "$@" --secondmate
+}
+
+test_secondmate_codex_and_grok_use_their_own_private_homes() {
+  local w sm launchlog out status launch
+
+  w="$TMP_ROOT/spawn-codex-private-home"
+  sm="$w/sm"
+  launchlog="$w/launch.log"
+  mkdir -p "$w/home/config"
+  printf 'codex\n' > "$w/home/config/secondmate-harness"
+  make_seeded_home "$sm" sm-codex
+  out=$(CODEX_HOME="$w/personal-codex" spawn_secondmate_capture \
+    "$w" sm-codex "$sm" "$launchlog" 2>&1); status=$?
+  expect_code 0 "$status" "codex secondmate spawn should succeed"$'\n'"$out"
+  launch=$(cat "$launchlog")
+  assert_contains "$launch" "CODEX_HOME='$sm/data/agent-homes/codex'" \
+    "codex secondmate did not use roots beneath its own Firstmate home"
+  assert_not_contains "$launch" "$w/personal-codex" \
+    "codex secondmate inherited the ambient personal home"
+
+  w="$TMP_ROOT/spawn-grok-private-home"
+  sm="$w/sm"
+  launchlog="$w/launch.log"
+  mkdir -p "$w/home/config"
+  printf 'grok\n' > "$w/home/config/secondmate-harness"
+  make_seeded_home "$sm" sm-grok
+  out=$(GROK_HOME="$w/personal-grok" spawn_secondmate_capture \
+    "$w" sm-grok "$sm" "$launchlog" 2>&1); status=$?
+  expect_code 0 "$status" "grok secondmate spawn should succeed"$'\n'"$out"
+  launch=$(cat "$launchlog")
+  assert_contains "$launch" "GROK_HOME='$sm/data/agent-homes/grok'" \
+    "grok secondmate did not use roots beneath its own Firstmate home"
+  assert_not_contains "$launch" "$w/personal-grok" \
+    "grok secondmate inherited the ambient personal home"
+  pass "secondmate Codex and Grok launches use process-local homes beneath the secondmate home"
 }
 
 test_spawn_backend_precedence_over_inherited_config() {
@@ -1369,6 +1404,7 @@ test_backend_inheritance_present_and_absent() {
   w=$(new_world backend-inherit)
   head=$(git -C "$w/main" rev-parse HEAD)
   add_sm_worktree "$w" sm "$head"
+  record_live_watcher_fixture "$w/home"
 
   printf 'tmux\n' > "$w/home/config/backend"
   err="$w/backend-inherit.err"
@@ -2532,6 +2568,7 @@ test_spawn_bare_backward_compat
 test_spawn_explicit_harness_wins
 test_spawn_unverified_secondmate_harness_refused
 test_spawn_cursor_secondmate_launches_with_its_primary_contract
+test_secondmate_codex_and_grok_use_their_own_private_homes
 test_spawn_backend_precedence_over_inherited_config
 test_spawn_explicit_backend_precedence_over_env_and_inherited_config
 test_spawn_bare_harness_no_model_effort_flag

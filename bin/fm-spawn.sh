@@ -164,8 +164,9 @@
 # Verified per-harness turn-end hooks are installed automatically where enabled; some live outside the worktree.
 # Kimi uses one surgically installed Firstmate region in $HOME/.kimi-code/config.toml,
 # a firstmate-owned global hook and registry, and a gitignored per-task pointer.
-# grok uses a firstmate-owned global hook under ${GROK_HOME:-$HOME/.grok}/hooks
-# plus a gitignored .fm-grok-turnend worktree pointer and a state token.
+# Grok uses a firstmate-owned hook under the owning Firstmate home's private
+# data/agent-homes/grok/hooks root, plus a gitignored .fm-grok-turnend worktree
+# pointer and a state token.
 # muse installs no hook at all - its plugin engine is off in the default build - so
 # it writes state/<id>.muse-session to bind the pane to muse's own session event
 # log; muse is crewmate/scout only and is refused for --secondmate.
@@ -670,6 +671,7 @@ RELAUNCH_REPLACEMENT_BUSY_GEN=
 RELAUNCH_REPLACEMENT_HARNESS=
 RELAUNCH_REPLACEMENT_STATE=
 RELAUNCH_REPLACEMENT_WT=
+RELAUNCH_REPLACEMENT_HOME=
 CONFIG_INHERIT_LOCK=
 CONFIG_INHERIT_LOCK_HELD=0
 
@@ -705,7 +707,8 @@ spawn_abort_cleanup() {
         "$RELAUNCH_REPLACEMENT_HARNESS" \
         "$RELAUNCH_REPLACEMENT_WT" \
         "$RELAUNCH_REPLACEMENT_STATE" \
-        "$ID"; then
+        "$ID" \
+        "$RELAUNCH_REPLACEMENT_HOME"; then
       echo "warning: could not remove replacement wiring after aborted relaunch of $ID" >&2
     fi
     if [ -n "$RELAUNCH_REPLACEMENT_BUSY_GEN" ]; then
@@ -808,7 +811,7 @@ spawn_herdr_presentation_order_lock_acquire() {
 }
 
 clear_relaunch_harness_wiring() {
-  local harness=$1 wt=$2 state=$3 id=$4 token_path token auth_path path
+  local harness=$1 wt=$2 state=$3 id=$4 firstmate_home=$5 token_path token auth_path path
   # The wiring arms above match on harness PREFIXES, because a task launched
   # from a raw command records that command's basename rather than the exact
   # adapter name. The retirement tables are keyed by the exact adapter, so the
@@ -822,7 +825,7 @@ clear_relaunch_harness_wiring() {
   if [ -n "$token_path" ] && [ -f "$token_path" ]; then
     IFS= read -r token < "$token_path" || [ -n "$token" ] || return 1
   fi
-  auth_path=$(fm_control_harness_turnend_auth_path "$harness" "$token") || return 1
+  auth_path=$(fm_control_harness_turnend_auth_path "$harness" "$token" "$firstmate_home") || return 1
   if [ -n "$auth_path" ]; then
     rm -f -- "$auth_path" || return 1
   fi
@@ -2264,6 +2267,16 @@ if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ]; then
   freshen_spawn_worktree_base "$WT" || exit 1
 fi
 
+# Codex and Grok state belongs to the Firstmate home that owns the launched
+# process. A secondmate primary therefore uses its own home, while an ordinary
+# worker uses the home running this spawn. The fixed resolver deliberately
+# ignores ambient CODEX_HOME and GROK_HOME values.
+AGENT_HOME_OWNER=$FM_HOME
+[ "$KIND" != secondmate ] || AGENT_HOME_OWNER=$PROJ_ABS
+fm_agent_homes_prepare "$AGENT_HOME_OWNER" || exit 1
+FM_CODEX_HOME=$(fm_agent_home_path "$AGENT_HOME_OWNER" codex) || exit 1
+FM_GROK_HOME=$(fm_agent_home_path "$AGENT_HOME_OWNER" grok) || exit 1
+
 # Per-task temp root: /tmp/fm-<id>/ with Go's build temp nested at gotmp/. Go won't
 # create GOTMPDIR, so mkdir before it is used; fm-teardown removes the whole root.
 # Nested (not a bare /tmp/fm-<id>/gotmp) so other per-task temp can live alongside
@@ -2292,7 +2305,7 @@ if [ "$RELAUNCH" -eq 1 ]; then
   # files and turn-end token registry entries behind, and even a same-harness
   # relaunch would orphan the retired busy generation's token
   # (bin/fm-control-lib.sh owns where those artifacts live).
-  clear_relaunch_harness_wiring "$RELAUNCH_PRIOR_HARNESS" "$WT" "$STATE_REAL" "$ID" || {
+  clear_relaunch_harness_wiring "$RELAUNCH_PRIOR_HARNESS" "$WT" "$STATE_REAL" "$ID" "$AGENT_HOME_OWNER" || {
     echo "error: could not retire $RELAUNCH_PRIOR_HARNESS wiring for task $ID; refusing to arm the replacement" >&2
     exit 1
   }
@@ -2300,6 +2313,7 @@ if [ "$RELAUNCH" -eq 1 ]; then
   RELAUNCH_REPLACEMENT_HARNESS=$HARNESS
   RELAUNCH_REPLACEMENT_STATE=$STATE_REAL
   RELAUNCH_REPLACEMENT_WT=$WT
+  RELAUNCH_REPLACEMENT_HOME=$AGENT_HOME_OWNER
 fi
 if [ "$KIND" != secondmate ]; then
   # Arm the semantic busy-state contract (bin/fm-busy-lib.sh) for every
@@ -2462,16 +2476,14 @@ EOF
       # PROJECT hooks (<worktree>/.grok/hooks/, <worktree>/.claude/settings.local.json)
       # after the folder is granted hook-trust, which is not automatic and which
       # firstmate cannot establish at launch without editing grok's own managed
-      # trust store (a high-blast-radius write). GLOBAL hooks in ~/.grok/hooks/ are
-      # always trusted and load on first launch with no gate. So the turn-end hook
-      # lives OUTSIDE the worktree as a single firstmate-owned global hook that is a
-      # guarded no-op for every non-firstmate grok session: it fires only when the
-      # current workspace holds a .fm-grok-turnend token pointer that matches the
-      # firstmate-owned hook registry. firstmate then drops that per-task pointer
-      # (gitignored, like the other harnesses' worktree hook files).
-      # Result: the hook is outside the worktree, needs no trust grant, and never
-      # touches grok's managed config - only firstmate-owned files.
-      GROK_HOOKS_DIR="${GROK_HOME:-$HOME/.grok}/hooks"
+      # trust store (a high-blast-radius write). GLOBAL hooks in the selected Grok
+      # home are always trusted and load on first launch with no gate. The mandatory
+      # process-local GROK_HOME below keeps this Firstmate-owned hook outside both
+      # the worktree and the captain's personal ~/.grok tree. It fires only when
+      # the current workspace holds a .fm-grok-turnend token pointer that matches
+      # the Firstmate-owned hook registry, and Firstmate drops that per-task pointer
+      # outside git's view.
+      GROK_HOOKS_DIR="$FM_GROK_HOME/hooks"
       GROK_AUTH_DIR="$GROK_HOOKS_DIR/fm-turn-end.d"
       mkdir -p "$GROK_AUTH_DIR"
       old_umask=$(umask)
@@ -2731,6 +2743,10 @@ case "$HARNESS" in
   claude|codex|opencode|pi|pi-signed|grok|kimi|muse)
     LAUNCH="env -u CURSOR_AGENT -u CURSOR_INVOKED_AS $LAUNCH"
     ;;
+esac
+case "$HARNESS" in
+  codex*) LAUNCH="CODEX_HOME=$(shell_quote "$FM_CODEX_HOME") $LAUNCH" ;;
+  grok*) LAUNCH="GROK_HOME=$(shell_quote "$FM_GROK_HOME") $LAUNCH" ;;
 esac
 # Crewmate panes are created by a long-lived tmux/herdr daemon that does not
 # inherit firstmate's current environment, so a bare `claude` in the pane falls

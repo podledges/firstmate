@@ -8,6 +8,9 @@
 # precedence over the legacy snake-case spelling when both are present.
 set -u
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+
 PAYLOAD=$(cat 2>/dev/null || true)
 [ -n "$PAYLOAD" ] || exit 0
 
@@ -64,6 +67,12 @@ SESSION_ID=$(printf '%s' "$PAYLOAD" | jq -er '
   .sessionId | select(type == "string" and length > 0)
 ' 2>/dev/null) || exit 0
 command -v grok >/dev/null 2>&1 || exit 0
+# shellcheck source=bin/fm-agent-home-lib.sh
+. "$ROOT/bin/fm-agent-home-lib.sh"
+FIRSTMATE_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
+case "${GROK_HOME:-}" in */data/agent-homes/grok) FIRSTMATE_HOME=${GROK_HOME%/data/agent-homes/grok} ;; esac
+fm_agent_homes_prepare "$FIRSTMATE_HOME" || exit 0
+FM_GROK_HOME=$(fm_agent_home_path "$FIRSTMATE_HOME" grok) || exit 0
 
 ERR=$(mktemp "${TMPDIR:-/tmp}/fm-turnend-grok.XXXXXX") || exit 0
 trap 'rm -f "$ERR"' EXIT
@@ -83,7 +92,7 @@ $REASON" \
   PROMPT || exit 0
 
 GROK_TURNEND_GUARD_ACTIVE=1 \
-  GROK_HOME="${GROK_HOME:-$HOME/.grok}" \
+  GROK_HOME="$FM_GROK_HOME" \
   grok --resume "$SESSION_ID" \
     --cwd "$ROOT" \
     --output-format plain \
