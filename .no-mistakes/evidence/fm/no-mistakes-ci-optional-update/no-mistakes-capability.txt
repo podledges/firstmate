@@ -1,0 +1,24 @@
+# Installed no-mistakes release and AXI command surface, observed 2026-08-31
+no-mistakes version v1.60.2 (eb4e379) 2026-08-29T21:51:31Z
+
+# no-mistakes axi --help
+Agent eXperience Interface for no-mistakes. Prints token-efficient TOON
+to stdout and is driven entirely by flags (no interactive prompts).
+Running `no-mistakes axi` with no subcommand shows the current state.
+
+Usage:
+  no-mistakes axi [flags]
+  no-mistakes axi [command]
+
+Available Commands:
+  abort       Cancel the active pipeline run
+  logs        Show the log output of one pipeline step
+  respond     Answer the current approval gate and continue the run
+  run         Validate your code changes, blocking until a decision point or the outcome
+  status      Show a current-branch or explicitly selected run in detail
+  sync        Check or apply guarded current-branch synchronization
+
+Flags:
+  -h, --help   help for axi
+
+Use "no-mistakes axi [command] --help" for more information about a command.
