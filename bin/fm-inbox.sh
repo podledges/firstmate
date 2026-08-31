@@ -238,13 +238,16 @@ cmd_hermes_submit() {
     printf '%s\n' "$result"
     return "$status"
   fi
-  # shellcheck source=/dev/null
+  # These globals configure the dynamically sourced fixed-home wake library.
+  # shellcheck disable=SC2034
   FM_ROOT_OVERRIDE="$fixed_root"
   FM_HOME="$fixed_root"
   FM_STATE_OVERRIDE="$fixed_state"
   STATE="$fixed_state"
+  # shellcheck disable=SC2034
   FM_WAKE_QUEUE="$fixed_state/.wake-queue"
   FM_WAKE_QUEUE_LOCK="$fixed_state/.wake-queue.lock"
+  # shellcheck disable=SC1090
   . "$lib"
   lock="$fixed_state/inbox/.hermes-submit.lock"
   deadline=$((SECONDS + 5))
@@ -284,6 +287,8 @@ cmd_hermes_submit() {
     fi
     sleep 0.1
   done
+  # Read by the dynamically sourced wake library.
+  # shellcheck disable=SC2034
   FM_WAKE_DEADLINE=$wake_deadline
   if fm_wake_append_once_locked check "inbox:$note_id" "check: captain inbox note $note_id - $summary"; then
     wake_status=0
