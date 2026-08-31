@@ -523,7 +523,14 @@ _fm_recovery_marker_publish() {
   local marker=$1 kind=${2:-downtime} lock saved_token generation='' status=pending
   case "$kind" in handling|downtime) ;; *) return 1 ;; esac
   lock="${marker}.lock"
-  fm_lock_acquire_wait "$lock" || return 1
+  if [ -n "${FM_WAKE_DEADLINE:-}" ]; then
+    while ! fm_lock_try_acquire "$lock"; do
+      [ "$SECONDS" -lt "$FM_WAKE_DEADLINE" ] || return 1
+      sleep 0.1
+    done
+  else
+    fm_lock_acquire_wait "$lock" || return 1
+  fi
   if [ -d "$marker" ] && [ ! -L "$marker" ]; then
     fm_lock_release "$lock"
     return 1

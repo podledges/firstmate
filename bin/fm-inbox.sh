@@ -75,14 +75,7 @@ done
 unset _extra
 export PATH
 
-SELF_SOURCE=${BASH_SOURCE[0]}
-while [ -h "$SELF_SOURCE" ]; do
-  SELF_LINK_DIR=$(cd -P "$(dirname "$SELF_SOURCE")" && pwd)
-  SELF_SOURCE=$(readlink "$SELF_SOURCE")
-  [[ "$SELF_SOURCE" = /* ]] || SELF_SOURCE="$SELF_LINK_DIR/$SELF_SOURCE"
-done
-SELF_DIR=$(cd -P "$(dirname "$SELF_SOURCE")" && pwd)
-unset SELF_SOURCE SELF_LINK_DIR
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="$(cd "$SELF_DIR/.." && pwd)"
 FM_HOME="${FM_HOME:-$FM_ROOT}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
@@ -221,8 +214,14 @@ cmd_hermes_submit() {
   [ "$#" -eq 0 ] || die "usage: fm-inbox.sh hermes-submit < request.json"
   # This machine boundary is intentionally independent from normal home
   # selection. Its fixed home follows this script's canonical location.
-  local fixed_root fixed_state fixed_inbox lib helper result lock deadline wake_deadline status wake_status note_id first handled summary
-  fixed_root=$(cd -P "$SELF_DIR/.." && pwd -P)
+  local fixed_root fixed_state fixed_inbox lib helper result lock deadline wake_deadline status wake_status note_id first handled summary source source_dir
+  source=${BASH_SOURCE[0]}
+  while [ -h "$source" ]; do
+    source_dir=$(cd -P "$(dirname "$source")" && pwd)
+    source=$(readlink "$source")
+    [[ "$source" = /* ]] || source="$source_dir/$source"
+  done
+  fixed_root=$(cd -P "$(dirname "$source")/.." && pwd -P)
   fixed_state="$fixed_root/state"
   fixed_inbox="$fixed_state/inbox"
   lib="$fixed_root/bin/fm-wake-lib.sh"
@@ -264,8 +263,8 @@ cmd_hermes_submit() {
     printf '%s\n' "$result"
     return "$status"
   fi
-  read -r note_id first handled summary < <(python3 -c 'import json,sys; x=json.load(sys.stdin); print(x["note_id"], int(x["first"]), int(x["handled"]), x["summary"].replace(" ", "\x1f"))' <<<"$result")
-  summary=${summary//$'\x1f'/ }
+  read -r note_id first handled summary < <(python3 -c 'import base64,json,sys; x=json.load(sys.stdin); print(x["note_id"], int(x["first"]), int(x["handled"]), base64.b64encode(x["summary"].encode()).decode())' <<<"$result")
+  summary=$(python3 -c 'import base64,sys; print(base64.b64decode(sys.argv[1]).decode())' "$summary")
   if [ "$handled" -eq 1 ]; then
     fm_lock_release "$lock"
     printf '{"version":1,"status":"duplicate","accepted":true,"duplicate":true,"note_id":"%s","notified":true}\n' "$note_id"
@@ -285,11 +284,13 @@ cmd_hermes_submit() {
     fi
     sleep 0.1
   done
+  FM_WAKE_DEADLINE=$wake_deadline
   if fm_wake_append_once_locked check "inbox:$note_id" "check: captain inbox note $note_id - $summary"; then
     wake_status=0
   else
     wake_status=$?
   fi
+  unset FM_WAKE_DEADLINE
   fm_lock_release "$FM_WAKE_QUEUE_LOCK"
   fm_lock_release "$lock"
   if [ "$wake_status" -ne 0 ]; then

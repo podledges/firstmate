@@ -134,7 +134,7 @@ def parse_request():
     try:
         decoded = raw.decode("utf-8")
         pairs = json.loads(decoded, object_pairs_hook=ObjectPairs)
-    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError):
         reject_request()
     if not isinstance(pairs, ObjectPairs):
         reject_request()
@@ -227,6 +227,7 @@ def ensure_notification(root, inbox):
         state = os.path.dirname(inbox)
         ensure_private_file(os.path.join(state, ".wake-queue"))
         ensure_private_file(os.path.join(state, ".wake-queue.seq"))
+        ensure_private_file(os.path.join(state, ".watcher-down"))
     except (OSError, UnsafePath):
         emit(result("unavailable", code="unsafe_path"), 4)
 
