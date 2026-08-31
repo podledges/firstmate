@@ -99,7 +99,7 @@ SH
   cat > "$fakebin/no-mistakes" <<'SH'
 #!/usr/bin/env bash
 if [ "${1:-}" = --version ]; then
-  printf '%s\n' 'no-mistakes version v1.31.2 (fake) 2026-06-27T00:02:18Z'
+  printf '%s\n' 'no-mistakes version v1.44.2 (fake) 2026-08-01T00:00:00Z'
   exit 0
 fi
 exit 0

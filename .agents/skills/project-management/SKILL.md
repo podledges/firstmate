@@ -2,9 +2,9 @@
 name: project-management
 description: >-
   Agent-only procedure for Firstmate project management.
-  Use before adding, creating, removing, or initializing a project.
+  Use before adding, creating, removing, or initializing a project, or configuring a repository's no-CI declaration.
   Cloning or registering a project is add intake and uses the same trigger.
-  Owns project add, create, clone, remove, initialization, registry, delivery-mode, autonomy, and outward-consent decisions.
+  Owns project add, create, clone, remove, initialization, no-CI declaration, registry, delivery-mode, autonomy, and outward-consent decisions.
 user-invocable: false
 metadata:
   internal: true
@@ -12,7 +12,7 @@ metadata:
 
 # project-management
 
-Use this procedure before adding, creating, removing, or initializing a project.
+Use this procedure before adding, creating, removing, or initializing a project, or configuring a repository's no-CI declaration.
 Cloning or registering a project is add intake and uses the same trigger.
 This skill is the single owner of Firstmate's project-management procedure.
 It does not replace `secondmate-provisioning`, which owns project clones inside persistent secondmate homes.
@@ -86,6 +86,24 @@ cd projects/<name> && no-mistakes init && no-mistakes doctor
 Initialization configures the local gate and does not vendor a no-mistakes skill into the project.
 Do not create a commit merely because initialization ran.
 If doctor reports an environment, authentication, or daemon problem, resolve that blocker before dispatching work and never restart the shared daemon from a project operation.
+
+## Repository no-CI declaration
+
+A no-CI declaration is a narrow repository configuration for a repository that genuinely has no hosted workflow or whose provider cannot register checks during a declared outage.
+It is not a task flag, a delivery mode, a registry annotation, or permission to skip the CI step.
+Never use `--skip ci` as a substitute.
+
+Obtain the captain's explicit approval for the named repository, the concrete reason, and whether the declaration is temporary before proposing the project change.
+The project's tracked `.no-mistakes.yaml` on its trusted default branch is the sole owner of the declaration, using the upstream `no_ci: true` field.
+Do not copy it into `data/projects.md`, task metadata, a feature-branch-only configuration, or a global no-mistakes configuration.
+A declaration introduced on a feature branch cannot authorize that branch's own empty check result, so never report it as active before the configuration change lands on the default branch.
+If unavailable hosted CI prevents that configuration PR from completing its ordinary path, escalate that one concrete bootstrap decision to the captain rather than silently skipping CI or weakening the project's standing policy.
+
+After the declaration is active, ship ordinary work through the unchanged `no-mistakes` path without a skip flag.
+Review, targeted tests, documentation, lint, push, and PR creation still run, and any checks the forge does report must still pass.
+Only a zero-check result backed by the trusted declaration is ready for captain review.
+Resolve yolo off for every task using the declaration, regardless of the registry's standing posture, because the captain must approve each no-CI merge.
+For a temporary provider outage, ship removal of `no_ci: true` as soon as check registration is restored.
 
 ## Remove
 
