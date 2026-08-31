@@ -42,6 +42,7 @@ The preference defaults off and is stored only as `.podle-voice` in the primary 
 The preference is never tracked, inherited, sent in public responses, or read from project repositories.
 Secondmate and crewmate sessions do not expose this command or invoke speech.
 When enabled, the Pi extension invokes the local `firstmate-tts` command with a bounded timeout after a reply settles.
+Make that command available on the local `PATH` before turning voice on.
 Missing or failing local speech preserves the text reply and displays one actionable setup error; no network, listener, credential, or background service is required.
 This control is unsupported by Claude, Codex, OpenCode, Grok, Kimi, Cursor, and Muse primary harnesses, and runtime backends do not change its Pi-only scope.
 
