@@ -1,0 +1,15 @@
+$ printf ... | fm-inbox.sh hermes-submit
+{"version":1,"status":"accepted","accepted":true,"duplicate":false,"note_id":"hermes-cb057da2f9cfb4c2497ec206b2056fe8f8da6c22efa4855a97cd746201e21c49","notified":true}
+$ persisted inbox note (header)
+id=hermes-cb057da2f9cfb4c2497ec206b2056fe8f8da6c22efa4855a97cd746201e21c49
+at=2026-08-31T05:27:09Z
+source=hermes
+origin=local-interactive
+authority=intake-only
+source_request_id=captain-demo-1
+source_request_sha256=cb057da2f9cfb4c2497ec206b2056fe8f8da6c22efa4855a97cd746201e21c49
+content_sha256=5a0ac6cd0838fbb2dad843db5e0483eea8f5a8f9fc196fd6163a8d8e30c7da9b
+$ durable keyed wake
+kind=check key=inbox:hermes-cb057da2f9cfb4c2497ec206b2056fe8f8da6c22efa4855a97cd746201e21c49 payload=check: captain inbox note hermes-cb057da2f9cfb4c2497ec206b2056fe8f8da6c22efa4855a97cd746201e21c49 - Review the local pilot status
+$ repeat same request
+{"version":1,"status":"duplicate","accepted":true,"duplicate":true,"note_id":"hermes-cb057da2f9cfb4c2497ec206b2056fe8f8da6c22efa4855a97cd746201e21c49","notified":true}
