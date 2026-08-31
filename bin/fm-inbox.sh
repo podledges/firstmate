@@ -20,6 +20,7 @@
 #
 # Usage:
 #   fm-inbox.sh note <text>...          | fm-inbox.sh note -   (body from stdin)
+#   fm-inbox.sh hermes-submit            (one strict JSON request on stdin)
 #   fm-inbox.sh say  [<file.wav>]       (default: audio on stdin)
 #   fm-inbox.sh status
 #   fm-inbox.sh ask  <question>...
@@ -207,6 +208,64 @@ cmd_note() {
   queue_note text "$body"
 }
 
+# ---------------------------------------------------------------- hermes-submit
+
+cmd_hermes_submit() {
+  [ "$#" -eq 0 ] || die "usage: fm-inbox.sh hermes-submit < request.json"
+  # This machine boundary is intentionally independent from normal home
+  # selection. Its fixed home follows this script's canonical location.
+  local fixed_root fixed_state fixed_inbox lib helper result lock deadline status note_id first handled summary
+  fixed_root=$(cd -P "$SELF_DIR/.." && pwd -P)
+  fixed_state="$fixed_root/state"
+  fixed_inbox="$fixed_state/inbox"
+  lib="$fixed_root/bin/fm-wake-lib.sh"
+  helper="$fixed_root/bin/fm_hermes_inbox.py"
+  umask 077
+  if [ ! -r "$lib" ] || [ ! -x "$helper" ]; then
+    printf '{"version":1,"status":"unavailable","accepted":false,"duplicate":false,"note_id":null,"notified":false,"error":{"code":"home_unavailable"}}\n'
+    return 4
+  fi
+  # The helper verifies this newly created leaf before accepting a request.
+  mkdir -p "$fixed_inbox" || {
+    printf '{"version":1,"status":"unavailable","accepted":false,"duplicate":false,"note_id":null,"notified":false,"error":{"code":"unsafe_path"}}\n'
+    return 4
+  }
+  # shellcheck source=/dev/null
+  FM_ROOT_OVERRIDE="$fixed_root" FM_HOME="$fixed_root" STATE="$fixed_state" . "$lib"
+  lock="$fixed_state/inbox/.hermes-submit.lock"
+  deadline=$((SECONDS + 5))
+  while ! fm_lock_try_acquire "$lock"; do
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      printf '{"version":1,"status":"unavailable","accepted":false,"duplicate":false,"note_id":null,"notified":false,"error":{"code":"lock_timeout"}}\n'
+      return 4
+    fi
+    sleep 0.1
+  done
+  trap 'fm_lock_release "$lock"' RETURN
+  if result=$(python3 "$helper" prepare --root "$fixed_root" --inbox "$fixed_inbox"); then
+    status=0
+  else
+    status=$?
+    printf '%s\n' "$result"
+    return "$status"
+  fi
+  read -r note_id first handled summary < <(python3 -c 'import json,sys; x=json.load(sys.stdin); print(x["note_id"], int(x["first"]), int(x["handled"]), x["summary"].replace(" ", "\\x1f"))' <<<"$result")
+  summary=${summary//$'\x1f'/ }
+  if [ "$handled" -eq 1 ]; then
+    printf '{"version":1,"status":"duplicate","accepted":true,"duplicate":true,"note_id":"%s","notified":true}\n' "$note_id"
+    return 0
+  fi
+  if ! fm_wake_append_once check "inbox:$note_id" "check: captain inbox note $note_id - $summary"; then
+    printf '{"version":1,"status":"persisted_not_notified","accepted":true,"duplicate":%s,"note_id":"%s","notified":false,"error":{"code":"notification_failed"}}\n' "$([ "$first" -eq 0 ] && printf true || printf false)" "$note_id"
+    return 3
+  fi
+  if [ "$first" -eq 1 ]; then
+    printf '{"version":1,"status":"accepted","accepted":true,"duplicate":false,"note_id":"%s","notified":true}\n' "$note_id"
+  else
+    printf '{"version":1,"status":"duplicate","accepted":true,"duplicate":true,"note_id":"%s","notified":true}\n' "$note_id"
+  fi
+}
+
 # ---------------------------------------------------------------- say
 
 cmd_say() {
@@ -361,6 +420,11 @@ cmd_drain() {
   if [ "${1:-}" = "--ack" ]; then
     shift
     [ "$#" -gt 0 ] || die "usage: fm-inbox.sh drain --ack <id>..."
+    local lock="$INBOX/.hermes-submit.lock"
+    # shellcheck source=/dev/null
+    FM_ROOT_OVERRIDE="$FM_ROOT" FM_HOME="$FM_HOME" STATE="$STATE" . "$FM_ROOT/bin/fm-wake-lib.sh"
+    fm_lock_acquire_wait "$lock"
+    trap 'fm_lock_release "$lock"' RETURN
     mkdir -p "$INBOX/handled"
     local id
     for id in "$@"; do
@@ -380,8 +444,9 @@ cmd_drain() {
 # ---------------------------------------------------------------- dispatch
 
 case "${1:-}" in
-  note)   shift; cmd_note "$@" ;;
-  say)    shift; cmd_say "$@" ;;
+  note)          shift; cmd_note "$@" ;;
+  hermes-submit)  shift; cmd_hermes_submit "$@" ;;
+  say)            shift; cmd_say "$@" ;;
   status) shift; cmd_status ;;
   ask)    shift; cmd_ask "$@" ;;
   list)   shift; cmd_list ;;

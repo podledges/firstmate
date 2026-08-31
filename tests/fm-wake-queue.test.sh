@@ -792,7 +792,28 @@ test_historical_annotation_skips_announced_status() {
   pass "historical annotations replay nothing already announced and keep everything new"
 }
 
+test_append_once_is_concurrent_and_requeues_after_ack() {
+  local dir state lib pids pid count out err
+  dir=$(make_case append-once)
+  state="$dir/state"
+  lib="$ROOT/bin/fm-wake-lib.sh"
+  pids=
+  for _ in $(seq 1 20); do
+    (FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$dir" STATE="$state" bash -c '. "$1"; fm_wake_append_once check inbox:one "check: one"' _ "$lib") &
+    pids="$pids $!"
+  done
+  for pid in $pids; do wait "$pid" || fail "append-once caller failed"; done
+  count=$(awk -F '\t' '$3 == "check" && $4 == "inbox:one" { n++ } END { print n+0 }' "$state/.wake-queue")
+  [ "$count" -eq 1 ] || fail "concurrent append-once made $count records"
+  out="$dir/drain.out"; err="$dir/drain.err"
+  FM_STATE_OVERRIDE="$state" "$DRAIN" > "$out" 2> "$err" || fail "append-once drain failed"
+  ack_drain_err "$state" "$err" || fail "append-once acknowledgement failed"
+  FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$dir" STATE="$state" bash -c '. "$1"; fm_wake_append_once check inbox:one "check: one"' _ "$lib" || fail "append-once did not requeue after acknowledgement"
+  pass "append-once deduplicates concurrent queue records and permits a later generation"
+}
+
 test_self_held_lock_reclaims_instead_of_deadlocking
+test_append_once_is_concurrent_and_requeues_after_ack
 test_self_announced_append_guards
 test_historical_annotation_skips_announced_status
 test_concurrent_append_and_drain
