@@ -123,16 +123,22 @@ def reject_request():
     emit(result("rejected", code="invalid_request"), 2)
 
 
+class ObjectPairs(list):
+    pass
+
+
 def parse_request():
     raw = sys.stdin.buffer.read(MAX_DOCUMENT + 1)
     if len(raw) > MAX_DOCUMENT:
         reject_request()
     try:
         decoded = raw.decode("utf-8")
-        pairs = json.loads(decoded, object_pairs_hook=lambda pairs: pairs)
+        pairs = json.loads(decoded, object_pairs_hook=ObjectPairs)
     except (UnicodeDecodeError, json.JSONDecodeError):
         reject_request()
-    if not isinstance(pairs, list):
+    if not isinstance(pairs, ObjectPairs):
+        reject_request()
+    if any(not isinstance(pair, tuple) or len(pair) != 2 for pair in pairs):
         reject_request()
     keys = [key for key, _ in pairs]
     if len(set(keys)) != len(keys) or set(keys) != {"version", "request_id", "text"} or len(keys) != 3:

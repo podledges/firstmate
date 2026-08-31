@@ -75,7 +75,14 @@ done
 unset _extra
 export PATH
 
-SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SELF_SOURCE=${BASH_SOURCE[0]}
+while [ -h "$SELF_SOURCE" ]; do
+  SELF_LINK_DIR=$(cd -P "$(dirname "$SELF_SOURCE")" && pwd)
+  SELF_SOURCE=$(readlink "$SELF_SOURCE")
+  [[ "$SELF_SOURCE" = /* ]] || SELF_SOURCE="$SELF_LINK_DIR/$SELF_SOURCE"
+done
+SELF_DIR=$(cd -P "$(dirname "$SELF_SOURCE")" && pwd)
+unset SELF_SOURCE SELF_LINK_DIR
 FM_ROOT="$(cd "$SELF_DIR/.." && pwd)"
 FM_HOME="${FM_HOME:-$FM_ROOT}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
@@ -231,7 +238,13 @@ cmd_hermes_submit() {
     return 4
   }
   # shellcheck source=/dev/null
-  FM_ROOT_OVERRIDE="$fixed_root" FM_HOME="$fixed_root" STATE="$fixed_state" . "$lib"
+  FM_ROOT_OVERRIDE="$fixed_root"
+  FM_HOME="$fixed_root"
+  FM_STATE_OVERRIDE="$fixed_state"
+  STATE="$fixed_state"
+  FM_WAKE_QUEUE="$fixed_state/.wake-queue"
+  FM_WAKE_QUEUE_LOCK="$fixed_state/.wake-queue.lock"
+  . "$lib"
   lock="$fixed_state/inbox/.hermes-submit.lock"
   deadline=$((SECONDS + 5))
   while ! fm_lock_try_acquire "$lock"; do
@@ -249,7 +262,7 @@ cmd_hermes_submit() {
     printf '%s\n' "$result"
     return "$status"
   fi
-  read -r note_id first handled summary < <(python3 -c 'import json,sys; x=json.load(sys.stdin); print(x["note_id"], int(x["first"]), int(x["handled"]), x["summary"].replace(" ", "\\x1f"))' <<<"$result")
+  read -r note_id first handled summary < <(python3 -c 'import json,sys; x=json.load(sys.stdin); print(x["note_id"], int(x["first"]), int(x["handled"]), x["summary"].replace(" ", "\x1f"))' <<<"$result")
   summary=${summary//$'\x1f'/ }
   if [ "$handled" -eq 1 ]; then
     printf '{"version":1,"status":"duplicate","accepted":true,"duplicate":true,"note_id":"%s","notified":true}\n' "$note_id"
