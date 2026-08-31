@@ -499,18 +499,35 @@ test_top_level_ci_checks_green_surfaces_done() {
   pass "top-level ci status uses ci log green marker"
 }
 
-test_ci_monitoring_no_checks_terminal_surfaces_done() {
+test_ci_monitoring_declared_no_ci_surfaces_done() {
   reset_fakes
-  local d; d=$(new_case ci-nochecks)
-  make_repo_on_branch "$d/wt" fm/feat-cinochecks
+  local d; d=$(new_case ci-declared-no-ci)
+  make_repo_on_branch "$d/wt" fm/feat-declared-no-ci
   make_fakebin "$d" >/dev/null
-  fm_write_meta "$d/state/feat-cinochecks.meta" "window=fm:fm-feat-cinochecks" "worktree=$d/wt" "kind=ship"
-  FM_FAKE_AXI_STATUS="$(run_ci_monitoring fm/feat-cinochecks)"
+  fm_write_meta "$d/state/feat-declared-no-ci.meta" "window=fm:fm-feat-declared-no-ci" "worktree=$d/wt" "kind=ship"
+  FM_FAKE_AXI_STATUS="$(run_ci_monitoring fm/feat-declared-no-ci)"
+  FM_FAKE_CI_LOGS="repository declares no CI (no_ci: true) - treating as all checks passed - still monitoring until merged or closed"
+  local out; out=$(run_crew_state "$d" feat-declared-no-ci)
+  assert_contains "$out" "state: done" "trusted no-CI declaration -> done"
+  assert_contains "$out" "trusted no-CI declaration" "trusted no-CI declaration remains inspectable"
+  assert_contains "$out" "captain review" "trusted no-CI declaration preserves captain merge authority"
+  assert_not_contains "$out" "checks green" "trusted no-CI declaration must not masquerade as hosted checks"
+  pass "trusted no-CI declaration with no checks surfaces done"
+}
+
+test_ci_monitoring_unqualified_no_checks_stays_working() {
+  reset_fakes
+  local d; d=$(new_case ci-unqualified-no-checks)
+  make_repo_on_branch "$d/wt" fm/feat-unqualified-no-checks
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-unqualified-no-checks.meta" "window=fm:fm-feat-unqualified-no-checks" "worktree=$d/wt" "kind=ship"
+  FM_FAKE_AXI_STATUS="$(run_ci_monitoring fm/feat-unqualified-no-checks)"
   FM_FAKE_CI_LOGS="no CI checks reported - still monitoring until merged or closed"
-  local out; out=$(run_crew_state "$d" feat-cinochecks)
-  assert_contains "$out" "state: done" "terminal no-checks ci-monitor run -> done"
-  assert_contains "$out" "checks green" "terminal no-checks ci-monitor detail mentions checks green"
-  pass "terminal no-checks ci-monitor marker surfaces done"
+  local out; out=$(run_crew_state "$d" feat-unqualified-no-checks)
+  assert_contains "$out" "state: working" "unqualified empty-check result -> working"
+  assert_not_contains "$out" "state: done" "unqualified empty-check result must not be authorized"
+  assert_not_contains "$out" "checks green" "unqualified empty-check result must not look green"
+  pass "empty checks need the trusted no-CI declaration marker"
 }
 
 test_ci_monitoring_green_then_rearm_stays_working() {
@@ -1417,7 +1434,8 @@ test_gate_block_parked_not_superseded
 test_ci_ready_done_log_beats_monitoring_run
 test_ci_monitoring_checks_green_surfaces_done
 test_top_level_ci_checks_green_surfaces_done
-test_ci_monitoring_no_checks_terminal_surfaces_done
+test_ci_monitoring_declared_no_ci_surfaces_done
+test_ci_monitoring_unqualified_no_checks_stays_working
 test_ci_monitoring_green_then_rearm_stays_working
 test_ci_monitoring_no_checks_yet_stays_working
 test_ci_monitoring_still_waiting_stays_working
