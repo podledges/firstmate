@@ -20,6 +20,7 @@
 #
 # Usage:
 #   fm-inbox.sh note <text>...          | fm-inbox.sh note -   (body from stdin)
+#   fm-inbox.sh hermes-submit            (one strict JSON request on stdin)
 #   fm-inbox.sh say  [<file.wav>]       (default: audio on stdin)
 #   fm-inbox.sh status
 #   fm-inbox.sh ask  <question>...
@@ -207,6 +208,107 @@ cmd_note() {
   queue_note text "$body"
 }
 
+# ---------------------------------------------------------------- hermes-submit
+
+cmd_hermes_submit() {
+  [ "$#" -eq 0 ] || die "usage: fm-inbox.sh hermes-submit < request.json"
+  # This machine boundary is intentionally independent from normal home
+  # selection. Its fixed home follows this script's canonical location.
+  local fixed_root fixed_state fixed_inbox lib helper result lock deadline wake_deadline status wake_status note_id first handled summary source source_dir
+  source=${BASH_SOURCE[0]}
+  while [ -h "$source" ]; do
+    source_dir=$(cd -P "$(dirname "$source")" && pwd)
+    source=$(readlink "$source")
+    [[ "$source" = /* ]] || source="$source_dir/$source"
+  done
+  fixed_root=$(cd -P "$(dirname "$source")/.." && pwd -P)
+  fixed_state="$fixed_root/state"
+  fixed_inbox="$fixed_state/inbox"
+  lib="$fixed_root/bin/fm-wake-lib.sh"
+  helper="$fixed_root/bin/fm_hermes_inbox.py"
+  umask 077
+  if [ ! -r "$lib" ] || [ ! -x "$helper" ]; then
+    printf '{"version":1,"status":"unavailable","accepted":false,"duplicate":false,"note_id":null,"notified":false,"error":{"code":"home_unavailable"}}\n'
+    return 4
+  fi
+  if result=$(python3 "$helper" ensure --root "$fixed_root" --inbox "$fixed_inbox"); then
+    :
+  else
+    status=$?
+    printf '%s\n' "$result"
+    return "$status"
+  fi
+  # These globals configure the dynamically sourced fixed-home wake library.
+  # shellcheck disable=SC2034
+  FM_ROOT_OVERRIDE="$fixed_root"
+  FM_HOME="$fixed_root"
+  FM_STATE_OVERRIDE="$fixed_state"
+  STATE="$fixed_state"
+  # shellcheck disable=SC2034
+  FM_WAKE_QUEUE="$fixed_state/.wake-queue"
+  FM_WAKE_QUEUE_LOCK="$fixed_state/.wake-queue.lock"
+  # shellcheck disable=SC1090
+  . "$lib"
+  lock="$fixed_state/inbox/.hermes-submit.lock"
+  deadline=$((SECONDS + 5))
+  while ! fm_lock_try_acquire "$lock"; do
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      printf '{"version":1,"status":"unavailable","accepted":false,"duplicate":false,"note_id":null,"notified":false,"error":{"code":"lock_timeout"}}\n'
+      return 4
+    fi
+    sleep 0.1
+  done
+  if result=$(python3 "$helper" prepare --root "$fixed_root" --inbox "$fixed_inbox"); then
+    status=0
+  else
+    status=$?
+    fm_lock_release "$lock"
+    printf '%s\n' "$result"
+    return "$status"
+  fi
+  read -r note_id first handled summary < <(python3 -c 'import base64,json,sys; x=json.load(sys.stdin); print(x["note_id"], int(x["first"]), int(x["handled"]), base64.b64encode(x["summary"].encode()).decode())' <<<"$result")
+  summary=$(python3 -c 'import base64,sys; print(base64.b64decode(sys.argv[1]).decode())' "$summary")
+  if [ "$handled" -eq 1 ]; then
+    fm_lock_release "$lock"
+    printf '{"version":1,"status":"duplicate","accepted":true,"duplicate":true,"note_id":"%s","notified":true}\n' "$note_id"
+    return 0
+  fi
+  if ! python3 "$helper" notification --root "$fixed_root" --inbox "$fixed_inbox" >/dev/null; then
+    fm_lock_release "$lock"
+    printf '{"version":1,"status":"persisted_not_notified","accepted":true,"duplicate":%s,"note_id":"%s","notified":false,"error":{"code":"notification_failed"}}\n' "$([ "$first" -eq 0 ] && printf true || printf false)" "$note_id"
+    return 3
+  fi
+  wake_deadline=$((SECONDS + 5))
+  while ! fm_lock_try_acquire "$FM_WAKE_QUEUE_LOCK"; do
+    if [ "$SECONDS" -ge "$wake_deadline" ]; then
+      fm_lock_release "$lock"
+      printf '{"version":1,"status":"persisted_not_notified","accepted":true,"duplicate":%s,"note_id":"%s","notified":false,"error":{"code":"notification_failed"}}\n' "$([ "$first" -eq 0 ] && printf true || printf false)" "$note_id"
+      return 3
+    fi
+    sleep 0.1
+  done
+  # Read by the dynamically sourced wake library.
+  # shellcheck disable=SC2034
+  FM_WAKE_DEADLINE=$wake_deadline
+  if fm_wake_append_once_locked check "inbox:$note_id" "check: captain inbox note $note_id - $summary"; then
+    wake_status=0
+  else
+    wake_status=$?
+  fi
+  unset FM_WAKE_DEADLINE
+  fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+  fm_lock_release "$lock"
+  if [ "$wake_status" -ne 0 ]; then
+    printf '{"version":1,"status":"persisted_not_notified","accepted":true,"duplicate":%s,"note_id":"%s","notified":false,"error":{"code":"notification_failed"}}\n' "$([ "$first" -eq 0 ] && printf true || printf false)" "$note_id"
+    return 3
+  fi
+  if [ "$first" -eq 1 ]; then
+    printf '{"version":1,"status":"accepted","accepted":true,"duplicate":false,"note_id":"%s","notified":true}\n' "$note_id"
+  else
+    printf '{"version":1,"status":"duplicate","accepted":true,"duplicate":true,"note_id":"%s","notified":true}\n' "$note_id"
+  fi
+}
+
 # ---------------------------------------------------------------- say
 
 cmd_say() {
@@ -361,7 +463,11 @@ cmd_drain() {
   if [ "${1:-}" = "--ack" ]; then
     shift
     [ "$#" -gt 0 ] || die "usage: fm-inbox.sh drain --ack <id>..."
+    local lock="$INBOX/.hermes-submit.lock"
+    # shellcheck source=/dev/null
+    FM_ROOT_OVERRIDE="$FM_ROOT" FM_HOME="$FM_HOME" STATE="$STATE" . "$FM_ROOT/bin/fm-wake-lib.sh"
     mkdir -p "$INBOX/handled"
+    fm_lock_acquire_wait "$lock"
     local id
     for id in "$@"; do
       if [ -f "$INBOX/$id.note" ]; then
@@ -371,6 +477,7 @@ cmd_drain() {
         printf 'already-acked %s\n' "$id"
       fi
     done
+    fm_lock_release "$lock"
     return 0
   fi
   cmd_list
@@ -380,8 +487,9 @@ cmd_drain() {
 # ---------------------------------------------------------------- dispatch
 
 case "${1:-}" in
-  note)   shift; cmd_note "$@" ;;
-  say)    shift; cmd_say "$@" ;;
+  note)          shift; cmd_note "$@" ;;
+  hermes-submit)  shift; cmd_hermes_submit "$@" ;;
+  say)            shift; cmd_say "$@" ;;
   status) shift; cmd_status ;;
   ask)    shift; cmd_ask "$@" ;;
   list)   shift; cmd_list ;;

@@ -523,7 +523,14 @@ _fm_recovery_marker_publish() {
   local marker=$1 kind=${2:-downtime} lock saved_token generation='' status=pending
   case "$kind" in handling|downtime) ;; *) return 1 ;; esac
   lock="${marker}.lock"
-  fm_lock_acquire_wait "$lock" || return 1
+  if [ -n "${FM_WAKE_DEADLINE:-}" ]; then
+    while ! fm_lock_try_acquire "$lock"; do
+      [ "$SECONDS" -lt "$FM_WAKE_DEADLINE" ] || return 1
+      sleep 0.1
+    done
+  else
+    fm_lock_acquire_wait "$lock" || return 1
+  fi
   if [ -d "$marker" ] && [ ! -L "$marker" ]; then
     fm_lock_release "$lock"
     return 1
@@ -1121,23 +1128,10 @@ fm_wake_clean_field() {
   LC_ALL=C tr '\t\r\n' '   '
 }
 
-fm_wake_append() {
-  local kind=$1 key=$2 payload=$3 clean_key clean_payload epoch seq seq_file status
-  local recovery_marker
-  case "$kind" in
-    signal|stale|check|heartbeat) ;;
-    *) printf 'fm_wake_append: invalid wake kind: %s\n' "$kind" >&2; return 2 ;;
-  esac
-
-  clean_key=$(printf '%s' "$key" | fm_wake_clean_field)
-  clean_payload=$(printf '%s' "$payload" | fm_wake_clean_field)
-  epoch=$(date +%s)
+fm_wake_append_locked() {  # <kind> <clean-key> <clean-payload>; caller holds queue lock
+  local kind=$1 clean_key=$2 clean_payload=$3 epoch seq seq_file status=0
   seq_file="$STATE/.wake-queue.seq"
-  recovery_marker="$STATE/.watcher-down"
-  status=0
-
-  fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK"
-  _fm_recovery_marker_publish "$recovery_marker" downtime || status=$?
+  _fm_recovery_marker_publish "$STATE/.watcher-down" downtime || status=$?
   if [ "$status" -eq 0 ]; then
     seq=$(cat "$seq_file" 2>/dev/null || echo 0)
     case "$seq" in
@@ -1147,10 +1141,50 @@ fm_wake_append() {
     printf '%s\n' "$seq" > "$seq_file" || status=$?
   fi
   if [ "$status" -eq 0 ]; then
+    epoch=$(date +%s)
     printf '%s\t%s\t%s\t%s\t%s\n' "$epoch" "$seq" "$kind" "$clean_key" "$clean_payload" >> "$FM_WAKE_QUEUE" || status=$?
   fi
+  return "$status"
+}
+
+fm_wake_append() {
+  local kind=$1 key=$2 payload=$3 clean_key clean_payload status
+  case "$kind" in
+    signal|stale|check|heartbeat) ;;
+    *) printf 'fm_wake_append: invalid wake kind: %s\n' "$kind" >&2; return 2 ;;
+  esac
+  clean_key=$(printf '%s' "$key" | fm_wake_clean_field)
+  clean_payload=$(printf '%s' "$payload" | fm_wake_clean_field)
+  fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK"
+  fm_wake_append_locked "$kind" "$clean_key" "$clean_payload"; status=$?
   fm_lock_release "$FM_WAKE_QUEUE_LOCK"
   return "$status"
+}
+
+# fm_wake_append_once_locked <kind> <key> <payload>
+# Append only while no equal kind/key record remains pending; caller holds queue lock.
+fm_wake_append_once_locked() {
+  local kind=$1 key=$2 payload=$3 clean_key clean_payload
+  case "$kind" in
+    signal|stale|check|heartbeat) ;;
+    *) printf 'fm_wake_append_once: invalid wake kind: %s\n' "$kind" >&2; return 2 ;;
+  esac
+  clean_key=$(printf '%s' "$key" | fm_wake_clean_field)
+  clean_payload=$(printf '%s' "$payload" | fm_wake_clean_field)
+  if awk -F '\t' -v kind="$kind" -v key="$clean_key" 'NF >= 5 && $3 == kind && $4 == key { found=1 } END { exit !found }' "$FM_WAKE_QUEUE" 2>/dev/null; then
+    return 0
+  fi
+  fm_wake_append_locked "$kind" "$clean_key" "$clean_payload"
+}
+
+# fm_wake_append_once <kind> <key> <payload>
+# Append only while no equal kind/key record remains pending in the durable queue.
+fm_wake_append_once() {
+  local status
+  fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK"
+  fm_wake_append_once_locked "$@" || status=$?
+  fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+  return "${status:-0}"
 }
 
 # fm_wake_queued_keys <kind>
