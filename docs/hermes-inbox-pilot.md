@@ -8,7 +8,7 @@ printf '%s' '{"version":1,"request_id":"request-123","text":"Investigate the fla
 ```
 
 The fixed home is derived from the command's canonical location.
-`FM_HOME`, state overrides, the current directory, and request fields cannot select a different home.
+`FM_HOME`, `FM_STATE_OVERRIDE`, `FM_DATA_OVERRIDE`, the current directory, and request fields cannot select a different home.
 The exact request properties are `version`, `request_id`, and `text`.
 Version is integer `1`, IDs match `[A-Za-z0-9][A-Za-z0-9._-]{0,127}`, and text is non-empty and at most 16,384 UTF-8 bytes.
 Unknown or duplicate properties are rejected.
@@ -18,7 +18,7 @@ Retried matching content returns `duplicate`; changed content returns `idempoten
 Results distinguish accepted, duplicate, rejected, unavailable, and persisted-but-not-notified outcomes.
 Retry `persisted_not_notified` with the same request ID after correcting the local notification problem.
 
-This pilot only creates an ordinary inbox note with `authority=intake-only` and a durable notification.
+This pilot only creates an ordinary inbox note with `authority=intake-only` and attempts a durable notification after persistence.
 It has no listener, network transport, credentials, project access, automatic dispatch, Pi/MCP/RPC integration, or merge authority.
 Do not expose the command through a gateway or remote channel.
 Before a live pilot, explicitly verify that the local interactive Hermes surface requires approval for this mutating command.
