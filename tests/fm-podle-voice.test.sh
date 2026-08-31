@@ -15,12 +15,25 @@ command -v node >/dev/null 2>&1 || { echo "skip: node not found for Pi voice tes
 mkdir -p "$TMP_ROOT/node_modules/@earendil-works"
 ln -s "$PI_PACKAGE_DIR" "$TMP_ROOT/node_modules/@earendil-works/pi-coding-agent"
 printf '%s\n' '{"type":"module"}' >"$TMP_ROOT/package.json"
-mkdir -p "$TMP_ROOT/lib"
+mkdir -p "$TMP_ROOT/lib" "$TMP_ROOT/state"
+PRIMARY_HOME="$TMP_ROOT/primary"
+git clone --shared "$ROOT" "$PRIMARY_HOME" >/dev/null || exit 1
+CREWMATE_HOME="$TMP_ROOT/crewmate"
+git -C "$PRIMARY_HOME" worktree add --detach "$CREWMATE_HOME" HEAD >/dev/null || exit 1
+cleanup_voice_test() {
+  git -C "$PRIMARY_HOME" worktree remove --force "$CREWMATE_HOME" >/dev/null 2>&1 || true
+  fm_test_cleanup
+}
+trap cleanup_voice_test EXIT
+trap 'cleanup_voice_test; exit 130' INT
+trap 'cleanup_voice_test; exit 143' TERM
 cp "$EXT" "$TMP_ROOT/fm-primary-turnend-guard.ts"
 cp "$ROOT/.pi/extensions/lib/fm-operational-input.ts" "$TMP_ROOT/lib/fm-operational-input.ts"
 
+FM_HOME="$PRIMARY_HOME" \
 FM_STATE_OVERRIDE="$TMP_ROOT/state" \
 FM_OPERATIONAL_INPUT_SCRIPT="$ROOT/bin/fm-operational-input.sh" \
+CREWMATE_HOME="$CREWMATE_HOME" \
 EXT="$TMP_ROOT/fm-primary-turnend-guard.ts" \
   node --input-type=module <<'JS'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -88,11 +101,27 @@ reloaded.default({ ...pi, on(name, handler) { reloadedHandlers.set(name, handler
 await reloadedHandlers.get("agent_start")({ type: "agent_start" }, ctx);
 await reloadedHandlers.get("agent_settled")({ type: "agent_settled" }, ctx);
 if (executions.length !== 2) throw new Error("reload replayed a reply from an aborted turn");
-const secondmateHome = `${process.env.FM_STATE_OVERRIDE}/../secondmate`;
-mkdirSync(secondmateHome, { recursive: true });
-writeFileSync(`${secondmateHome}/.fm-secondmate-home`, "voice-test\n");
-process.env.FM_HOME = secondmateHome;
-process.env.FM_STATE_OVERRIDE = `${secondmateHome}/state`;
+const crewmateHome = process.env.CREWMATE_HOME;
+process.env.FM_HOME = crewmateHome;
+process.env.FM_STATE_OVERRIDE = `${crewmateHome}/state`;
+mkdirSync(process.env.FM_STATE_OVERRIDE, { recursive: true });
+const crewmateCommands = new Map();
+const crewmateHandlers = new Map();
+const crewmate = await import(`${pathToFileURL(process.env.EXT).href}?crewmate=${Date.now()}`);
+crewmate.default({
+  ...pi,
+  on(name, handler) { crewmateHandlers.set(name, handler); },
+  registerCommand(name, command) { crewmateCommands.set(name, command); },
+});
+if (crewmateCommands.has("podle-voice")) throw new Error("voice command was enabled for a crewmate");
+await crewmateHandlers.get("agent_start")({ type: "agent_start" }, ctx);
+entries = [
+  { type: "message", id: "u4", message: { role: "user", content: "crewmate request" } },
+  { type: "message", id: "a4", message: { role: "assistant", content: "Crewmate response" } },
+];
+await crewmateHandlers.get("agent_settled")({ type: "agent_settled" }, ctx);
+if (executions.length !== 2) throw new Error("crewmate output was spoken");
+writeFileSync(`${crewmateHome}/.fm-secondmate-home`, "voice-test\n");
 const secondmateCommands = new Map();
 const secondmateHandlers = new Map();
 const secondmate = await import(`${pathToFileURL(process.env.EXT).href}?secondmate=${Date.now()}`);
@@ -103,6 +132,10 @@ secondmate.default({
 });
 if (secondmateCommands.has("podle-voice")) throw new Error("voice command was enabled for a secondmate");
 await secondmateHandlers.get("agent_start")({ type: "agent_start" }, ctx);
+entries = [
+  { type: "message", id: "u5", message: { role: "user", content: "secondmate request" } },
+  { type: "message", id: "a5", message: { role: "assistant", content: "Secondmate response" } },
+];
 await secondmateHandlers.get("agent_settled")({ type: "agent_settled" }, ctx);
 if (executions.length !== 2) throw new Error("secondmate output was spoken");
 console.log("ok - Pi voice commands, captain-only reply filtering, and failure fallback");

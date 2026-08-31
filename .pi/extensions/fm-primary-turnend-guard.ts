@@ -156,13 +156,28 @@ async function injectSessionstart(pi: ExtensionAPI, source: string): Promise<voi
   }
 }
 
-function captainFacingSession(): boolean {
+function secondmateHome(): boolean {
   try {
-    const marker = `${fmHome}/.fm-secondmate-home`;
-    if (lstatSync(marker).isSymbolicLink()) return true;
-    return !/^[A-Za-z0-9._-]+$/.test(readFileSync(marker, "utf8").replaceAll(/\s/g, ""));
+    const marker = lstatSync(`${fmHome}/.fm-secondmate-home`);
+    return !marker.isSymbolicLink() && marker.isFile() &&
+      /^[A-Za-z0-9._-]+$/.test(readFileSync(`${fmHome}/.fm-secondmate-home`, "utf8").replaceAll(/\s/g, ""));
   } catch {
-    return true;
+    return false;
+  }
+}
+
+function captainFacingSession(): boolean {
+  if (secondmateHome()) return false;
+  try {
+    const gitDir = spawnSync("git", ["-C", fmHome, "rev-parse", "--git-dir"], { encoding: "utf8" });
+    const gitCommonDir = spawnSync("git", ["-C", fmHome, "rev-parse", "--git-common-dir"], { encoding: "utf8" });
+    return gitDir.status === 0 && gitCommonDir.status === 0 &&
+      gitDir.stdout.trim() === gitCommonDir.stdout.trim() &&
+      lstatSync(`${fmHome}/AGENTS.md`).isFile() &&
+      lstatSync(`${fmHome}/bin`).isDirectory() &&
+      lstatSync(state).isDirectory();
+  } catch {
+    return false;
   }
 }
 
@@ -285,7 +300,8 @@ function runCdCheck(command: string): Promise<{ code: number; stderr: string }> 
 }
 
 export default function (pi: ExtensionAPI) {
-  if (captainFacingSession()) pi.registerCommand?.("podle-voice", {
+  const captainSession = captainFacingSession();
+  if (captainSession) pi.registerCommand?.("podle-voice", {
     description: "Toggle or inspect local speech for captain-facing Pi replies.",
     getArgumentCompletions: (prefix: string) => ["on", "off", "status"]
       .filter((value) => value.startsWith(prefix))
@@ -340,7 +356,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("agent_settled", async (_event, ctx) => {
-    const reply = captainFacingSession() ? latestCaptainReply(ctx) : null;
+    const reply = captainSession ? latestCaptainReply(ctx) : null;
     if (reply && reply.id !== assistantIdAtAgentStart) await speakReply(pi, ctx, reply);
     if (guardFollowupActive) {
       guardFollowupActive = false;
