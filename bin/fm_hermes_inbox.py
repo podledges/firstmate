@@ -214,6 +214,23 @@ def ensure_paths(root, inbox):
     return receipts
 
 
+def ensure_private_file(path):
+    if os.path.lexists(path):
+        private_file(path)
+    elif not atomic_new(path, b""):
+        private_file(path)
+
+
+def ensure_notification(root, inbox):
+    ensure_paths(root, inbox)
+    try:
+        state = os.path.dirname(inbox)
+        ensure_private_file(os.path.join(state, ".wake-queue"))
+        ensure_private_file(os.path.join(state, ".wake-queue.seq"))
+    except (OSError, UnsafePath):
+        emit(result("unavailable", code="unsafe_path"), 4)
+
+
 def prepare(root, inbox):
     receipts = ensure_paths(root, inbox)
     request = parse_request()
@@ -278,7 +295,7 @@ def prepare(root, inbox):
 
 def main():
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("command", choices=("ensure", "prepare"))
+    parser.add_argument("command", choices=("ensure", "notification", "prepare"))
     parser.add_argument("--root", required=True)
     parser.add_argument("--inbox", required=True)
     args = parser.parse_args()
@@ -286,6 +303,8 @@ def main():
     inbox = os.path.abspath(args.inbox)
     if args.command == "ensure":
         ensure_paths(root, inbox)
+    elif args.command == "notification":
+        ensure_notification(root, inbox)
     else:
         prepare(root, inbox)
 

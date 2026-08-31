@@ -32,6 +32,21 @@ set -e
 [ "$rc" -eq 4 ]
 python3 -c 'import json,sys; assert json.load(sys.stdin)["error"]["code"] == "unsafe_path"' <"$CASE/out"
 [ ! -e "$CASE/projects/inbox" ]
+mkdir -p "$CASE/queue-unsafe/bin" "$CASE/queue-unsafe/state"
+chmod 700 "$CASE/queue-unsafe" "$CASE/queue-unsafe/state"
+cp "$ROOT/bin/fm-inbox.sh" "$ROOT/bin/fm-wake-lib.sh" "$ROOT/bin/fm_hermes_inbox.py" "$CASE/queue-unsafe/bin/"
+chmod +x "$CASE/queue-unsafe/bin/"*
+: >"$CASE/projects/wake-target"
+ln -s "$CASE/projects/wake-target" "$CASE/queue-unsafe/state/.wake-queue"
+set +e
+printf '{"version":1,"request_id":"unsafe-queue","text":"body"}' | "$CASE/queue-unsafe/bin/fm-inbox.sh" hermes-submit >"$CASE/out"
+rc=$?
+set -e
+[ "$rc" -eq 3 ]
+python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["status"] == "persisted_not_notified" and x["error"]["code"] == "notification_failed"' <"$CASE/out"
+unsafe_note=$(python3 -c 'import hashlib; print("hermes-" + hashlib.sha256(b"unsafe-queue").hexdigest())')
+[ -s "$CASE/queue-unsafe/state/inbox/$unsafe_note.note" ]
+[ ! -s "$CASE/projects/wake-target" ]
 response=$(printf '%s' "$request" | "$INBOX" hermes-submit)
 python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["status"] == "duplicate" and x["duplicate"]' <<<"$response"
 [ "$(awk -F '\t' -v key="inbox:$note" '$3 == "check" && $4 == key { n++ } END { print n+0 }' "$CASE/state/.wake-queue")" -eq 1 ]

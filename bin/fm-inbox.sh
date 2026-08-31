@@ -271,6 +271,11 @@ cmd_hermes_submit() {
     printf '{"version":1,"status":"duplicate","accepted":true,"duplicate":true,"note_id":"%s","notified":true}\n' "$note_id"
     return 0
   fi
+  if ! python3 "$helper" notification --root "$fixed_root" --inbox "$fixed_inbox" >/dev/null; then
+    fm_lock_release "$lock"
+    printf '{"version":1,"status":"persisted_not_notified","accepted":true,"duplicate":%s,"note_id":"%s","notified":false,"error":{"code":"notification_failed"}}\n' "$([ "$first" -eq 0 ] && printf true || printf false)" "$note_id"
+    return 3
+  fi
   wake_deadline=$((SECONDS + 5))
   while ! fm_lock_try_acquire "$FM_WAKE_QUEUE_LOCK"; do
     if [ "$SECONDS" -ge "$wake_deadline" ]; then
