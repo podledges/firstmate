@@ -1154,24 +1154,30 @@ fm_wake_append() {
   return "$status"
 }
 
-# fm_wake_append_once <kind> <key> <payload>
-# Append only while no equal kind/key record remains pending in the durable queue.
-fm_wake_append_once() {
-  local kind=$1 key=$2 payload=$3 clean_key clean_payload status=0
+# fm_wake_append_once_locked <kind> <key> <payload>
+# Append only while no equal kind/key record remains pending; caller holds queue lock.
+fm_wake_append_once_locked() {
+  local kind=$1 key=$2 payload=$3 clean_key clean_payload
   case "$kind" in
     signal|stale|check|heartbeat) ;;
     *) printf 'fm_wake_append_once: invalid wake kind: %s\n' "$kind" >&2; return 2 ;;
   esac
   clean_key=$(printf '%s' "$key" | fm_wake_clean_field)
   clean_payload=$(printf '%s' "$payload" | fm_wake_clean_field)
-  fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK"
   if awk -F '\t' -v kind="$kind" -v key="$clean_key" 'NF >= 5 && $3 == kind && $4 == key { found=1 } END { exit !found }' "$FM_WAKE_QUEUE" 2>/dev/null; then
-    status=0
-  else
-    fm_wake_append_locked "$kind" "$clean_key" "$clean_payload" || status=$?
+    return 0
   fi
+  fm_wake_append_locked "$kind" "$clean_key" "$clean_payload"
+}
+
+# fm_wake_append_once <kind> <key> <payload>
+# Append only while no equal kind/key record remains pending in the durable queue.
+fm_wake_append_once() {
+  local status
+  fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK"
+  fm_wake_append_once_locked "$@" || status=$?
   fm_lock_release "$FM_WAKE_QUEUE_LOCK"
-  return "$status"
+  return "${status:-0}"
 }
 
 # fm_wake_queued_keys <kind>

@@ -134,7 +134,7 @@ def parse_request():
     try:
         decoded = raw.decode("utf-8")
         pairs = json.loads(decoded, object_pairs_hook=ObjectPairs)
-    except (UnicodeDecodeError, json.JSONDecodeError):
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
         reject_request()
     if not isinstance(pairs, ObjectPairs):
         reject_request()

@@ -221,7 +221,7 @@ cmd_hermes_submit() {
   [ "$#" -eq 0 ] || die "usage: fm-inbox.sh hermes-submit < request.json"
   # This machine boundary is intentionally independent from normal home
   # selection. Its fixed home follows this script's canonical location.
-  local fixed_root fixed_state fixed_inbox lib helper result lock deadline status note_id first handled summary
+  local fixed_root fixed_state fixed_inbox lib helper result lock deadline wake_deadline status wake_status note_id first handled summary
   fixed_root=$(cd -P "$SELF_DIR/.." && pwd -P)
   fixed_state="$fixed_root/state"
   fixed_inbox="$fixed_state/inbox"
@@ -268,7 +268,21 @@ cmd_hermes_submit() {
     printf '{"version":1,"status":"duplicate","accepted":true,"duplicate":true,"note_id":"%s","notified":true}\n' "$note_id"
     return 0
   fi
-  if ! fm_wake_append_once check "inbox:$note_id" "check: captain inbox note $note_id - $summary"; then
+  wake_deadline=$((SECONDS + 5))
+  while ! fm_lock_try_acquire "$FM_WAKE_QUEUE_LOCK"; do
+    if [ "$SECONDS" -ge "$wake_deadline" ]; then
+      printf '{"version":1,"status":"persisted_not_notified","accepted":true,"duplicate":%s,"note_id":"%s","notified":false,"error":{"code":"notification_failed"}}\n' "$([ "$first" -eq 0 ] && printf true || printf false)" "$note_id"
+      return 3
+    fi
+    sleep 0.1
+  done
+  if fm_wake_append_once_locked check "inbox:$note_id" "check: captain inbox note $note_id - $summary"; then
+    wake_status=0
+  else
+    wake_status=$?
+  fi
+  fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+  if [ "$wake_status" -ne 0 ]; then
     printf '{"version":1,"status":"persisted_not_notified","accepted":true,"duplicate":%s,"note_id":"%s","notified":false,"error":{"code":"notification_failed"}}\n' "$([ "$first" -eq 0 ] && printf true || printf false)" "$note_id"
     return 3
   fi
@@ -436,9 +450,9 @@ cmd_drain() {
     local lock="$INBOX/.hermes-submit.lock"
     # shellcheck source=/dev/null
     FM_ROOT_OVERRIDE="$FM_ROOT" FM_HOME="$FM_HOME" STATE="$STATE" . "$FM_ROOT/bin/fm-wake-lib.sh"
+    mkdir -p "$INBOX/handled"
     fm_lock_acquire_wait "$lock"
     trap 'fm_lock_release "$lock"' RETURN
-    mkdir -p "$INBOX/handled"
     local id
     for id in "$@"; do
       if [ -f "$INBOX/$id.note" ]; then
