@@ -3,9 +3,10 @@
 # Usage:
 #   fm-bot-trust-filter.sh <request>
 #
-# Recognizes a bare numeric percentage or an explicit probability request that
-# contains exactly one numeric percentage, then routes only that percentage to
-# fm-bot-trust.sh. A non-match exits 1 without output or helper invocation.
+# Recognizes a bare numeric percentage or an explicit randomized-decision request
+# with probability or random-choice phrasing and exactly one numeric percentage,
+# then routes only that percentage to fm-bot-trust.sh. A non-match exits 1 without
+# output or helper invocation.
 # This filter may influence wording and idea surfacing, but authorizes no action.
 set -eu
 
