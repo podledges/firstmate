@@ -9,7 +9,7 @@ metadata:
 # Bot Trust
 
 For natural-language intake, use `bin/fm-bot-trust-filter.sh` when the captain explicitly asks for a probability-shaped randomized choice.
-The filter recognizes a bare exact numeric percentage or one exact numeric percentage in explicit probability phrasing, and routes only that percentage to the stateless helper.
+The filter recognizes a bare exact numeric percentage or one exact numeric percentage in explicit probability phrasing with an explicit randomized-decision request, and routes only that percentage to the stateless helper.
 A casual percentage mention, ambiguous request, or multiple percentages is not a match.
 
 Invoke `bin/fm-bot-trust.sh` directly when the captain explicitly types an exact probability such as `70 %` or asks for a weighted randomized decision.

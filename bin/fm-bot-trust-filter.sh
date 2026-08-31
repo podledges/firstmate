@@ -31,9 +31,10 @@ if re.fullmatch(r"[+-]?\d+(?:\.\d+)?\s*(?:%|percent)", text, re.IGNORECASE):
     print(percentages[0][0] + "%")
     raise SystemExit(0)
 
-# Natural language needs both one exact percentage and explicit probability or
-# random-choice phrasing. Incidental percentages and ambiguous inputs do not
-# reach the stateless helper.
+# Natural language needs one exact percentage, probability or random-choice
+# phrasing, and an explicit request to make a randomized decision. Incidental
+# percentages and factual probability statements do not reach the stateless
+# helper.
 if len(percentages) != 1:
     raise SystemExit(1)
 
@@ -49,7 +50,17 @@ random_choice_cue = re.search(
     text,
     re.IGNORECASE,
 )
-if probability_cue is None and random_choice_cue is None:
+decision_request_cue = re.search(
+    r"(?:^|[.!?]\s+)(?:(?:please|kindly)\s+)?"
+    r"(?:flip(?:\s+(?:a|the))?\s+coin|flip|roll|choose|pick|decide|randomize)\b|"
+    r"\b(?:can|could|would|will)\s+you\s+"
+    r"(?:flip(?:\s+(?:a|the))?\s+coin|flip|roll|choose|pick|decide|randomize)\b|"
+    r"\b(?:should|shall)\s+(?:we|i)\s+"
+    r"(?:flip(?:\s+(?:a|the))?\s+coin|flip|roll|choose|pick|decide|randomize)\b",
+    text,
+    re.IGNORECASE,
+)
+if (probability_cue is None and random_choice_cue is None) or decision_request_cue is None:
     raise SystemExit(1)
 
 print(percentages[0][0] + "%")

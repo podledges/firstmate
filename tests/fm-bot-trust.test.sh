@@ -51,6 +51,13 @@ test_probability_filter() {
   [ -z "$output" ] || fail "non-matching input produced output"
 
   set +e
+  output=$(FM_BOT_TRUST_RANDOM_HEX=not-hex "$BOT_TRUST_FILTER" 'the chance of rain is 70%' 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -eq 1 ] || fail "factual probability statement was treated as a decision request"
+  [ -z "$output" ] || fail "factual probability statement produced output"
+
+  set +e
   output=$(FM_BOT_TRUST_RANDOM_HEX=not-hex "$BOT_TRUST_FILTER" 'choose with a 30% or 70% chance' 2>&1)
   rc=$?
   set -e
@@ -58,7 +65,7 @@ test_probability_filter() {
   [ -z "$output" ] || fail "ambiguous input produced output"
 
   expect_failure 'probability must be between 0 and 100' "$BOT_TRUST_FILTER" 'flip with a 101% chance'
-  expect_failure 'probability must be between 0 and 100' "$BOT_TRUST_FILTER" 'use a -1% probability'
+  expect_failure 'probability must be between 0 and 100' "$BOT_TRUST_FILTER" 'choose randomly with a -1% probability'
   pass "natural-language probability filtering routes only exact explicit percentages"
 }
 
