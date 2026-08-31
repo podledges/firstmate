@@ -1,0 +1,7 @@
+$ tests/fm-podle-voice.test.sh
+Cloning into '/tmp/fm-podle-voice.xDyta2/primary'...
+done.
+Preparing worktree (detached HEAD a59f01c)
+ok - Pi voice commands, captain-only reply filtering, and failure fallback
+$ pi --version
+0.84.3
