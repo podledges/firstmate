@@ -6,6 +6,24 @@ This record contains reusable version-scoped evidence for active runtime guarant
 The backend guides own current setup, safety boundaries, and limitations.
 Exact task chronology, branch names, temporary homes, local paths, process ids, thread ids, and delivery transcripts remain in private reports or PR evidence.
 
+## Pi local voice compatibility
+
+The Pi local voice preference was reviewed on 2026-08-31 with the portable executable test `tests/fm-podle-voice.test.sh`.
+The test exercises `status`, `on`, and bare-toggle command behavior, off-by-default private persistence, captain-reply filtering, reload replay prevention, and preservation of text when local speech fails.
+The implementation uses Pi's `registerCommand`, `agent_start`, `agent_settled`, and bounded `pi.exec` extension APIs, so it applies to plain Pi and `pi-signed` only.
+Claude, Codex, OpenCode, Grok, Kimi, Cursor, and Muse do not load this Pi extension and are unsupported for this toggle.
+Tmux, Herdr, Zellij, Orca, and cmux runtime backends do not alter that harness boundary and require no voice-specific integration.
+
+```sh
+tests/fm-podle-voice.test.sh
+```
+
+Observed output:
+
+```text
+ok - Pi voice commands, captain-only reply filtering, and failure fallback
+```
+
 ## tmux
 
 Foreground-process behavior was verified on 2026-07-07 with tmux 3.6a on macOS.

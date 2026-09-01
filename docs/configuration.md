@@ -33,6 +33,19 @@ The `/calm` command replaces the file atomically before changing live presentati
 The extension reloads this preference on every Pi `session_start`, including startup, new, resume, fork, and reload reasons.
 This preference is local to each Firstmate home and is not part of secondmate inherited configuration.
 
+## Pi local voice preference (state/.podle-voice)
+
+The Pi-only `/podle-voice` command controls optional local speech for completed captain-facing replies.
+The bare command toggles the preference, while `/podle-voice on`, `/podle-voice off`, and `/podle-voice status` set or report it idempotently.
+The preference defaults off and is stored only as `.podle-voice` in the primary home's `state/` directory, resolved from `FM_HOME`, then `FM_ROOT_OVERRIDE`, then the tracked code root derived from the extension path.
+`FM_STATE_OVERRIDE` selects the state directory only for tests and specialized local setups.
+The preference is never tracked, inherited, sent in public responses, or read from project repositories.
+Secondmate and crewmate sessions do not expose this command or invoke speech.
+When enabled, the Pi extension invokes the local `firstmate-tts` command with a bounded timeout after a reply settles.
+Make that command available on the local `PATH` before turning voice on.
+Missing or failing local speech preserves the text reply and displays one actionable setup error; no network, listener, credential, or background service is required.
+This control is unsupported by Claude, Codex, OpenCode, Grok, Kimi, Cursor, and Muse primary harnesses, and runtime backends do not change its Pi-only scope.
+
 ## Backlog backend (.tasks.toml / config/backlog-backend)
 
 The tracked `.tasks.toml` pins the default `tasks-axi` markdown backend to `data/backlog.md`, with `done_keep = 10` and an archive at `data/done-archive.md`.
