@@ -31,9 +31,10 @@
 #              busy, then submits the harness's exit command. Postcondition:
 #              the backend's recovery-grade classifier reports the agent gone.
 #              Already-stopped is success (idempotent).
-#   relaunch   Transactionally replace the running agent with a new one, in the
-#              SAME endpoint and SAME worktree, on the same or a newly chosen
-#              harness/model/effort - so switching harness is one ordinary use
+#   relaunch   Transactionally replace the running agent with a new one in the
+#              SAME worktree and ordinarily the SAME endpoint, on the same or a
+#              newly chosen harness/model/effort - so switching harness is one
+#              ordinary use
 #              of this verb. With no explicit axis, a secondmate re-resolves its
 #              durable config/secondmate-harness pin (harness plus its optional
 #              model and effort tokens) exactly as any other respawn does, while
@@ -46,7 +47,12 @@
 #              standing charter is never rewritten.
 #              Records a durable checkpoint and that note, exits the old agent,
 #              then delegates the launch to its single owner,
-#              bin/fm-spawn.sh --relaunch. A failure before publication keeps
+#              bin/fm-spawn.sh --relaunch. When an ordinary ship task's tmux
+#              endpoint is positively classified missing, the same verb instead
+#              authorizes that launch owner to recreate only the recorded
+#              terminal in the recorded worktree; every other kind or backend,
+#              plus ambiguous and unreadable endpoints, remains a refusal.
+#              A failure before publication keeps
 #              the prior durable record in place and reports the concrete
 #              state; it never leaves a half-transitioned task claiming to be
 #              running.
@@ -766,11 +772,26 @@ record_note() {
 }
 
 do_relaunch() {
-  local exit_result state note_line
+  local exit_result state note_line endpoint_missing=0
   local -a spawn_args
 
   require_state_verified_backend relaunch
   resolve_relaunch_profile
+
+  state=$(agent_state)
+  case "$state" in
+    alive|dead) ;;
+    missing)
+      [ "$BACKEND" = tmux ] \
+        || die "task $ID's recorded $BACKEND endpoint is gone; deterministic terminal recreation is not supported for that backend, so relaunch refuses"
+      [ "$KIND" = ship ] \
+        || die "task $ID is a $KIND task; deterministic terminal recreation is supported only for ordinary ship tasks"
+      endpoint_missing=1
+      ;;
+    *)
+      die "task $ID's endpoint reads '$state' rather than a positively classified state; refusing to relaunch into an unattributed endpoint"
+      ;;
+  esac
 
   case "$KIND" in
     ship|scout)
@@ -803,8 +824,12 @@ do_relaunch() {
   record_note
   journal_write noted "${CHECKPOINT_LINES[@]}" "$note_line"
 
-  journal_write stopping "${CHECKPOINT_LINES[@]}" "$note_line"
-  exit_result=$(do_exit)
+  if [ "$endpoint_missing" = 1 ]; then
+    exit_result='endpoint-confirmed-missing'
+  else
+    journal_write stopping "${CHECKPOINT_LINES[@]}" "$note_line"
+    exit_result=$(do_exit)
+  fi
   journal_write exited "${CHECKPOINT_LINES[@]}" "$note_line" "exit_result=$exit_result"
 
   # The launch owner (fm-spawn --relaunch) clears the previous incarnation's
@@ -815,6 +840,7 @@ do_relaunch() {
   [ "$TARGET_MODEL" = default ] || spawn_args+=(--model "$TARGET_MODEL")
   [ "$TARGET_EFFORT" = default ] || spawn_args+=(--effort "$TARGET_EFFORT")
   if FM_CONTROL_RELAUNCH_TX="$RELAUNCH_TX" \
+      FM_CONTROL_RELAUNCH_MISSING="$endpoint_missing" \
       "$SCRIPT_DIR/fm-spawn.sh" "${spawn_args[@]}" >/dev/null; then
     RELAUNCH_META_PUBLISHED=1
   else
