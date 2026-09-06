@@ -14,9 +14,9 @@
 #   4. A refusal before the agent is stopped changes nothing.
 #   5. A launch failure after the agent is stopped keeps the prior record,
 #      reports the concrete state, and preserves the work.
-#   6. A control-plane relaunch recreates a positively missing tmux terminal
-#      directly in the preserved worktree, while direct, ambiguous, and
-#      unreadable recovery attempts remain refusals.
+#   6. A control-plane relaunch recreates a positively missing ordinary ship
+#      tmux terminal directly in the preserved worktree, while direct, scout,
+#      ambiguous, and unreadable recovery attempts remain refusals.
 #   7. fm-spawn --relaunch refuses on its own: a live agent, a contradicting
 #      flag, an extra positional, or a backend that cannot prove the previous
 #      agent exited.
@@ -1356,6 +1356,29 @@ test_control_relaunch_recreates_a_confirmed_missing_terminal_in_place() {
   pass "fm-control relaunch: a confirmed-missing terminal is recreated once in the preserved worktree"
 }
 
+test_control_relaunch_refuses_missing_scout_endpoint_recovery() {
+  local dir out rc before
+  dir=$(new_case missing-scout rl40)
+  add_ship_task "$dir" rl40 claude
+  awk '{ sub(/^kind=ship$/, "kind=scout"); print }' "$dir/home/state/rl40.meta" > "$dir/scout.meta"
+  mv "$dir/scout.meta" "$dir/home/state/rl40.meta"
+  : > "$dir/fake/windows"
+  : > "$dir/fake/backend-log"
+  before=$(shasum -a 256 "$dir/home/state/rl40.meta" "$dir/home/data/rl40/brief.md")
+
+  out=$(run_control "$dir" rl40 relaunch --note "must not recreate a scout terminal"); rc=$?
+  expect_code 1 "$rc" "a missing scout endpoint must refuse recovery"
+  assert_contains "$out" "supported only for ordinary ship tasks" \
+    "the refusal should limit missing-terminal recovery to ships"
+  [ "$before" = "$(shasum -a 256 "$dir/home/state/rl40.meta" "$dir/home/data/rl40/brief.md")" ] \
+    || fail "missing scout recovery changed durable task state"
+  [ ! -s "$dir/fake/backend-log" ] \
+    || fail "missing scout recovery created a terminal"
+  [ ! -e "$dir/home/state/rl40.control-relaunch" ] \
+    || fail "missing scout recovery started a relaunch transaction"
+  pass "fm-control relaunch: a missing scout endpoint remains a refusal"
+}
+
 test_direct_spawn_cannot_authorize_missing_terminal_recovery() {
   local dir out rc
   dir=$(new_case missing-direct rl37)
@@ -1502,6 +1525,7 @@ test_concurrent_relaunch_is_refused
 test_direct_spawn_relaunch_participates_in_the_lifecycle_lock
 test_promotion_participates_in_the_lifecycle_lock_before_metadata_resolution
 test_control_relaunch_recreates_a_confirmed_missing_terminal_in_place
+test_control_relaunch_refuses_missing_scout_endpoint_recovery
 test_direct_spawn_cannot_authorize_missing_terminal_recovery
 test_control_relaunch_refuses_an_ambiguous_endpoint
 test_control_relaunch_refuses_an_unreadable_endpoint

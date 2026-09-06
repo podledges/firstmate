@@ -1031,8 +1031,8 @@ if [ "$RELAUNCH" -eq 1 ]; then
   RELAUNCH_PRIOR_HARNESS=$(fm_meta_get "$RELAUNCH_META" harness)
   KIND=$(fm_meta_get "$RELAUNCH_META" kind)
   [ -n "$KIND" ] || KIND=ship
-  if [ "$RELAUNCH_RECREATE_ENDPOINT" = 1 ] && [ "$KIND" = secondmate ]; then
-    echo "error: confirmed-missing terminal recreation is for ordinary ship and scout tasks only; recover secondmate $ID through its dedicated liveness path" >&2
+  if [ "$RELAUNCH_RECREATE_ENDPOINT" = 1 ] && [ "$KIND" != ship ]; then
+    echo "error: confirmed-missing terminal recreation is supported only for ordinary ship tasks" >&2
     exit 1
   fi
   MODE=$(fm_meta_get "$RELAUNCH_META" mode)

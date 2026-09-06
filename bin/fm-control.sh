@@ -782,6 +782,8 @@ do_relaunch() {
     missing)
       [ "$BACKEND" = tmux ] \
         || die "task $ID's recorded $BACKEND endpoint is gone; deterministic terminal recreation is not supported for that backend, so relaunch refuses"
+      [ "$KIND" = ship ] \
+        || die "task $ID is a $KIND task; deterministic terminal recreation is supported only for ordinary ship tasks"
       endpoint_missing=1
       ;;
     *)

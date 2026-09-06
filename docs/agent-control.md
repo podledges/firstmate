@@ -32,7 +32,7 @@ A recorded `harness=` is not always an exact adapter name: a task launched from 
 | --- | --- | --- |
 | `interrupt` | Deliver the harness's verified interrupt sequence while leaving the agent running. | Delivery succeeds while the endpoint still exists and the agent is still alive where the backend can classify that; cancellation is confirmed only from an adapter-owned acknowledgement and otherwise reports `cancel=unconfirmed`. |
 | `exit` | Stop the agent, preserving the endpoint, the worktree, and every uncommitted change. | The backend's recovery-grade classifier reports the agent gone. Already-stopped is idempotent success. |
-| `relaunch` | Replace the running agent with a new one in the same endpoint and worktree, on the exact recorded adapter or an explicitly chosen harness, model, and effort. A confirmed-missing tmux endpoint is recreated once in the same recorded worktree. | The new agent is alive on the recorded or safely recreated endpoint, and the durable record names the harness that is actually running. |
+| `relaunch` | Replace the running agent with a new one in the same endpoint and worktree, on the exact recorded adapter or an explicitly chosen harness, model, and effort. A confirmed-missing ordinary ship tmux endpoint is recreated once in the same recorded worktree. | The new agent is alive on the recorded or safely recreated endpoint, and the durable record names the harness that is actually running. |
 
 An exit that delivers lifecycle input but cannot prove the agent stopped fails with `exit=unconfirmed`, reports the observed agent state and any interrupt cancellation claim, and never claims that nothing changed.
 Interrupt never rewrites busy state as proof of its own success.
@@ -70,11 +70,11 @@ It is not deterministic across the verified adapters: codex and grok resume only
    A secondmate relaunch does not require one and never rewrites its standing charter.
 4. **Reconcile the old endpoint.**
    A live or agent-free endpoint follows the existing stop path through the `exit` verb and its postcondition.
-   When the recovery-grade classifier positively reports a tmux endpoint missing, no stop is attempted and the journal records that proof.
+   When the recovery-grade classifier positively reports an ordinary ship tmux endpoint missing, no stop is attempted and the journal records that proof.
    Missing Herdr endpoints and every ambiguous or unreadable result remain refusals.
 5. **Launch the replacement** through its single owner, `bin/fm-spawn.sh --relaunch`.
    The ordinary path adopts the recorded endpoint and worktree.
-   The confirmed-missing tmux path independently re-probes the endpoint under the same lifecycle lock, recreates exactly its recorded terminal directly in the recorded worktree, and never invokes worktree allocation.
+   The confirmed-missing ordinary ship tmux path independently re-probes the endpoint under the same lifecycle lock, recreates exactly its recorded terminal directly in the recorded worktree, and never invokes worktree allocation.
    Both paths clear the previous harness's per-task wiring and arm a fresh busy generation.
 
 Switching harness is therefore one ordinary relaunch rather than a separate mechanism.
@@ -104,8 +104,8 @@ Switching harness is therefore one ordinary relaunch rather than a separate mech
   zellij, orca, and cmux are refused rather than reported as successful blind.
 - An ambiguous or unreadable endpoint state refuses.
   Only a positively classified state acts.
-- A missing endpoint authorizes terminal recreation only for an ordinary tmux task through `fm-control relaunch`.
-  Direct `fm-spawn --relaunch` calls, secondmates, and missing endpoints on other backends remain refusals.
+- A missing endpoint authorizes terminal recreation only for an ordinary ship tmux task through `fm-control relaunch`.
+  Direct `fm-spawn --relaunch` calls, scouts, secondmates, and missing endpoints on other backends remain refusals.
 - `fm-spawn --relaunch` independently re-probes the recorded endpoint under the task lifecycle lock.
   It requires either a positively agent-free endpoint whose shell is sitting in the recorded worktree or the control plane's matching confirmed-missing authorization, so a replacement can never join a live agent or start outside the copy holding the work.
 
