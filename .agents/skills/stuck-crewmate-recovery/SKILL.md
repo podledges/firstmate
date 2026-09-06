@@ -47,8 +47,7 @@ Escalate in order:
 2. If the crewmate is waiting on a question its brief already answers, answer in one line via `FM_HOME=<this-firstmate-home> bin/fm-send.sh` from an active firstmate session unless `FM_HOME` is already set to the active firstmate home.
 3. If the crewmate is confused or looping, interrupt with `FM_HOME=<this-firstmate-home> bin/fm-control.sh <task-id> interrupt`, then redirect with one corrective line through `fm-send`.
 4. If the crewmate is genuinely wedged after redirection, relaunch it with `FM_HOME=<this-firstmate-home> bin/fm-control.sh <task-id> relaunch --note '<progress so far>'`, which stops the agent, carries the brief plus that note into a replacement in the same local copy, and restores the prior record if the replacement cannot start.
-   The same command is the safe recovery path for an ordinary ship task when the recorded tmux endpoint is positively missing: it creates one replacement terminal directly in the existing recorded worktree only after independently proving no old endpoint remains.
-   Ambiguous or unreadable endpoints, scouts, secondmates, missing endpoints on other backends, and direct `fm-spawn --relaunch` attempts remain refusals.
+   For the narrow confirmed-missing ordinary-ship tmux exception, follow [`docs/agent-control.md`](../../../docs/agent-control.md)'s transactional relaunch contract; every other recovery stays fail-closed.
    Pass `--harness`, `--model`, or `--effort` on that same command when the worker should come back on a different runtime.
    Genuine wedging means looping, unresponsive, repeating the same obstacle, or truly dead.
    A low context reading is not wedging; modern harnesses auto-compact and keep going.

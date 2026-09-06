@@ -31,9 +31,10 @@
 #              busy, then submits the harness's exit command. Postcondition:
 #              the backend's recovery-grade classifier reports the agent gone.
 #              Already-stopped is success (idempotent).
-#   relaunch   Transactionally replace the running agent with a new one, in the
-#              SAME endpoint and SAME worktree, on the same or a newly chosen
-#              harness/model/effort - so switching harness is one ordinary use
+#   relaunch   Transactionally replace the running agent with a new one in the
+#              SAME worktree and ordinarily the SAME endpoint, on the same or a
+#              newly chosen harness/model/effort - so switching harness is one
+#              ordinary use
 #              of this verb. With no explicit axis, a secondmate re-resolves its
 #              durable config/secondmate-harness pin (harness plus its optional
 #              model and effort tokens) exactly as any other respawn does, while
@@ -46,10 +47,11 @@
 #              standing charter is never rewritten.
 #              Records a durable checkpoint and that note, exits the old agent,
 #              then delegates the launch to its single owner,
-#              bin/fm-spawn.sh --relaunch. When a tmux endpoint is positively
-#              classified missing, the same verb instead authorizes that launch
-#              owner to recreate only the recorded terminal in the recorded
-#              worktree; ambiguous and unreadable endpoints remain refusals.
+#              bin/fm-spawn.sh --relaunch. When an ordinary ship task's tmux
+#              endpoint is positively classified missing, the same verb instead
+#              authorizes that launch owner to recreate only the recorded
+#              terminal in the recorded worktree; every other kind or backend,
+#              plus ambiguous and unreadable endpoints, remains a refusal.
 #              A failure before publication keeps
 #              the prior durable record in place and reports the concrete
 #              state; it never leaves a half-transitioned task claiming to be

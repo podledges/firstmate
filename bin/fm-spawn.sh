@@ -18,8 +18,9 @@
 #   refused as a flag value.
 #        fm-spawn.sh <task-id> --relaunch [--harness <name>] [--model <name>] [--effort <level>]
 #   --relaunch launches a replacement agent for an EXISTING task into that
-#   task's own recorded endpoint and worktree instead of creating either. It is
-#   the launch half of the control plane (bin/fm-control.sh relaunch), which
+#   task's own recorded worktree and ordinarily its recorded endpoint instead
+#   of creating either. It is the launch half of the control plane
+#   (bin/fm-control.sh relaunch), which
 #   owns the checkpoint, the progress note, stopping the previous agent, and the
 #   transaction; call fm-control rather than this flag directly unless you are
 #   deliberately re-launching an already-stopped task. Every identity axis -
@@ -31,10 +32,11 @@
 #   agent-free on a backend with a recovery-grade agent-state classifier (tmux
 #   or herdr), refuses unless the endpoint's shell is sitting in the recorded
 #   worktree, and clears the previous harness's per-task wiring before arming
-#   the new incarnation. The control plane may additionally authorize one
-#   confirmed-missing tmux recovery: fm-spawn re-probes the recorded endpoint,
-#   creates only its replacement terminal in the same recorded worktree, and
-#   refuses that path for direct callers or any ambiguous/unreadable result.
+#   the new incarnation. The control plane may additionally authorize a
+#   confirmed-missing tmux recovery for an ordinary ship task only: fm-spawn
+#   re-probes the recorded endpoint, creates only its replacement terminal in
+#   the same recorded worktree, and refuses that path for direct callers, every
+#   other kind or backend, or any ambiguous/unreadable result.
 #   --harness <name> is the explicit per-spawn harness/profile adapter. The old
 #   positional harness arg still works for back-compat.
 #   --model <name> and --effort <low|medium|high|xhigh|max> are concrete profile
