@@ -14,7 +14,10 @@
 #   4. A refusal before the agent is stopped changes nothing.
 #   5. A launch failure after the agent is stopped keeps the prior record,
 #      reports the concrete state, and preserves the work.
-#   6. fm-spawn --relaunch refuses on its own: a live agent, a contradicting
+#   6. A control-plane relaunch recreates a positively missing tmux terminal
+#      directly in the preserved worktree, while direct, ambiguous, and
+#      unreadable recovery attempts remain refusals.
+#   7. fm-spawn --relaunch refuses on its own: a live agent, a contradicting
 #      flag, an extra positional, or a backend that cannot prove the previous
 #      agent exited.
 set -u
@@ -111,7 +114,31 @@ case "${1:-}" in
     done
     printf 'fakepane\n'; exit 0 ;;
   capture-pane) printf '╭────╮\n│    │\n╰────╯\n'; exit 0 ;;
-  list-windows) [ -f "$D/windows" ] && cat "$D/windows"; exit 0 ;;
+  list-windows)
+    if [ -n "${FM_FAKE_LIST_WINDOWS_ERROR:-}" ]; then
+      printf 'permission denied\n' >&2
+      exit 1
+    fi
+    [ -f "$D/windows" ] && cat "$D/windows"
+    exit 0 ;;
+  has-session) exit 0 ;;
+  new-window)
+    shift
+    name= cwd=
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        -n) name=$2; shift 2 ;;
+        -c) cwd=$2; shift 2 ;;
+        -F|-t) shift 2 ;;
+        -d|-dP) shift ;;
+        *) shift ;;
+      esac
+    done
+    printf '%s\n' "$name" > "$D/windows"
+    printf '%s' "$cwd" > "$D/cwd"
+    printf 'new-window %s %s\n' "$name" "$cwd" >> "$D/backend-log"
+    printf '@recovered\n'
+    exit 0 ;;
 esac
 exit 0
 SH
@@ -172,6 +199,7 @@ run_control() {  # <case-dir> <args...>
     FM_FAKE_TRACE_PREPARE="${FM_FAKE_TRACE_PREPARE:-}" \
     FM_FAKE_META_WRITER_READY="${FM_FAKE_META_WRITER_READY:-}" \
     FM_FAKE_TRACE_EXPORTED="${FM_FAKE_TRACE_EXPORTED:-}" \
+    FM_FAKE_LIST_WINDOWS_ERROR="${FM_FAKE_LIST_WINDOWS_ERROR:-}" \
     "$CONTROL" "$@" 2>&1
 }
 
@@ -1294,7 +1322,91 @@ test_promotion_participates_in_the_lifecycle_lock_before_metadata_resolution() {
   pass "fm-promote: promotion participates in lifecycle serialization"
 }
 
-# --- 6. fm-spawn --relaunch's own refusals -----------------------------------
+# --- 6. confirmed-missing terminal recovery ---------------------------------
+
+test_control_relaunch_recreates_a_confirmed_missing_terminal_in_place() {
+  local dir out rc branch_before meta_before
+  dir=$(new_case missing rl36)
+  add_ship_task "$dir" rl36 claude
+  : > "$dir/fake/windows"
+  : > "$dir/fake/backend-log"
+  printf 'preserve me\n' > "$dir/wt/uncommitted.txt"
+  branch_before=$(git -C "$dir/wt" branch --show-current)
+  meta_before=$(meta_field "$dir" rl36 worktree)
+
+  out=$(run_control "$dir" rl36 relaunch --note "terminal was confirmed missing"); rc=$?
+  expect_code 0 "$rc" "a confirmed-missing tmux task should recover through fm-control"$'\n'"$out"
+  assert_contains "$out" "relaunched rl36" "the recovery should report the relaunched task"
+  [ "$(grep -c '^new-window ' "$dir/fake/backend-log")" = 1 ] \
+    || fail "missing recovery must create exactly one replacement terminal"
+  assert_grep "new-window fm-rl36 $dir/wt" "$dir/fake/backend-log" \
+    "the replacement terminal must start directly in the recorded worktree"
+  [ "$(meta_field "$dir" rl36 worktree)" = "$meta_before" ] \
+    || fail "missing recovery changed the recorded worktree"
+  [ "$(git -C "$dir/wt" branch --show-current)" = "$branch_before" ] \
+    || fail "missing recovery changed the task branch"
+  [ -f "$dir/wt/uncommitted.txt" ] \
+    || fail "missing recovery discarded local changes"
+  [ "$(meta_field "$dir" rl36 mode)" = no-mistakes ] \
+    || fail "missing recovery changed the delivery mode"
+  [ "$(meta_field "$dir" rl36 yolo)" = off ] \
+    || fail "missing recovery changed merge authority"
+  [ "$(journal_field "$dir" rl36 exit_result)" = endpoint-confirmed-missing ] \
+    || fail "the transaction did not record its confirmed-missing proof"
+  pass "fm-control relaunch: a confirmed-missing terminal is recreated once in the preserved worktree"
+}
+
+test_direct_spawn_cannot_authorize_missing_terminal_recovery() {
+  local dir out rc
+  dir=$(new_case missing-direct rl37)
+  add_ship_task "$dir" rl37 claude
+  : > "$dir/fake/windows"
+  : > "$dir/fake/backend-log"
+
+  out=$(run_spawn "$dir" rl37 --relaunch --harness claude); rc=$?
+  expect_code 1 "$rc" "direct fm-spawn must not authorize missing-terminal recovery"
+  assert_contains "$out" "requires the control plane" \
+    "the refusal should name the safe recovery owner"
+  [ ! -s "$dir/fake/backend-log" ] \
+    || fail "a direct missing-endpoint attempt created a terminal"
+  pass "fm-spawn --relaunch: a direct caller cannot recreate a missing terminal"
+}
+
+test_control_relaunch_refuses_an_ambiguous_endpoint() {
+  local dir out rc before
+  dir=$(new_case ambiguous rl38)
+  add_ship_task "$dir" rl38 claude
+  printf 'python' > "$dir/fake/command"
+  before=$(shasum -a 256 "$dir/home/state/rl38.meta" "$dir/home/data/rl38/brief.md")
+
+  out=$(run_control "$dir" rl38 relaunch --note "must not launch over ambiguity"); rc=$?
+  expect_code 1 "$rc" "an ambiguous endpoint must refuse recovery"
+  assert_contains "$out" "reads 'ambiguous'" "the refusal should report the ambiguous proof"
+  [ "$before" = "$(shasum -a 256 "$dir/home/state/rl38.meta" "$dir/home/data/rl38/brief.md")" ] \
+    || fail "ambiguous recovery changed durable task state"
+  [ ! -e "$dir/home/state/rl38.control-relaunch" ] \
+    || fail "ambiguous recovery started a relaunch transaction"
+  pass "fm-control relaunch: ambiguous ownership remains a refusal"
+}
+
+test_control_relaunch_refuses_an_unreadable_endpoint() {
+  local dir out rc before
+  dir=$(new_case unreadable rl39)
+  add_ship_task "$dir" rl39 claude
+  before=$(shasum -a 256 "$dir/home/state/rl39.meta" "$dir/home/data/rl39/brief.md")
+
+  FM_FAKE_LIST_WINDOWS_ERROR=1 \
+    out=$(run_control "$dir" rl39 relaunch --note "must not launch without a readable inventory"); rc=$?
+  expect_code 1 "$rc" "an unreadable endpoint must refuse recovery"
+  assert_contains "$out" "reads 'unreadable'" "the refusal should report the unreadable proof"
+  [ "$before" = "$(shasum -a 256 "$dir/home/state/rl39.meta" "$dir/home/data/rl39/brief.md")" ] \
+    || fail "unreadable recovery changed durable task state"
+  [ ! -e "$dir/home/state/rl39.control-relaunch" ] \
+    || fail "unreadable recovery started a relaunch transaction"
+  pass "fm-control relaunch: unreadable ownership remains a refusal"
+}
+
+# --- 7. fm-spawn --relaunch's own refusals -----------------------------------
 
 test_spawn_relaunch_refuses_a_live_agent() {
   local dir out rc
@@ -1389,6 +1501,10 @@ test_secondmate_checkpoint_refuses_unreadable_child_state
 test_concurrent_relaunch_is_refused
 test_direct_spawn_relaunch_participates_in_the_lifecycle_lock
 test_promotion_participates_in_the_lifecycle_lock_before_metadata_resolution
+test_control_relaunch_recreates_a_confirmed_missing_terminal_in_place
+test_direct_spawn_cannot_authorize_missing_terminal_recovery
+test_control_relaunch_refuses_an_ambiguous_endpoint
+test_control_relaunch_refuses_an_unreadable_endpoint
 test_spawn_relaunch_refuses_a_live_agent
 test_spawn_relaunch_refuses_contradicting_flags
 test_spawn_relaunch_refuses_an_unrecorded_task
