@@ -167,7 +167,7 @@ ordinary_wake_line() {
       printf '%s\n' '- Ordinary wake: take the next foreground bin/fm-watch-checkpoint.sh checkpoint as directed below.'
       ;;
     pi|pi-signed)
-      printf '%s\n' '- Ordinary wake: the Pi extension already owns watcher continuity; do not arm another cycle.'
+      printf '%s\n' '- Ordinary wake: the Pi extension owns first-cycle startup and later watcher continuity; do not arm another cycle.'
       ;;
     opencode)
       printf '%s\n' '- Ordinary wake: the OpenCode TUI plugin already owns watcher continuity; do not arm manually.'

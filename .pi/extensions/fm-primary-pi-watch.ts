@@ -5,12 +5,15 @@
 // /fork, reload) as well as terminal quit. This extension binds one generation per
 // session activation. Only the active live generation may start, stop, rearm, or
 // clear the arm child. Replacement session_start (or a fresh factory bind) activates
-// a new live generation so monitoring can arm again without restarting Pi. Terminal
-// quit leaves the final generation stopped so late callbacks cannot rearm. Stale
-// callbacks from a prior generation are no-ops against the active replacement.
+// a new live generation so monitoring can arm again without restarting Pi.
+// Eligible session_start, never the factory, starts that generation's first cycle
+// after lock, away-mode, and supervision-need checks. Compaction is not a replacement
+// and does not start a new generation. Terminal quit leaves the final generation
+// stopped so late callbacks cannot rearm. Stale callbacks from a prior generation
+// are no-ops against the active replacement.
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
@@ -141,6 +144,33 @@ function lockOwnership(): LockOwnership {
     if (!pid || pid === "1") break;
   }
   return pidAlive(lockPid) ? "other" : "missing";
+}
+
+function awayModeActive(): boolean {
+  try {
+    return existsSync(`${state}/.afk`);
+  } catch {
+    return false;
+  }
+}
+
+function supervisionNeeded(): boolean {
+  try {
+    if (existsSync(`${state}/x-watch.check.sh`)) return true;
+  } catch {
+    // Unreadable Relay poll is treated as absent need.
+  }
+  try {
+    if (readdirSync(state).some((name) => name.endsWith(".meta"))) return true;
+  } catch {
+    // Unreadable state dir is treated as absent need.
+  }
+  try {
+    if (readdirSync(`${state}/procevent`).some((name) => name.endsWith(".source"))) return true;
+  } catch {
+    // Missing or unreadable process-event dir is treated as absent need.
+  }
+  return false;
 }
 
 function markLoaded(): void {
@@ -539,6 +569,7 @@ export default function (pi: ExtensionAPI) {
     if (generation.stopping) generation = createGeneration();
     activateGeneration(generation);
     markLoaded();
+    if (!awayModeActive() && supervisionNeeded()) startArm(generation);
   });
   pi.on?.("session_shutdown", () => {
     stopGeneration(generation);
@@ -558,7 +589,7 @@ export default function (pi: ExtensionAPI) {
     description: "Start the first required Pi watcher cycle, or repair one only after a notification says the cycle is missing, failed, or unhealthy. Do not call after ordinary work or ordinary notifications; the Pi extension re-arms automatically. Never run bin/fm-watch-arm.sh through bash.",
     promptSnippet: "Start the first required Pi watcher cycle or repair a cycle reported missing, failed, or unhealthy; ordinary re-arming is automatic.",
     promptGuidelines: [
-      "Call fm_watch_arm_pi only for the first required cycle or after a notification says the cycle is missing, failed, or unhealthy. Do not call it after ordinary work, turn completion, or ordinary signal, stale, check, or heartbeat handling because the Pi extension owns re-arming. Never run bin/fm-watch-arm.sh through bash.",
+      "Call fm_watch_arm_pi only if the first required cycle did not start, or after a notification says the cycle is missing, failed, or unhealthy. Do not call it after ordinary work, turn completion, or ordinary signal, stale, check, or heartbeat handling because the Pi extension owns first-cycle startup and re-arming. Never run bin/fm-watch-arm.sh through bash.",
     ],
     parameters: Type.Object({}),
     renderShell: "self",
