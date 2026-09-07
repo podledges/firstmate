@@ -4,14 +4,14 @@ When this session owns supervision and away mode is not active:
 1. Drain first with `bin/fm-wake-drain.sh`.
    After handling all emitted wakes and reconciling open decisions and unread status lines, run the exact `--ack-through` command printed as `WAKE_ACK_REQUIRED`; until then the work remains durable for idempotent re-handling after interruption.
 2. Confirm the Pi primary auto-loaded both project extensions (plain `pi` or `pi-signed`, after approving project trust once per clone); if not, restart the selected executable with `-e __FM_PI_TURNEND_EXT__ -e __FM_PI_EXT__` as a trust-free fallback.
-3. The extension starts the first required cycle on `session_start` when this session holds the lock, away mode is inactive, and work, a process-event source, or Relay needs supervision.
+3. The extension starts the first required cycle at `resources_discover`, after all `session_start` handlers have completed, when this session holds the lock, away mode is inactive, and work, a process-event source, or Relay needs supervision.
    Idle homes with no work and no Relay stay unarmed.
    Compaction is not a session replacement and does not start a new generation.
    Use `/fm-watch-arm-pi` only as a human-entered fallback.
    Never run `bin/fm-watch-arm.sh` through Pi's bash tool because that foreground arm can wedge the agent and bypasses extension-owned cleanup.
 4. If a later notification says no live session holds the lock, run `bin/fm-session-start.sh` to reclaim the session lock, then call `fm_watch_arm_pi` once.
 5. The extension starts `bin/fm-watch-arm.sh --restart`, keeps the child attached to the live Pi process, and owns every later successor launch.
-6. Ordinary same-process session replacement (`/new`, `/resume`, `/fork`, reload) retires only the prior generation; the replacement `session_start` starts the first cycle of the new generation when eligible, without restarting Pi and without a model arm call.
+6. Ordinary same-process session replacement (`/new`, `/resume`, `/fork`, reload) retires only the prior generation; the replacement's post-startup resource discovery starts the first cycle of the new generation when eligible, without restarting Pi and without a model arm call.
    The generation-owner contract lives in `.pi/extensions/fm-primary-pi-watch.ts`.
 7. After an actionable child close, the extension rechecks session-lock ownership and verifies one successor before it delivers the follow-up wake; its bounded fallback is defined in `docs/watcher-continuity.md`.
 8. Ordinary work, turn completion, and ordinary signal, stale, check, heartbeat, or other wake handling: do not call `fm_watch_arm_pi` because continuity is extension-owned rather than model-memory-owned.

@@ -6,7 +6,7 @@
 // session activation. Only the active live generation may start, stop, rearm, or
 // clear the arm child. Replacement session_start (or a fresh factory bind) activates
 // a new live generation so monitoring can arm again without restarting Pi.
-// Eligible session_start, never the factory, starts that generation's first cycle
+// Post-session_start resources_discover, never the factory, starts the first cycle
 // after lock, away-mode, and supervision-need checks. Compaction is not a replacement
 // and does not start a new generation. Terminal quit leaves the final generation
 // stopped so late callbacks cannot rearm. Stale callbacks from a prior generation
@@ -569,6 +569,8 @@ export default function (pi: ExtensionAPI) {
     if (generation.stopping) generation = createGeneration();
     activateGeneration(generation);
     markLoaded();
+  });
+  pi.on?.("resources_discover", () => {
     if (!awayModeActive() && supervisionNeeded()) startArm(generation);
   });
   pi.on?.("session_shutdown", () => {

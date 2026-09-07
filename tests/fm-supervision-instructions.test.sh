@@ -78,7 +78,7 @@ test_cross_harness_ordinary_continuation_and_repair_matrix() {
   ordinary=$(printf '%s\n' "$out" | grep -F -- '- Ordinary wake:')
   assert_contains "$ordinary" "owns first-cycle startup and later watcher continuity" "pi ordinary-wake line does not leave first-cycle startup and continuity to the extension"
   assert_not_contains "$ordinary" "fm_watch_arm_pi" "pi ordinary-wake line incorrectly calls the recovery tool"
-  assert_contains "$out" "starts the first required cycle on \`session_start\`" "pi protocol lost extension-owned first-cycle startup"
+  assert_contains "$out" "starts the first required cycle at \`resources_discover\`, after all \`session_start\` handlers have completed" "pi protocol lost extension-owned first-cycle startup"
   assert_not_contains "$out" "First cycle only: make the one required" "pi protocol still required a model first-cycle arm"
   assert_not_contains "$out" "call \`fm_watch_arm_pi\` once for the first cycle of the replacement" "pi protocol still required a model replacement first-cycle arm"
   out=$("$RENDER" --harness pi --repair-line)

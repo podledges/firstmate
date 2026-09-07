@@ -1162,6 +1162,108 @@ EOF
   pass "Pi session transitions use a generation owner across /new /resume /fork, stale callbacks, and quit"
 }
 
+test_pi_first_cycle_waits_for_startup_owner() {
+  local repo home out status
+  repo="$TMP_ROOT/pi-startup-order-root"
+  home="$TMP_ROOT/pi-startup-order-home"
+  mkdir -p "$repo/bin" "$home/state" "$home/config"
+  install_pi_watch_extension_fixture "$repo"
+  cp "$ROOT/.pi/extensions/fm-primary-turnend-guard.ts" "$repo/.pi/extensions/"
+  cp "$ROOT/bin/fm-lock.sh" "$ROOT/bin/fm-session-lock-lib.sh" \
+    "$ROOT/bin/fm-cursor-lib.sh" "$ROOT/bin/fm-wake-lib.sh" "$repo/bin/"
+  cat > "$repo/bin/fm-sessionstart-run.sh" <<'SH'
+#!/usr/bin/env bash
+sleep 0.05
+exec "$(dirname "$0")/fm-lock.sh"
+SH
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$$" >> "$FM_HOME/arms"
+printf 'watcher: started pid=%s\n' "$$"
+trap 'exit 0' TERM INT
+while :; do sleep 0.02; done
+SH
+  chmod +x "$repo/bin/"*.sh
+  out=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" node --input-type=module 2>&1 <<'EOF'
+import assert from "node:assert/strict";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+process.title = "pi";
+const root = process.env.FM_ROOT_OVERRIDE;
+const home = process.env.FM_HOME;
+const watch = await import(pathToFileURL(`${root}/.pi/extensions/fm-primary-pi-watch.ts`).href);
+const guard = await import(pathToFileURL(`${root}/.pi/extensions/fm-primary-turnend-guard.ts`).href);
+const lock = `${home}/state/.lock`;
+writeFileSync(`${home}/state/task.meta`, "kind=ship\n");
+const arms = () => existsSync(`${home}/arms`)
+  ? readFileSync(`${home}/arms`, "utf8").trim().split("\n").filter(Boolean) : [];
+const alive = (pid) => {
+  try { process.kill(Number(pid), 0); return true; } catch { return false; }
+};
+async function waitFor(predicate) {
+  for (let i = 0; i < 250; i++) {
+    if (predicate()) return;
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  throw new Error("startup-owner integration timed out");
+}
+
+for (const order of [[watch, guard], [guard, watch]]) {
+  for (const initial of ["absent", "stale"]) {
+    for (const reason of ["startup", "new"]) {
+      if (existsSync(lock)) unlinkSync(lock);
+      if (initial === "stale") {
+        assert.equal(alive(2147483647), false);
+        writeFileSync(lock, "2147483647\n");
+      }
+      const handlers = new Map();
+      const messages = [];
+      const pi = {
+        on(name, handler) {
+          const list = handlers.get(name) ?? [];
+          list.push(handler);
+          handlers.set(name, list);
+        },
+        registerTool() {}, registerCommand() {},
+        events: { on() {} },
+        sendMessage(message) { messages.push(message.content); },
+        sendUserMessage() { throw new Error("unexpected watcher failure"); },
+      };
+      async function emit(type, reason) {
+        for (const handler of handlers.get(type) ?? []) await handler({ type, reason }, {});
+      }
+      const before = arms().length;
+      for (const extension of order) extension.default(pi);
+      try {
+        await emit("session_start", reason);
+        assert.equal(readFileSync(lock, "utf8").trim(), String(process.pid));
+        assert.ok(messages.some(message => message.includes("lock acquired: harness pid")));
+        await emit("resources_discover", "startup");
+        await waitFor(() => arms().length === before + 1);
+        await emit("resources_discover", "startup");
+        await emit("session_compact", "manual");
+        await new Promise(resolve => setTimeout(resolve, 100));
+        assert.equal(arms().length, before + 1, `${initial}/${reason}: duplicate arm`);
+        assert.equal(arms().filter(alive).length, 1);
+      } finally {
+        await emit("session_shutdown", "quit");
+        await waitFor(() => arms().every(pid => !alive(pid)));
+      }
+      await emit("resources_discover", "startup");
+      await new Promise(resolve => setTimeout(resolve, 50));
+      assert.equal(arms().length, before + 1, "late discovery armed a stopped generation");
+    }
+  }
+}
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "Pi first-arm must follow startup lock acquisition in either extension order"
+  [ -z "$out" ] || fail "Pi startup-owner integration printed output: $out"
+  pass "Pi startup owners coordinate both orders with absent and stale locks"
+}
+
 test_pi_session_start_first_cycle_eligibility() {
   local repo home plugin child_pid_file arm_log out status
   repo="$TMP_ROOT/pi-first-cycle-root"
@@ -1190,7 +1292,13 @@ function makePi() {
   let tool = null;
   const pi = {
     on(event, handler) {
-      handlers.set(event, handler);
+      handlers.set(event, event === "session_start" ? async (event, ctx) => {
+        await handler(event, ctx);
+        await handlers.get("resources_discover")?.({
+          type: "resources_discover",
+          reason: event.reason === "reload" ? "reload" : "startup",
+        }, ctx);
+      } : handler);
     },
     registerCommand() {},
     registerTool(candidate) {
@@ -2497,6 +2605,7 @@ test_pi_actionable_close_rechecks_session_lock
 test_pi_arm_distinguishes_session_lock_ownership
 test_pi_session_transition_generation_owner
 test_pi_session_start_first_cycle_eligibility
+test_pi_first_cycle_waits_for_startup_owner
 test_pi_process_exit_cleanup_listener_lifecycle
 test_pi_process_exit_cleanup_stops_arm_child
 test_opencode_plugin_package_boundary_is_explicit_esm
