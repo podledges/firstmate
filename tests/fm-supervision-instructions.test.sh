@@ -76,8 +76,11 @@ test_cross_harness_ordinary_continuation_and_repair_matrix() {
 
   out=$("$RENDER" --harness pi)
   ordinary=$(printf '%s\n' "$out" | grep -F -- '- Ordinary wake:')
-  assert_contains "$ordinary" "Pi extension already owns watcher continuity" "pi ordinary-wake line does not leave continuity to the extension"
+  assert_contains "$ordinary" "owns first-cycle startup and later watcher continuity" "pi ordinary-wake line does not leave first-cycle startup and continuity to the extension"
   assert_not_contains "$ordinary" "fm_watch_arm_pi" "pi ordinary-wake line incorrectly calls the recovery tool"
+  assert_contains "$out" "starts the first required cycle at \`resources_discover\`, after all \`session_start\` handlers have completed" "pi protocol lost extension-owned first-cycle startup"
+  assert_not_contains "$out" "First cycle only: make the one required" "pi protocol still required a model first-cycle arm"
+  assert_not_contains "$out" "call \`fm_watch_arm_pi\` once for the first cycle of the replacement" "pi protocol still required a model replacement first-cycle arm"
   out=$("$RENDER" --harness pi --repair-line)
   assert_contains "$out" "fm_watch_arm_pi" "pi recovery line lost the extension-owned repair tool"
 
@@ -128,7 +131,7 @@ test_pi_signed_preserves_identity_with_pi_supervision_protocol() {
   assert_contains "$out" "Mode: Pi extension background wake." \
     "pi-signed did not reuse Pi's authoritative supervision protocol"
   ordinary=$(printf '%s\n' "$out" | grep -F -- '- Ordinary wake:')
-  assert_contains "$ordinary" "Pi extension already owns watcher continuity" \
+  assert_contains "$ordinary" "owns first-cycle startup and later watcher continuity" \
     "pi-signed ordinary-wake semantics diverged from Pi"
   out=$("$RENDER" --harness pi-signed --repair-line)
   assert_contains "$out" "Pi tool fm_watch_arm_pi" \

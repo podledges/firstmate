@@ -324,11 +324,14 @@ export default function (pi: ExtensionAPI) {
 
   pi.on?.("session_start", async (event, ctx) => {
     const reason = String((event as { reason?: unknown }).reason ?? "");
-    const source = reason === "startup"
+    let source = reason === "startup"
       ? startupRebuildSource(ctx) ?? "startup"
-      : { new: "clear", resume: "resume", fork: "fork" }[reason];
+      : { new: "clear", resume: "resume", fork: "fork", reload: "reload" }[reason];
     markLoaded();
     if (!source) return;
+    if (["resume", "fork", "reload"].includes(source) && lockOwnership() === "missing") {
+      source = "startup";
+    }
     await injectSessionstart(pi, source);
   });
 

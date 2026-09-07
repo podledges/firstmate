@@ -1162,6 +1162,361 @@ EOF
   pass "Pi session transitions use a generation owner across /new /resume /fork, stale callbacks, and quit"
 }
 
+test_pi_first_cycle_waits_for_startup_owner() {
+  local repo home out status
+  repo="$TMP_ROOT/pi-startup-order-root"
+  home="$repo"
+  mkdir -p "$repo/bin" "$home/state" "$home/config" "$home/data" "$repo/docs"
+  git init -q "$repo"
+  : > "$repo/AGENTS.md"
+  install_pi_watch_extension_fixture "$repo"
+  cp "$ROOT/.pi/extensions/fm-primary-turnend-guard.ts" "$repo/.pi/extensions/"
+  cp -R "$ROOT/bin/." "$repo/bin/"
+  cp -R "$ROOT/docs/supervision-protocols" "$repo/docs/"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$repo/bin/fm-bootstrap.sh"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$repo/bin/fm-startup-network.sh"
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$$" >> "$FM_HOME/arms"
+printf 'watcher: started pid=%s\n' "$$"
+trap 'exit 0' TERM INT
+while :; do sleep 0.02; done
+SH
+  chmod +x "$repo/bin/"*.sh
+  out=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" PI_CODING_AGENT=true node --input-type=module 2>&1 <<'EOF'
+import assert from "node:assert/strict";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+process.title = "pi";
+delete process.env.NO_MISTAKES_GATE;
+delete process.env.CLAUDECODE;
+const root = process.env.FM_ROOT_OVERRIDE;
+const home = process.env.FM_HOME;
+const watch = await import(pathToFileURL(`${root}/.pi/extensions/fm-primary-pi-watch.ts`).href);
+const guard = await import(pathToFileURL(`${root}/.pi/extensions/fm-primary-turnend-guard.ts`).href);
+const lock = `${home}/state/.lock`;
+writeFileSync(`${home}/state/task.meta`, "kind=ship\n");
+const arms = () => existsSync(`${home}/arms`)
+  ? readFileSync(`${home}/arms`, "utf8").trim().split("\n").filter(Boolean) : [];
+const alive = (pid) => {
+  try { process.kill(Number(pid), 0); return true; } catch { return false; }
+};
+async function waitFor(predicate) {
+  for (let i = 0; i < 250; i++) {
+    if (predicate()) return;
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  throw new Error("startup-owner integration timed out");
+}
+
+for (const order of [[watch, guard], [guard, watch]]) {
+  for (const initial of ["absent", "stale"]) {
+    for (const [reason, args] of [
+      ["startup", []], ["new", []], ["resume", []], ["fork", []], ["reload", []],
+      ["startup", ["--resume"]], ["startup", ["--continue"]],
+    ]) {
+      process.argv.splice(1, process.argv.length, "pi", ...args);
+      if (existsSync(lock)) unlinkSync(lock);
+      if (initial === "stale") {
+        assert.equal(alive(2147483647), false);
+        writeFileSync(lock, "2147483647\n");
+      }
+      const handlers = new Map();
+      const messages = [];
+      const pi = {
+        on(name, handler) {
+          const list = handlers.get(name) ?? [];
+          list.push(handler);
+          handlers.set(name, list);
+        },
+        registerTool() {}, registerCommand() {},
+        events: { on() {} },
+        sendMessage(message) { messages.push(message.content); },
+        sendUserMessage() { throw new Error("unexpected watcher failure"); },
+      };
+      async function emit(type, reason) {
+        for (const handler of handlers.get(type) ?? []) await handler({ type, reason }, {
+          sessionManager: { getHeader: () => ({ timestamp: "2000-01-01T00:00:00.000Z" }) },
+        });
+      }
+      const before = arms().length;
+      for (const extension of order) extension.default(pi);
+      try {
+        await emit("session_start", reason);
+        assert.equal(readFileSync(lock, "utf8").trim(), String(process.pid));
+        assert.ok(messages.some(message => message.includes("SESSION START - ")));
+        assert.ok(messages.some(message => message.includes("lock acquired: harness pid")));
+        assert.equal(readFileSync(`${home}/state/.session-start-complete`, "utf8").trim(), String(process.pid));
+        await emit("resources_discover", "startup");
+        await waitFor(() => arms().length === before + 1);
+        await emit("resources_discover", "startup");
+        if (args.length || ["resume", "fork", "reload"].includes(reason)) {
+          const beforeMessages = messages.length;
+          await emit("session_start", reason);
+          await emit("resources_discover", "startup");
+          assert.equal(messages.length, beforeMessages, "owned restored session reran startup");
+        }
+        await emit("session_compact", "manual");
+        await new Promise(resolve => setTimeout(resolve, 100));
+        assert.equal(arms().length, before + 1, `${initial}/${reason}: duplicate arm`);
+        assert.equal(arms().filter(alive).length, 1);
+      } finally {
+        await emit("session_shutdown", "quit");
+        await waitFor(() => arms().every(pid => !alive(pid)));
+      }
+      await emit("resources_discover", "startup");
+      await new Promise(resolve => setTimeout(resolve, 50));
+      assert.equal(arms().length, before + 1, "late discovery armed a stopped generation");
+    }
+  }
+}
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "Pi first-arm must follow startup lock acquisition in either extension order"
+  [ -z "$out" ] || fail "Pi startup-owner integration printed output: $out"
+  pass "Pi startup owners acquire absent and stale locks across restored-session routes in both orders"
+}
+
+test_pi_session_start_first_cycle_eligibility() {
+  local repo home plugin child_pid_file arm_log out status
+  repo="$TMP_ROOT/pi-first-cycle-root"
+  home="$TMP_ROOT/pi-first-cycle-home"
+  child_pid_file="$TMP_ROOT/pi-first-cycle-child.pid"
+  arm_log="$TMP_ROOT/pi-first-cycle-arm.log"
+  mkdir -p "$repo/bin" "$home/state" "$home/config"
+  install_pi_watch_extension_fixture "$repo"
+  plugin="$repo/.pi/extensions/fm-primary-pi-watch.ts"
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'watcher: started pid=%s\n' "$$"
+printf '%s\n' "$$" > "${FM_CHILD_PID_FILE:?}"
+printf 'arm pid=%s\n' "$$" >> "${FM_ARM_LOG:?}"
+trap 'exit 0' TERM INT
+while :; do sleep 0.2; done
+SH
+  chmod +x "$repo/bin/fm-watch-arm.sh"
+  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_CHILD_PID_FILE="$child_pid_file" FM_ARM_LOG="$arm_log" FM_WATCH_REARM_RETRY_BASE_MS=5 FM_WATCH_REARM_RETRY_MAX_MS=10 FM_WATCH_REARM_RETRY_LIMIT=2 node --input-type=module 2>&1 <<'EOF'
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { pathToFileURL } from "node:url";
+
+function makePi() {
+  const handlers = new Map();
+  let tool = null;
+  const pi = {
+    on(event, handler) {
+      handlers.set(event, event === "session_start" ? async (event, ctx) => {
+        await handler(event, ctx);
+        await handlers.get("resources_discover")?.({
+          type: "resources_discover",
+          reason: event.reason === "reload" ? "reload" : "startup",
+        }, ctx);
+      } : handler);
+    },
+    registerCommand() {},
+    registerTool(candidate) {
+      if (candidate.name === "fm_watch_arm_pi") tool = candidate;
+    },
+    sendUserMessage: async () => {},
+    events: { on() {} },
+  };
+  return { pi, handlers, getTool: () => tool };
+}
+
+function pidAlive(pid) {
+  try {
+    process.kill(Number(pid), 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function waitFor(pred, label, attempts = 250) {
+  for (let i = 0; i < attempts; i += 1) {
+    if (pred()) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`timeout waiting for ${label}`);
+}
+
+function liveArmPids() {
+  if (!existsSync(process.env.FM_ARM_LOG)) return [];
+  return readFileSync(process.env.FM_ARM_LOG, "utf8")
+    .trim()
+    .split(/\n/)
+    .filter(Boolean)
+    .map((line) => {
+      const match = /pid=(\d+)/.exec(line);
+      return match ? match[1] : "";
+    })
+    .filter(Boolean)
+    .filter(pidAlive);
+}
+
+function armCount() {
+  if (!existsSync(process.env.FM_ARM_LOG)) return 0;
+  return readFileSync(process.env.FM_ARM_LOG, "utf8").trim().split(/\n/).filter(Boolean).length;
+}
+
+const state = `${process.env.FM_HOME}/state`;
+const lock = `${state}/.lock`;
+const meta = `${state}/task.meta`;
+const afk = `${state}/.afk`;
+const relay = `${state}/x-watch.check.sh`;
+const sourceDir = `${state}/procevent`;
+const source = `${sourceDir}/wait.source`;
+
+function setNeed(kind) {
+  if (existsSync(meta)) unlinkSync(meta);
+  if (existsSync(relay)) unlinkSync(relay);
+  if (existsSync(source)) unlinkSync(source);
+  if (kind === "meta") writeFileSync(meta, "kind=ship\n");
+  if (kind === "relay") writeFileSync(relay, "#!/bin/sh\n");
+  if (kind === "source") {
+    mkdirSync(sourceDir, { recursive: true });
+    writeFileSync(source, "id=wait\n");
+  }
+}
+
+writeFileSync(lock, `${process.pid}\n`);
+writeFileSync(meta, "kind=ship\n");
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+
+const factoryOnly = makePi();
+mod.default(factoryOnly.pi);
+await new Promise((resolve) => setTimeout(resolve, 80));
+if (armCount() !== 0) throw new Error("factory bind armed before session_start");
+
+await factoryOnly.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, {});
+await waitFor(() => liveArmPids().length === 1, "startup first cycle with work");
+if (armCount() !== 1) throw new Error(`startup first cycle spawned ${armCount()} arms`);
+const startupChild = readFileSync(process.env.FM_CHILD_PID_FILE, "utf8").trim();
+
+await factoryOnly.handlers.get("session_compact")?.({ type: "session_compact" }, {});
+await factoryOnly.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, {});
+await new Promise((resolve) => setTimeout(resolve, 80));
+if (liveArmPids().length !== 1 || liveArmPids()[0] !== startupChild) {
+  throw new Error(`compaction or repeat session_start mutated the live cycle: ${liveArmPids().join(",")}`);
+}
+if (armCount() !== 1) throw new Error(`compaction started a new generation: ${armCount()} arms`);
+
+async function replaceSession(previous, reason) {
+  const previousChild = existsSync(process.env.FM_CHILD_PID_FILE)
+    ? readFileSync(process.env.FM_CHILD_PID_FILE, "utf8").trim()
+    : "";
+  await previous.handlers.get("session_shutdown")?.({ type: "session_shutdown", reason }, {});
+  if (previousChild) {
+    await waitFor(() => !pidAlive(previousChild), `${reason} previous child exit`);
+  }
+  const next = makePi();
+  mod.default(next.pi);
+  const before = armCount();
+  await next.handlers.get("session_start")?.({
+    type: "session_start",
+    reason,
+    previousSessionFile: `/tmp/previous-${reason}.jsonl`,
+  }, {});
+  await waitFor(() => {
+    if (!existsSync(process.env.FM_CHILD_PID_FILE)) return false;
+    const child = readFileSync(process.env.FM_CHILD_PID_FILE, "utf8").trim();
+    return child && child !== previousChild && pidAlive(child);
+  }, `${reason} auto first cycle`);
+  if (armCount() !== before + 1) {
+    throw new Error(`${reason} expected exactly one new first cycle, got ${armCount() - before}`);
+  }
+  const live = liveArmPids();
+  if (live.length !== 1) {
+    throw new Error(`${reason} expected exactly one live arm child, got ${live.join(",") || "(none)"}`);
+  }
+  return next;
+}
+
+let current = await replaceSession(factoryOnly, "new");
+current = await replaceSession(current, "resume");
+current = await replaceSession(current, "fork");
+current = await replaceSession(current, "reload");
+
+const sameInstanceChild = readFileSync(process.env.FM_CHILD_PID_FILE, "utf8").trim();
+await current.handlers.get("session_shutdown")?.({ type: "session_shutdown", reason: "new" }, {});
+await waitFor(() => !pidAlive(sameInstanceChild), "same-instance previous child exit");
+await current.handlers.get("session_start")?.({ type: "session_start", reason: "new" }, {});
+await waitFor(() => {
+  if (!existsSync(process.env.FM_CHILD_PID_FILE)) return false;
+  const child = readFileSync(process.env.FM_CHILD_PID_FILE, "utf8").trim();
+  return child !== sameInstanceChild && pidAlive(child);
+}, "same-instance auto first cycle");
+if (liveArmPids().length !== 1) {
+  throw new Error(`same-instance expected one live arm child, got ${liveArmPids().join(",")}`);
+}
+
+const activeChild = readFileSync(process.env.FM_CHILD_PID_FILE, "utf8").trim();
+await current.handlers.get("session_shutdown")?.({ type: "session_shutdown", reason: "quit" }, {});
+await waitFor(() => !pidAlive(activeChild), "quit before negatives");
+
+const negative = makePi();
+mod.default(negative.pi);
+const afterQuit = armCount();
+setNeed("meta");
+if (existsSync(lock)) unlinkSync(lock);
+await negative.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, {});
+await new Promise((resolve) => setTimeout(resolve, 80));
+if (armCount() !== afterQuit) throw new Error("missing lock still auto-armed");
+
+const other = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+try {
+  writeFileSync(lock, `${other.pid}\n`);
+  await negative.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, {});
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  if (armCount() !== afterQuit) throw new Error("other lock holder still auto-armed");
+} finally {
+  other.kill("SIGTERM");
+}
+
+writeFileSync(lock, `${process.pid}\n`);
+writeFileSync(afk, "away\n");
+await negative.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, {});
+await new Promise((resolve) => setTimeout(resolve, 80));
+if (armCount() !== afterQuit) throw new Error("away mode still auto-armed");
+unlinkSync(afk);
+
+setNeed("");
+await negative.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, {});
+await new Promise((resolve) => setTimeout(resolve, 80));
+if (armCount() !== afterQuit) throw new Error("no-work/no-Relay home still auto-armed");
+
+setNeed("relay");
+await negative.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, {});
+await waitFor(() => liveArmPids().length === 1, "Relay-only first cycle");
+const relayChild = readFileSync(process.env.FM_CHILD_PID_FILE, "utf8").trim();
+await negative.handlers.get("session_shutdown")?.({ type: "session_shutdown", reason: "new" }, {});
+await waitFor(() => !pidAlive(relayChild), "Relay child exit");
+
+const sourcePi = makePi();
+mod.default(sourcePi.pi);
+setNeed("source");
+await sourcePi.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, {});
+await waitFor(() => {
+  if (!existsSync(process.env.FM_CHILD_PID_FILE)) return false;
+  const child = readFileSync(process.env.FM_CHILD_PID_FILE, "utf8").trim();
+  return child && child !== relayChild && pidAlive(child);
+}, "process-event first cycle");
+if (liveArmPids().length !== 1) {
+  throw new Error(`process-event expected one live arm child, got ${liveArmPids().join(",")}`);
+}
+const sourceChild = readFileSync(process.env.FM_CHILD_PID_FILE, "utf8").trim();
+await sourcePi.handlers.get("session_shutdown")?.({ type: "session_shutdown", reason: "quit" }, {});
+await waitFor(() => !pidAlive(sourceChild), "process-event child exit");
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "Pi session_start must start exactly one eligible first cycle"
+  [ -z "$out" ] || fail "Pi first-cycle eligibility test printed output: $out"
+  pass "Pi session_start starts one eligible first cycle and skips lock, AFK, idle, factory, and compaction paths"
+}
+
 test_pi_process_exit_cleanup_listener_lifecycle() {
   local repo home plugin out status
   repo="$TMP_ROOT/pi-exit-listener-root"
@@ -2264,6 +2619,8 @@ test_pi_established_empty_close_honors_retry_limit
 test_pi_actionable_close_rechecks_session_lock
 test_pi_arm_distinguishes_session_lock_ownership
 test_pi_session_transition_generation_owner
+test_pi_session_start_first_cycle_eligibility
+test_pi_first_cycle_waits_for_startup_owner
 test_pi_process_exit_cleanup_listener_lifecycle
 test_pi_process_exit_cleanup_stops_arm_child
 test_opencode_plugin_package_boundary_is_explicit_esm
