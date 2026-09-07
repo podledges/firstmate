@@ -345,6 +345,8 @@ SH
     FM_HOME="$fixture" FM_ROOT_OVERRIDE="$fixture" \
     node --input-type=module 2>&1 <<'JS'
 import { pathToFileURL } from "node:url";
+import { writeFileSync } from "node:fs";
+writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
 const handlers = new Map();
 const pi = {
   on(event, handler) { handlers.set(event, handler); },

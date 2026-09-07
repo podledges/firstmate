@@ -1165,17 +1165,16 @@ EOF
 test_pi_first_cycle_waits_for_startup_owner() {
   local repo home out status
   repo="$TMP_ROOT/pi-startup-order-root"
-  home="$TMP_ROOT/pi-startup-order-home"
-  mkdir -p "$repo/bin" "$home/state" "$home/config"
+  home="$repo"
+  mkdir -p "$repo/bin" "$home/state" "$home/config" "$home/data" "$repo/docs"
+  git init -q "$repo"
+  : > "$repo/AGENTS.md"
   install_pi_watch_extension_fixture "$repo"
   cp "$ROOT/.pi/extensions/fm-primary-turnend-guard.ts" "$repo/.pi/extensions/"
-  cp "$ROOT/bin/fm-lock.sh" "$ROOT/bin/fm-session-lock-lib.sh" \
-    "$ROOT/bin/fm-cursor-lib.sh" "$ROOT/bin/fm-wake-lib.sh" "$repo/bin/"
-  cat > "$repo/bin/fm-sessionstart-run.sh" <<'SH'
-#!/usr/bin/env bash
-sleep 0.05
-exec "$(dirname "$0")/fm-lock.sh"
-SH
+  cp -R "$ROOT/bin/." "$repo/bin/"
+  cp -R "$ROOT/docs/supervision-protocols" "$repo/docs/"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$repo/bin/fm-bootstrap.sh"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$repo/bin/fm-startup-network.sh"
   cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$$" >> "$FM_HOME/arms"
@@ -1184,12 +1183,14 @@ trap 'exit 0' TERM INT
 while :; do sleep 0.02; done
 SH
   chmod +x "$repo/bin/"*.sh
-  out=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" node --input-type=module 2>&1 <<'EOF'
+  out=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" PI_CODING_AGENT=true node --input-type=module 2>&1 <<'EOF'
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 process.title = "pi";
+delete process.env.NO_MISTAKES_GATE;
+delete process.env.CLAUDECODE;
 const root = process.env.FM_ROOT_OVERRIDE;
 const home = process.env.FM_HOME;
 const watch = await import(pathToFileURL(`${root}/.pi/extensions/fm-primary-pi-watch.ts`).href);
@@ -1211,7 +1212,11 @@ async function waitFor(predicate) {
 
 for (const order of [[watch, guard], [guard, watch]]) {
   for (const initial of ["absent", "stale"]) {
-    for (const reason of ["startup", "new"]) {
+    for (const [reason, args] of [
+      ["startup", []], ["new", []], ["resume", []], ["fork", []], ["reload", []],
+      ["startup", ["--resume"]], ["startup", ["--continue"]],
+    ]) {
+      process.argv.splice(1, process.argv.length, "pi", ...args);
       if (existsSync(lock)) unlinkSync(lock);
       if (initial === "stale") {
         assert.equal(alive(2147483647), false);
@@ -1231,17 +1236,27 @@ for (const order of [[watch, guard], [guard, watch]]) {
         sendUserMessage() { throw new Error("unexpected watcher failure"); },
       };
       async function emit(type, reason) {
-        for (const handler of handlers.get(type) ?? []) await handler({ type, reason }, {});
+        for (const handler of handlers.get(type) ?? []) await handler({ type, reason }, {
+          sessionManager: { getHeader: () => ({ timestamp: "2000-01-01T00:00:00.000Z" }) },
+        });
       }
       const before = arms().length;
       for (const extension of order) extension.default(pi);
       try {
         await emit("session_start", reason);
         assert.equal(readFileSync(lock, "utf8").trim(), String(process.pid));
+        assert.ok(messages.some(message => message.includes("SESSION START - ")));
         assert.ok(messages.some(message => message.includes("lock acquired: harness pid")));
+        assert.equal(readFileSync(`${home}/state/.session-start-complete`, "utf8").trim(), String(process.pid));
         await emit("resources_discover", "startup");
         await waitFor(() => arms().length === before + 1);
         await emit("resources_discover", "startup");
+        if (args.length || ["resume", "fork", "reload"].includes(reason)) {
+          const beforeMessages = messages.length;
+          await emit("session_start", reason);
+          await emit("resources_discover", "startup");
+          assert.equal(messages.length, beforeMessages, "owned restored session reran startup");
+        }
         await emit("session_compact", "manual");
         await new Promise(resolve => setTimeout(resolve, 100));
         assert.equal(arms().length, before + 1, `${initial}/${reason}: duplicate arm`);
@@ -1261,7 +1276,7 @@ EOF
   status=$?
   expect_code 0 "$status" "Pi first-arm must follow startup lock acquisition in either extension order"
   [ -z "$out" ] || fail "Pi startup-owner integration printed output: $out"
-  pass "Pi startup owners coordinate both orders with absent and stale locks"
+  pass "Pi startup owners acquire absent and stale locks across restored-session routes in both orders"
 }
 
 test_pi_session_start_first_cycle_eligibility() {
