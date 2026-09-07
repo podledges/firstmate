@@ -10,8 +10,7 @@ OpenCode's `.opencode/plugins/fm-primary-watch-arm.js` owns continuous re-arm af
 Each adapter starts the next arm before delivering the wake prompt, checks current session-lock ownership at launch, preserves one child or scheduled retry at a time, and applies bounded exponential retry after an unexpected or failed close.
 A failed follow-up never cancels continuity restoration.
 Pi same-process session replacement follows the generation-owner contract in `.pi/extensions/fm-primary-pi-watch.ts`.
-Pi awaits all `session_start` handlers, including the turn-end extension's startup hook, before `resources_discover` checks first-arm eligibility, so extension loading order cannot race startup lock acquisition.
-Compaction is not a replacement and does not start a cycle.
+The [Pi supervision protocol](supervision-protocols/pi.md) owns first-arm eligibility, startup ordering, and the compaction distinction.
 Cursor's `.cursor/hooks.json` `stop` hook (`bin/fm-turnend-guard-cursor.sh`) owns routine tokenless re-arm for a Cursor primary by parking that awaited hook on `bin/fm-watch-arm.sh` and returning an actionable close as one follow-up; [`turnend-guard.md`](turnend-guard.md#harness-integrations) owns its loop bounds and supersession baton.
 Claude's `.claude/settings.json` Stop `asyncRewake` hook (`bin/fm-claude-stop-autoarm.sh`) owns routine tokenless re-arm.
 The hook fires on every Stop, and an eligible primary with supervision need admits one home-scoped owner that foregrounds `bin/fm-watch-arm.sh` inside the hook-owned process tree.

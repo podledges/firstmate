@@ -23,7 +23,7 @@ It takes `--source <name>` when the adapter knows the source natively, and other
 
 | Source | Action | Why |
 | --- | --- | --- |
-| `startup`, `new` | Full digest | This is a true session start that has not taken the helm; Pi CLI continuations are refined to `resume` when prior context is restored, but a missing or stale lock routes a restored Pi session to `startup` before reaching this boundary. |
+| `startup`, `new` | Full digest | This is a true session start that has not taken the helm; the Pi-specific source refinement is described under Harness transports below. |
 | `clear`, `compact` | `--reemit` after a proven complete startup, otherwise full digest | This process normally has the helm and lost only its context, but an earlier hook may have been truncated after acquiring the lock. |
 | `resume`, `reload`, `fork` | Delegate to the nudge wrapper | Prior context is restored, so re-running is redundant when the lock is still ours and an instruction is enough when a new process resumed an old session. |
 | unreadable or unrecognized | Full digest | Taking the helm redundantly is cheap and idempotent; not taking it is the bug this tier exists to fix. |
