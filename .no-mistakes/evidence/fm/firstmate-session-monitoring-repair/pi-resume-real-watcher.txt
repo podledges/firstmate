@@ -1,0 +1,34 @@
+Isolated executable-interface acceptance check. Pi event dispatch/UI are simulated; both tracked extensions, session-start routing/lock acquisition, watch-arm, watcher, inbox and wake persistence are real. Bootstrap and deferred network are disabled in the disposable fixture. No production process or Herdr runtime is used.
+
+Restored --continue session started with a stale lock. Actual startup acquired lock PID 2284482 and published matching completion receipt.
+
+Automatic first watcher: PID 2285675, live=true, beacon exists. No arm tool invocation.
+
+Compaction and repeated discovery retained watcher PID 2285675.
+
+$ fm-inbox.sh note 'Acceptance check: monitoring resumed without a manual arm.'
+queued 1788814628-w4Xcjz
+  Acceptance check: monitoring resumed without a manual arm.
+  firstmate will pick this up at its next check.
+
+
+Pi operational notification:
+⁣FIRSTMATE_OP: v1 watcher: FIRSTMATE WATCHER WAKE: check: rearm-resurface
+
+Run bin/fm-wake-drain.sh first and handle the queued wake. Watcher continuity is extension-owned.
+Watcher PID at delivery: 2288220; live=true
+
+Durable wake queue:
+1788814628	1	check	inbox:1788814628-w4Xcjz	check: captain inbox note 1788814628-w4Xcjz - Acceptance check: monitoring resumed without a manual arm.
+
+Cycle lifecycle ledger:
+arm_pid=2285656	watcher_pid=2285675	origin=started	started_at=1788814626	ended_at=1788814629	exit_code=0	signal=none	reason=actionable-check	beacon_age=0	lock_before=pid:2285675|identity:linux-starttime=2089842 cmdline-hex=62617368002f686f6d652f706f646c65732f2e6e6f2d6d697374616b65732f776f726b74726565732f3634356130653031623932642f30314d3159525433544d353635484a513141314a42334e424d422f2e746573742d746d702f666d2d70692d77617463682d657874656e73696f6e2e5872564b62672f65766964656e63652d7072696d6172792f62696e2f666d2d77617463682e736800	lock_after=pid:none|identity:none	successor=started:2288220
+
+$ fm-inbox.sh drain
+1788814628-w4Xcjz
+    Acceptance check: monitoring resumed without a manual arm.
+
+Ack with: fm-inbox.sh drain --ack <id>...
+
+
+Session shutdown retired the isolated watcher. Late discovery is tested by the targeted lifecycle matrix.
