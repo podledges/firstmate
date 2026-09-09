@@ -197,6 +197,69 @@ test_fixture_snapshot_json() {
   pass "fixture snapshot covers task rows, backlog rows, pointers, and stable ordering"
 }
 
+test_large_fleet_payloads_use_stream_transport() {
+  local home fakebin snapshot_out summary_out view_out arg_max pad row_count i snapshot_bytes
+  home=$(make_home large-transport)
+  fakebin=$(make_fakebin "$home")
+  snapshot_out=$home/snapshot.json
+  summary_out=$home/summary.json
+  view_out=$home/view.md
+  arg_max=$(getconf ARG_MAX 2>/dev/null || printf '262144')
+  case "$arg_max" in ''|*[!0-9]*) arg_max=262144 ;; esac
+  pad=$(printf '%0900d' 0 | tr '0' x)
+  row_count=$((arg_max / 900 + 128))
+
+  printf '## Queued\n' > "$home/data/backlog.md"
+  i=0
+  while [ "$i" -lt "$row_count" ]; do
+    printf -- '- [ ] queued-%05d - %s (repo: alpha) (kind: ship)\n' "$i" "$pad" \
+      >> "$home/data/backlog.md"
+    i=$((i + 1))
+  done
+
+  i=0
+  while [ "$i" -lt 24 ]; do
+    fm_write_meta "$home/state/task-$(printf '%03d' "$i").meta" \
+      "window=firstmate:fm-task-$(printf '%03d' "$i")" \
+      "worktree=$home/projects/task-$(printf '%03d' "$i")-$pad" \
+      "project=alpha" \
+      "harness=codex" \
+      "kind=ship" \
+      "mode=ship"
+    i=$((i + 1))
+  done
+
+  PATH="$fakebin:$PATH" FM_HOME="$home" "$SNAPSHOT" --json > "$snapshot_out" \
+    || fail "large public snapshot failed"
+  snapshot_bytes=$(wc -c < "$snapshot_out" | tr -d ' ')
+  [ "$snapshot_bytes" -gt "$arg_max" ] \
+    || fail "large snapshot fixture did not exceed the OS argument limit ($snapshot_bytes <= $arg_max)"
+  jq -e --argjson backlog_n "$row_count" '
+    .schema == "fm-fleet-snapshot.v1"
+      and (.backlog.records | length) == $backlog_n
+      and (.tasks | length) == 24
+      and .tasks[0].id == "task-000"
+      and .tasks[-1].id == "task-023"
+  ' "$snapshot_out" >/dev/null || fail "large snapshot lost fleet or task rows"
+
+  PATH="$fakebin:$PATH" FM_HOME="$home" "$SNAPSHOT" --secondmate-home-summary > "$summary_out" \
+    || fail "large secondmate home summary failed"
+  jq -e '.schema == "fm-secondmate-home-summary.v1"' "$summary_out" >/dev/null \
+    || fail "large secondmate home summary changed schema"
+
+  PATH="$fakebin:$PATH" FM_HOME="$home" "$VIEW" > "$view_out" \
+    || fail "large public fleet view failed"
+  grep -F '| task-000 |' "$view_out" >/dev/null \
+    || fail "large fleet view omitted its first task row"
+  grep -F '| task-023 |' "$view_out" >/dev/null \
+    || fail "large fleet view omitted its last task row"
+  grep -F '| queued-00000 |' "$view_out" >/dev/null \
+    || fail "large fleet view omitted its first backlog row"
+  grep -F "| queued-$(printf '%05d' $((row_count - 1))) |" "$view_out" >/dev/null \
+    || fail "large fleet view omitted its last backlog row"
+  pass "snapshot and view stream payloads larger than the OS argument limit without dropping rows"
+}
+
 # R1 owner contract: main_inventory discloses orphan in-flight and unstructured
 # current rows without inventing task rows.
 test_main_inventory_orphan_and_unstructured_disclosure() {
@@ -801,6 +864,7 @@ test_parked_scout_decision_stays_pending() {
 
 test_empty_fleet_json
 test_fixture_snapshot_json
+test_large_fleet_payloads_use_stream_transport
 test_main_inventory_orphan_and_unstructured_disclosure
 test_normalized_roles_and_plural_blocker_readiness
 test_event_hints_follow_reconciled_current_state
