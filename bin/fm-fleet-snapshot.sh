@@ -1079,8 +1079,9 @@ terminal_evidence_json() {  # <parent-task-json> <event-note> <evidence-contradi
 }
 
 parent_evidence_reconciliation_json() {  # <summary-json> <activities-json> <decisions-json>
-  jq -n --argjson summary "$1" --argjson activities "$2" --argjson decisions "$3" '
-    def keyed: . != null and . != "" and . != "default";
+  printf '%s\n%s\n%s\n' "$1" "$2" "$3" | jq -s '
+    .[0] as $summary | .[1] as $activities | .[2] as $decisions
+    | def keyed: . != null and . != "" and . != "default";
     def result($e; $matches; $complete; $surface):
       $e + {
         verdict:(if ($e.key | keyed | not) then "inconclusive"
@@ -1275,7 +1276,7 @@ secondmate_current_json() {  # stdin: <parent-tasks-json>
       if [ "$summary_valid" != true ]; then
         current_reason="structured home state invalid: $(printf '%s' "$summary" | jq -r '.reason // "unknown reason"')"
       fi
-      reconciliation=$(parent_evidence_reconciliation_json "$summary" "$activities" "$decisions")
+      reconciliation=$(parent_evidence_reconciliation_json "$summary" "$activities" "$decisions") || return 1
       contradiction=$(printf '%s' "$reconciliation" | jq -r '.contradiction')
       terminal_contradiction=$(printf '%s' "$reconciliation" | jq -r --arg note "$event_note" '
         any(.activities[]; .verdict == "contradicts" and .summary == $note)')
@@ -1286,13 +1287,14 @@ secondmate_current_json() {  # stdin: <parent-tasks-json>
           '{provenance:"parent-direct-report-terminal",trust:"untrusted-supplement",captured:false,observed_at:$observed,freshness:"not-collected",reason:"no useful contradiction check",lines:0,bytes:0,event_note_seen:false,contradiction:false}')
       fi
       if printf '%s' "$terminal" | jq -e '.contradiction == true' >/dev/null; then contradiction=true; fi
-      record=$(jq -n \
+      record=$(printf '%s' "$summary" | jq \
         --arg id "$id" --arg home "$home" --arg host "$host" --argjson remote "$remote" --arg state "$state" --arg current_reason "$current_reason" --arg observed "$SNAPSHOT_NOW" \
-        --argjson registered "$registered" --argjson summary "$summary" --argjson summary_valid "$summary_valid" --argjson decisions "$decisions" \
+        --argjson registered "$registered" --argjson summary_valid "$summary_valid" --argjson decisions "$decisions" \
         --argjson activities "$activities" --argjson activity_scan "$activity_scan" \
         --argjson reconciliation "$reconciliation" --argjson terminal "$terminal" --argjson contradiction "$contradiction" \
         --arg event_raw "$event_raw" --arg event_note "$event_note" --argjson event_age "$event_age" '
-        {id:$id,home:$home,host:($host | if . == "" then null else . end),remote:$remote,registered:$registered,
+        . as $summary
+        | {id:$id,home:$home,host:($host | if . == "" then null else . end),remote:$remote,registered:$registered,
          current:{state:$state,reason:($current_reason | if . == "" then null else . end)},invalidity:$summary.invalidity,
          provenance:{selected:"structured-home",structured_home:$home,summary_valid:$summary_valid,
            trust:(if $summary_valid then "complete" else "partial-structured" end),parent_event_role:"historical-only"},
@@ -1301,7 +1303,7 @@ secondmate_current_json() {  # stdin: <parent-tasks-json>
          decisions_open:$summary.decisions_open,holds:$summary.holds,queued:$summary.queued,
          landed:$summary.landed,endpoints:$summary.endpoints,counts:$summary.counts,omitted:$summary.omitted,
          parent_event:{raw:$event_raw,note:$event_note,age_seconds:$event_age,open_activities:$activities,open_decisions:$decisions,activity_scan:$activity_scan,reconciliation:$reconciliation},
-         terminal_evidence:$terminal,contradiction:$contradiction}')
+         terminal_evidence:$terminal,contradiction:$contradiction}') || return 1
     else
       if [ -n "$event_raw" ]; then
         provenance='parent-event-fallback'
@@ -1327,9 +1329,12 @@ secondmate_current_json() {  # stdin: <parent-tasks-json>
          freshness:{status:$freshness,observed_at:$observed,age_seconds:$event_age},
          active_children:[],decisions_open:[],holds:[],queued:[],landed:[],endpoints:[],counts:{active_children:0,decisions_open:0,holds:0,queued:0,landed:0,endpoints:0},omitted:[],
          parent_event:{raw:$event_raw,note:$event_note,age_seconds:$event_age,open_activities:$activities,open_decisions:$decisions,activity_scan:$activity_scan},
-         terminal_evidence:$terminal,contradiction:false}')
+         terminal_evidence:$terminal,contradiction:false}') || return 1
     fi
-    records=$(printf '%s\n%s\n' "$records" "$record" | jq -s '.[0] + [.[1]]')
+    records=$(printf '%s\n%s\n' "$records" "$record" | jq -es '
+      if length == 2 and (.[0] | type) == "array" and (.[1] | type) == "object"
+      then .[0] + [.[1]]
+      else error("secondmate record generation failed") end') || return 1
   done <<EOF
 $rows
 EOF
