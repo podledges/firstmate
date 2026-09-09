@@ -199,6 +199,7 @@ test_fixture_snapshot_json() {
 
 test_large_fleet_payloads_use_stream_transport() {
   local home fakebin snapshot_out summary_out view_out arg_max pad row_count i snapshot_bytes
+  local child child_id j child_title records_out
   home=$(make_home large-transport)
   fakebin=$(make_fakebin "$home")
   snapshot_out=$home/snapshot.json
@@ -229,6 +230,26 @@ test_large_fleet_payloads_use_stream_transport() {
     i=$((i + 1))
   done
 
+  child_title=$(printf '%0120d' 0 | sed 's/0/🚢/g')
+  i=0
+  while [ "$i" -lt 20 ]; do
+    child_id=$(printf 'registered-%02d' "$i")
+    child=$(make_home "$child_id")
+    mkdir -p "$child/bin"
+    printf '# Synthetic home\n' > "$child/AGENTS.md"
+    printf '%s\n' "$child_id" > "$child/.fm-secondmate-home"
+    printf -- '- %s (home: %s; scope: synthetic; projects: alpha; added 2026-07-08)\n' \
+      "$child_id" "$child" >> "$home/data/secondmates.md"
+    printf '## Queued\n' > "$child/data/backlog.md"
+    j=0
+    while [ "$j" -lt 20 ]; do
+      printf -- '- [ ] queued-%02d - %s (repo: alpha) (kind: ship)\n' "$j" "$child_title" \
+        >> "$child/data/backlog.md"
+      j=$((j + 1))
+    done
+    i=$((i + 1))
+  done
+
   PATH="$fakebin:$PATH" FM_HOME="$home" "$SNAPSHOT" --json > "$snapshot_out" \
     || fail "large public snapshot failed"
   snapshot_bytes=$(wc -c < "$snapshot_out" | tr -d ' ')
@@ -241,6 +262,27 @@ test_large_fleet_payloads_use_stream_transport() {
       and .tasks[0].id == "task-000"
       and .tasks[-1].id == "task-023"
   ' "$snapshot_out" >/dev/null || fail "large snapshot lost fleet or task rows"
+
+  jq -e --arg title "$child_title" '
+    .secondmate_current
+      | .total_registered == 20 and .total == 20 and .shown == 20 and .truncated == 0
+        and ([.records[].id] == [range(0;20) | "registered-" + (if . < 10 then "0" else "" end) + tostring])
+        and all(.records[];
+          .registered == true and .provenance.summary_valid == true
+          and .provenance.selected == "structured-home"
+          and .current.reason == null and .counts.queued == 20
+          and (.queued | length) == 20
+          and ([.queued[].id] | sort) == [range(0;20) | "queued-" + (if . < 10 then "0" else "" end) + tostring]
+          and all(.queued[]; .title == $title))
+  ' "$snapshot_out" >/dev/null || fail "large aggregate lost registered homes or queued rows"
+  records_out=$home/secondmate-records.json
+  jq '.secondmate_current.records' "$snapshot_out" > "$records_out"
+  if jq -n --argjson records "$(< "$records_out")" '$records | length' \
+    > "$home/argv-counterfactual.out" 2> "$home/argv-counterfactual.err"; then
+    fail "registered summaries did not exceed the host argument limit"
+  fi
+  grep -i 'argument list too long' "$home/argv-counterfactual.err" >/dev/null \
+    || fail "aggregate argv counterfactual failed for an unexpected reason"
 
   PATH="$fakebin:$PATH" FM_HOME="$home" "$SNAPSHOT" --secondmate-home-summary > "$summary_out" \
     || fail "large secondmate home summary failed"
