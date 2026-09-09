@@ -1,0 +1,3 @@
+ok - empty fleet snapshot and view use explicit absence markers
+ok - fixture snapshot covers task rows, backlog rows, pointers, and stable ordering
+not ok - large aggregate lost registered homes or queued rows

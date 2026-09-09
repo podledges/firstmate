@@ -1,0 +1,59 @@
+{
+  "schema": "fm-fleet-snapshot.v1",
+  "generated": "2026-09-09T23:55:28Z",
+  "fm_home": "/tmp/fm-fleet-snapshot.fcpbJQ/empty",
+  "roots": {
+    "fm_root": "/home/podles/.no-mistakes/worktrees/645a0e01b92d/01M248DJ4BMJFC9JRTD4ZKD294",
+    "state": "/tmp/fm-fleet-snapshot.fcpbJQ/empty/state",
+    "data": "/tmp/fm-fleet-snapshot.fcpbJQ/empty/data",
+    "config": "/tmp/fm-fleet-snapshot.fcpbJQ/empty/config",
+    "projects": "/tmp/fm-fleet-snapshot.fcpbJQ/empty/projects"
+  },
+  "backlog": {
+    "path": "/tmp/fm-fleet-snapshot.fcpbJQ/empty/data/backlog.md",
+    "present": false,
+    "records": []
+  },
+  "tasks": [],
+  "main_inventory": {
+    "valid": true,
+    "reason": null,
+    "orphan_in_flight": [],
+    "unstructured_current_count": 0
+  },
+  "scout_reports": [],
+  "secondmate_current": {
+    "registry": {
+      "present": false,
+      "available": true,
+      "complete": true,
+      "reason": null,
+      "provenance": "registered-table",
+      "path": "/tmp/fm-fleet-snapshot.fcpbJQ/empty/data/secondmates.md",
+      "freshness": {
+        "status": "fresh",
+        "observed_at": "2026-09-09T23:55:28Z"
+      },
+      "records": [],
+      "input_truncated": false,
+      "records_truncated": false,
+      "reasons": [],
+      "lines_in_window": 0,
+      "records_in_window": 0
+    },
+    "records": [],
+    "total_registered": 0,
+    "total": 0,
+    "shown": 0,
+    "truncated": 0
+  },
+  "secondmate_landed": {
+    "records": [],
+    "truncated": [],
+    "unreadable": [],
+    "partial": []
+  },
+  "secondmate_guidance": {
+    "note": "For kind=secondmate, bearings selects validated structured state from that registered home; parent events and bounded terminal evidence are fallback-only supplements and never current-state authority."
+  }
+}

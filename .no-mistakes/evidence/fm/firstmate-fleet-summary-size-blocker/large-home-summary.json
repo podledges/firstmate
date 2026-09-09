@@ -1,0 +1,623 @@
+{
+  "schema": "fm-secondmate-home-summary.v1",
+  "generated": "2026-09-09T23:54:43Z",
+  "home": "/tmp/fm-fleet-snapshot.fcpbJQ/large-transport",
+  "valid": false,
+  "reason": "live child state has no in-flight backlog item: task-000=unknown, task-001=unknown, task-002=unknown, task-003=unknown, task-004=unknown, task-005=unknown, task-006=unknown, task-007=unknown, task-008=unknown, task-009=unknown, task-010=unknown, task-011=unknown, task-012=unknown, task-013=unknown, task-014=unknown, task-015=unknown, task-016=unknown, task-017=unknown, task-018=unknown, task-019=unknown, task-020=unknown, task-021=unknown, task-022=unknown, task-023=unknown",
+  "invalidity": {
+    "kind": "unowned_current",
+    "ids": [
+      "task-000",
+      "task-001",
+      "task-002",
+      "task-003",
+      "task-004",
+      "task-005",
+      "task-006",
+      "task-007",
+      "task-008",
+      "task-009",
+      "task-010",
+      "task-011",
+      "task-012",
+      "task-013",
+      "task-014",
+      "task-015",
+      "task-016",
+      "task-017",
+      "task-018",
+      "task-019",
+      "task-020",
+      "task-021",
+      "task-022",
+      "task-023"
+    ]
+  },
+  "state": "unknown",
+  "active_children": [],
+  "decisions_open": [],
+  "holds": [],
+  "queued": [
+    {
+      "id": "queued-00000",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "blocked_by": null,
+      "blocked_by_ids": [],
+      "unresolved_blocker_ids": [],
+      "blocked_reason": null,
+      "hold_reason": null,
+      "hold_kind": null,
+      "hold_until": null,
+      "deferred_marker": false,
+      "captain_actionable": false,
+      "repo": "alpha",
+      "kind": "ship"
+    },
+    {
+      "id": "queued-00001",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "blocked_by": null,
+      "blocked_by_ids": [],
+      "unresolved_blocker_ids": [],
+      "blocked_reason": null,
+      "hold_reason": null,
+      "hold_kind": null,
+      "hold_until": null,
+      "deferred_marker": false,
+      "captain_actionable": false,
+      "repo": "alpha",
+      "kind": "ship"
+    },
+    {
+      "id": "queued-00002",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "blocked_by": null,
+      "blocked_by_ids": [],
+      "unresolved_blocker_ids": [],
+      "blocked_reason": null,
+      "hold_reason": null,
+      "hold_kind": null,
+      "hold_until": null,
+      "deferred_marker": false,
+      "captain_actionable": false,
+      "repo": "alpha",
+      "kind": "ship"
+    },
+    {
+      "id": "queued-00003",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "blocked_by": null,
+      "blocked_by_ids": [],
+      "unresolved_blocker_ids": [],
+      "blocked_reason": null,
+      "hold_reason": null,
+      "hold_kind": null,
+      "hold_until": null,
+      "deferred_marker": false,
+      "captain_actionable": false,
+      "repo": "alpha",
+      "kind": "ship"
+    },
+    {
+      "id": "queued-00004",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "blocked_by": null,
+      "blocked_by_ids": [],
+      "unresolved_blocker_ids": [],
+      "blocked_reason": null,
+      "hold_reason": null,
+      "hold_kind": null,
+      "hold_until": null,
+      "deferred_marker": false,
+      "captain_actionable": false,
+      "repo": "alpha",
+      "kind": "ship"
+    },
+    {
+      "id": "queued-00005",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "blocked_by": null,
+      "blocked_by_ids": [],
+      "unresolved_blocker_ids": [],
+      "blocked_reason": null,
+      "hold_reason": null,
+      "hold_kind": null,
+      "hold_until": null,
+      "deferred_marker": false,
+      "captain_actionable": false,
+      "repo": "alpha",
+      "kind": "ship"
+    },
+    {
+      "id": "queued-00006",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "blocked_by": null,
+      "blocked_by_ids": [],
+      "unresolved_blocker_ids": [],
+      "blocked_reason": null,
+      "hold_reason": null,
+      "hold_kind": null,
+      "hold_until": null,
+      "deferred_marker": false,
+      "captain_actionable": false,
+      "repo": "alpha",
+      "kind": "ship"
+    },
+    {
+      "id": "queued-00007",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "blocked_by": null,
+      "blocked_by_ids": [],
+      "unresolved_blocker_ids": [],
+      "blocked_reason": null,
+      "hold_reason": null,
+      "hold_kind": null,
+      "hold_until": null,
+      "deferred_marker": false,
+      "captain_actionable": false,
+      "repo": "alpha",
+      "kind": "ship"
+    },
+    {
+      "id": "queued-00008",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "blocked_by": null,
+      "blocked_by_ids": [],
+      "unresolved_blocker_ids": [],
+      "blocked_reason": null,
+      "hold_reason": null,
+      "hold_kind": null,
+      "hold_until": null,
+      "deferred_marker": false,
+      "captain_actionable": false,
+      "repo": "alpha",
+      "kind": "ship"
+    },
+    {
+      "id": "queued-00009",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "blocked_by": null,
+      "blocked_by_ids": [],
+      "unresolved_blocker_ids": [],
+      "blocked_reason": null,
+      "hold_reason": null,
+      "hold_kind": null,
+      "hold_until": null,
+      "deferred_marker": false,
+      "captain_actionable": false,
+      "repo": "alpha",
+      "kind": "ship"
+    },
+    {
+      "id": "queued-00010",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "blocked_by": null,
+      "blocked_by_ids": [],
+      "unresolved_blocker_ids": [],
+      "blocked_reason": null,
+      "hold_reason": null,
+      "hold_kind": null,
+      "hold_until": null,
+      "deferred_marker": false,
+      "captain_actionable": false,
+      "repo": "alpha",
+      "kind": "ship"
+    },
+    {
+      "id": "queued-00011",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "blocked_by": null,
+      "blocked_by_ids": [],
+      "unresolved_blocker_ids": [],
+      "blocked_reason": null,
+      "hold_reason": null,
+      "hold_kind": null,
+      "hold_until": null,
+      "deferred_marker": false,
+      "captain_actionable": false,
+      "repo": "alpha",
+      "kind": "ship"
+    },
+    {
+      "id": "queued-00012",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "blocked_by": null,
+      "blocked_by_ids": [],
+      "unresolved_blocker_ids": [],
+      "blocked_reason": null,
+      "hold_reason": null,
+      "hold_kind": null,
+      "hold_until": null,
+      "deferred_marker": false,
+      "captain_actionable": false,
+      "repo": "alpha",
+      "kind": "ship"
+    },
+    {
+      "id": "queued-00013",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "blocked_by": null,
+      "blocked_by_ids": [],
+      "unresolved_blocker_ids": [],
+      "blocked_reason": null,
+      "hold_reason": null,
+      "hold_kind": null,
+      "hold_until": null,
+      "deferred_marker": false,
+      "captain_actionable": false,
+      "repo": "alpha",
+      "kind": "ship"
+    },
+    {
+      "id": "queued-00014",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "blocked_by": null,
+      "blocked_by_ids": [],
+      "unresolved_blocker_ids": [],
+      "blocked_reason": null,
+      "hold_reason": null,
+      "hold_kind": null,
+      "hold_until": null,
+      "deferred_marker": false,
+      "captain_actionable": false,
+      "repo": "alpha",
+      "kind": "ship"
+    },
+    {
+      "id": "queued-00015",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "blocked_by": null,
+      "blocked_by_ids": [],
+      "unresolved_blocker_ids": [],
+      "blocked_reason": null,
+      "hold_reason": null,
+      "hold_kind": null,
+      "hold_until": null,
+      "deferred_marker": false,
+      "captain_actionable": false,
+      "repo": "alpha",
+      "kind": "ship"
+    },
+    {
+      "id": "queued-00016",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "blocked_by": null,
+      "blocked_by_ids": [],
+      "unresolved_blocker_ids": [],
+      "blocked_reason": null,
+      "hold_reason": null,
+      "hold_kind": null,
+      "hold_until": null,
+      "deferred_marker": false,
+      "captain_actionable": false,
+      "repo": "alpha",
+      "kind": "ship"
+    },
+    {
+      "id": "queued-00017",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "blocked_by": null,
+      "blocked_by_ids": [],
+      "unresolved_blocker_ids": [],
+      "blocked_reason": null,
+      "hold_reason": null,
+      "hold_kind": null,
+      "hold_until": null,
+      "deferred_marker": false,
+      "captain_actionable": false,
+      "repo": "alpha",
+      "kind": "ship"
+    },
+    {
+      "id": "queued-00018",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "blocked_by": null,
+      "blocked_by_ids": [],
+      "unresolved_blocker_ids": [],
+      "blocked_reason": null,
+      "hold_reason": null,
+      "hold_kind": null,
+      "hold_until": null,
+      "deferred_marker": false,
+      "captain_actionable": false,
+      "repo": "alpha",
+      "kind": "ship"
+    },
+    {
+      "id": "queued-00019",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+      "blocked_by": null,
+      "blocked_by_ids": [],
+      "unresolved_blocker_ids": [],
+      "blocked_reason": null,
+      "hold_reason": null,
+      "hold_kind": null,
+      "hold_until": null,
+      "deferred_marker": false,
+      "captain_actionable": false,
+      "repo": "alpha",
+      "kind": "ship"
+    }
+  ],
+  "landed": [],
+  "endpoints": [
+    {
+      "id": "task-000",
+      "state": "unknown",
+      "source": "none",
+      "endpoint": {
+        "target": "firstmate:fm-task-000",
+        "exists": true,
+        "agent_alive": "not_checked",
+        "status": "unknown",
+        "observed_at": "2026-09-09T23:54:43Z",
+        "freshness": "fresh"
+      }
+    },
+    {
+      "id": "task-001",
+      "state": "unknown",
+      "source": "none",
+      "endpoint": {
+        "target": "firstmate:fm-task-001",
+        "exists": true,
+        "agent_alive": "not_checked",
+        "status": "unknown",
+        "observed_at": "2026-09-09T23:54:43Z",
+        "freshness": "fresh"
+      }
+    },
+    {
+      "id": "task-002",
+      "state": "unknown",
+      "source": "none",
+      "endpoint": {
+        "target": "firstmate:fm-task-002",
+        "exists": true,
+        "agent_alive": "not_checked",
+        "status": "unknown",
+        "observed_at": "2026-09-09T23:54:43Z",
+        "freshness": "fresh"
+      }
+    },
+    {
+      "id": "task-003",
+      "state": "unknown",
+      "source": "none",
+      "endpoint": {
+        "target": "firstmate:fm-task-003",
+        "exists": true,
+        "agent_alive": "not_checked",
+        "status": "unknown",
+        "observed_at": "2026-09-09T23:54:43Z",
+        "freshness": "fresh"
+      }
+    },
+    {
+      "id": "task-004",
+      "state": "unknown",
+      "source": "none",
+      "endpoint": {
+        "target": "firstmate:fm-task-004",
+        "exists": true,
+        "agent_alive": "not_checked",
+        "status": "unknown",
+        "observed_at": "2026-09-09T23:54:43Z",
+        "freshness": "fresh"
+      }
+    },
+    {
+      "id": "task-005",
+      "state": "unknown",
+      "source": "none",
+      "endpoint": {
+        "target": "firstmate:fm-task-005",
+        "exists": true,
+        "agent_alive": "not_checked",
+        "status": "unknown",
+        "observed_at": "2026-09-09T23:54:43Z",
+        "freshness": "fresh"
+      }
+    },
+    {
+      "id": "task-006",
+      "state": "unknown",
+      "source": "none",
+      "endpoint": {
+        "target": "firstmate:fm-task-006",
+        "exists": true,
+        "agent_alive": "not_checked",
+        "status": "unknown",
+        "observed_at": "2026-09-09T23:54:43Z",
+        "freshness": "fresh"
+      }
+    },
+    {
+      "id": "task-007",
+      "state": "unknown",
+      "source": "none",
+      "endpoint": {
+        "target": "firstmate:fm-task-007",
+        "exists": true,
+        "agent_alive": "not_checked",
+        "status": "unknown",
+        "observed_at": "2026-09-09T23:54:43Z",
+        "freshness": "fresh"
+      }
+    },
+    {
+      "id": "task-008",
+      "state": "unknown",
+      "source": "none",
+      "endpoint": {
+        "target": "firstmate:fm-task-008",
+        "exists": true,
+        "agent_alive": "not_checked",
+        "status": "unknown",
+        "observed_at": "2026-09-09T23:54:43Z",
+        "freshness": "fresh"
+      }
+    },
+    {
+      "id": "task-009",
+      "state": "unknown",
+      "source": "none",
+      "endpoint": {
+        "target": "firstmate:fm-task-009",
+        "exists": true,
+        "agent_alive": "not_checked",
+        "status": "unknown",
+        "observed_at": "2026-09-09T23:54:43Z",
+        "freshness": "fresh"
+      }
+    },
+    {
+      "id": "task-010",
+      "state": "unknown",
+      "source": "none",
+      "endpoint": {
+        "target": "firstmate:fm-task-010",
+        "exists": true,
+        "agent_alive": "not_checked",
+        "status": "unknown",
+        "observed_at": "2026-09-09T23:54:43Z",
+        "freshness": "fresh"
+      }
+    },
+    {
+      "id": "task-011",
+      "state": "unknown",
+      "source": "none",
+      "endpoint": {
+        "target": "firstmate:fm-task-011",
+        "exists": true,
+        "agent_alive": "not_checked",
+        "status": "unknown",
+        "observed_at": "2026-09-09T23:54:43Z",
+        "freshness": "fresh"
+      }
+    },
+    {
+      "id": "task-012",
+      "state": "unknown",
+      "source": "none",
+      "endpoint": {
+        "target": "firstmate:fm-task-012",
+        "exists": true,
+        "agent_alive": "not_checked",
+        "status": "unknown",
+        "observed_at": "2026-09-09T23:54:43Z",
+        "freshness": "fresh"
+      }
+    },
+    {
+      "id": "task-013",
+      "state": "unknown",
+      "source": "none",
+      "endpoint": {
+        "target": "firstmate:fm-task-013",
+        "exists": true,
+        "agent_alive": "not_checked",
+        "status": "unknown",
+        "observed_at": "2026-09-09T23:54:43Z",
+        "freshness": "fresh"
+      }
+    },
+    {
+      "id": "task-014",
+      "state": "unknown",
+      "source": "none",
+      "endpoint": {
+        "target": "firstmate:fm-task-014",
+        "exists": true,
+        "agent_alive": "not_checked",
+        "status": "unknown",
+        "observed_at": "2026-09-09T23:54:43Z",
+        "freshness": "fresh"
+      }
+    },
+    {
+      "id": "task-015",
+      "state": "unknown",
+      "source": "none",
+      "endpoint": {
+        "target": "firstmate:fm-task-015",
+        "exists": true,
+        "agent_alive": "not_checked",
+        "status": "unknown",
+        "observed_at": "2026-09-09T23:54:43Z",
+        "freshness": "fresh"
+      }
+    },
+    {
+      "id": "task-016",
+      "state": "unknown",
+      "source": "none",
+      "endpoint": {
+        "target": "firstmate:fm-task-016",
+        "exists": true,
+        "agent_alive": "not_checked",
+        "status": "unknown",
+        "observed_at": "2026-09-09T23:54:43Z",
+        "freshness": "fresh"
+      }
+    },
+    {
+      "id": "task-017",
+      "state": "unknown",
+      "source": "none",
+      "endpoint": {
+        "target": "firstmate:fm-task-017",
+        "exists": true,
+        "agent_alive": "not_checked",
+        "status": "unknown",
+        "observed_at": "2026-09-09T23:54:43Z",
+        "freshness": "fresh"
+      }
+    },
+    {
+      "id": "task-018",
+      "state": "unknown",
+      "source": "none",
+      "endpoint": {
+        "target": "firstmate:fm-task-018",
+        "exists": true,
+        "agent_alive": "not_checked",
+        "status": "unknown",
+        "observed_at": "2026-09-09T23:54:43Z",
+        "freshness": "fresh"
+      }
+    },
+    {
+      "id": "task-019",
+      "state": "unknown",
+      "source": "none",
+      "endpoint": {
+        "target": "firstmate:fm-task-019",
+        "exists": true,
+        "agent_alive": "not_checked",
+        "status": "unknown",
+        "observed_at": "2026-09-09T23:54:43Z",
+        "freshness": "fresh"
+      }
+    }
+  ],
+  "counts": {
+    "active_children": 0,
+    "decisions_open": 0,
+    "holds": 0,
+    "queued": 2458,
+    "landed": 0,
+    "endpoints": 24
+  },
+  "omitted": [
+    {
+      "surface": "queued",
+      "count": 2438
+    },
+    {
+      "surface": "endpoints",
+      "count": 4
+    }
+  ]
+}

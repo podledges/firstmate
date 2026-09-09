@@ -1,0 +1,24 @@
+Host: Linux x86_64
+ARG_MAX: 2097152
+PAGESIZE: 4096
+11526900 /tmp/fm-fleet-snapshot.fcpbJQ/large-transport/snapshot.json
+  212781 /tmp/fm-fleet-snapshot.fcpbJQ/large-transport/registered-home-summary.json
+ 4371143 /tmp/fm-fleet-snapshot.fcpbJQ/large-transport/secondmate-records.json
+16110824 total
+{
+  "schema": "fm-fleet-snapshot.v1",
+  "task_rows": 24,
+  "backlog_rows": 2458,
+  "registered_homes": 20,
+  "shown_homes": 20,
+  "registered_home_rows": 20
+}
+Baseline public snapshot --json:
+exit=1
+/home/podles/.no-mistakes/worktrees/645a0e01b92d/01M248DJ4BMJFC9JRTD4ZKD294/bin/.test-baseline-snapshot.sh: line 635: /etc/profiles/per-user/podles/bin/jq: Argument list too long
+fm-fleet-snapshot: main inventory summary failed
+Baseline public snapshot --secondmate-home-summary:
+exit=1
+/home/podles/.no-mistakes/worktrees/645a0e01b92d/01M248DJ4BMJFC9JRTD4ZKD294/bin/.test-baseline-snapshot.sh: line 663: /etc/profiles/per-user/podles/bin/jq: Argument list too long
+fm-fleet-snapshot: secondmate home summary failed
+Baseline human view exit=1

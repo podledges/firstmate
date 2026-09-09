@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -u
+target=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "-t" ]; then target=$arg; fi
+  prev=$arg
+done
+case "${1:-}" in
+  list-windows)
+    sed -n 's/^window=[^:]*://p' "${FM_HOME:?}"/state/*.meta
+    ;;
+  display-message)
+    case "$*" in
+      *pane_current_command*)
+        case "$target" in
+          *dead-secondmate*) printf 'zsh\n' ;;
+          *) printf 'codex\n' ;;
+        esac
+        ;;
+      *) printf '%%1\n' ;;
+    esac
+    ;;
+  capture-pane)
+    case "$target" in
+      *ship-task*|*active-secondmate*) printf 'work in progress\nesc to interrupt\n' ;;
+      *) printf 'all quiet\n> \n' ;;
+    esac
+    ;;
+esac
+exit 0
