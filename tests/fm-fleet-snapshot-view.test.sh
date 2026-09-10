@@ -197,6 +197,188 @@ test_fixture_snapshot_json() {
   pass "fixture snapshot covers task rows, backlog rows, pointers, and stable ordering"
 }
 
+test_large_fleet_payloads_use_stream_transport() {
+  local home fakebin snapshot_out summary_out view_out arg_max pad row_count i snapshot_bytes
+  local child child_id j child_title records_out arg_ceiling page_size
+  local dependency_count dependencies dependency_tokens dependency_id child_summary child_summary_bytes
+  home=$(make_home large-transport)
+  fakebin=$(make_fakebin "$home")
+  snapshot_out=$home/snapshot.json
+  summary_out=$home/summary.json
+  view_out=$home/view.md
+  arg_max=$(getconf ARG_MAX 2>/dev/null || printf '262144')
+  case "$arg_max" in ''|*[!0-9]*) arg_max=262144 ;; esac
+  pad=$(printf '%0900d' 0 | tr '0' x)
+  row_count=$((arg_max / 900 + 128))
+
+  printf '## Queued\n' > "$home/data/backlog.md"
+  i=0
+  while [ "$i" -lt "$row_count" ]; do
+    printf -- '- [ ] queued-%05d - %s (repo: alpha) (kind: ship)\n' "$i" "$pad" \
+      >> "$home/data/backlog.md"
+    i=$((i + 1))
+  done
+
+  i=0
+  while [ "$i" -lt 24 ]; do
+    fm_write_meta "$home/state/task-$(printf '%03d' "$i").meta" \
+      "window=firstmate:fm-task-$(printf '%03d' "$i")" \
+      "worktree=$home/projects/task-$(printf '%03d' "$i")-$pad" \
+      "project=alpha" \
+      "harness=codex" \
+      "kind=ship" \
+      "mode=ship"
+    i=$((i + 1))
+  done
+
+  arg_ceiling=$arg_max
+  if [ "$(uname -s)" = Linux ]; then
+    page_size=$(getconf PAGESIZE) || fail "cannot read the host page size"
+    if [ "$((page_size * 32))" -lt "$arg_ceiling" ]; then
+      arg_ceiling=$((page_size * 32))
+    fi
+  fi
+  dependency_count=$((arg_ceiling / (20 * 20 * 4 * 100) + 1))
+  [ "$dependency_count" -ge 20 ] || dependency_count=20
+  dependencies=
+  dependency_tokens=
+  j=0
+  while [ "$j" -lt "$dependency_count" ]; do
+    dependency_id=$(printf 'missing-%092d' "$j")
+    dependencies="${dependencies:+$dependencies,}$dependency_id"
+    dependency_tokens="$dependency_tokens blocked-by: $dependency_id"
+    j=$((j + 1))
+  done
+  child_title=$(printf '%0120d' 0 | sed 's/0/🚢/g')
+  i=0
+  while [ "$i" -lt 20 ]; do
+    child_id=$(printf 'registered-%02d' "$i")
+    child=$(make_home "$child_id")
+    mkdir -p "$child/bin"
+    printf '# Synthetic home\n' > "$child/AGENTS.md"
+    printf '%s\n' "$child_id" > "$child/.fm-secondmate-home"
+    printf -- '- %s (home: %s; scope: synthetic; projects: alpha; added 2026-07-08)\n' \
+      "$child_id" "$child" >> "$home/data/secondmates.md"
+    printf '## Queued\n' > "$child/data/backlog.md"
+    j=0
+    while [ "$j" -lt 20 ]; do
+      printf -- '- [ ] queued-%02d - %s%s (repo: alpha) (kind: ship)\n' "$j" "$child_title" "$dependency_tokens" \
+        >> "$child/data/backlog.md"
+      j=$((j + 1))
+    done
+    i=$((i + 1))
+  done
+
+  PATH="$fakebin:$PATH" FM_HOME="$home" "$SNAPSHOT" --json > "$snapshot_out" \
+    || fail "large public snapshot failed"
+  snapshot_bytes=$(wc -c < "$snapshot_out" | tr -d ' ')
+  [ "$snapshot_bytes" -gt "$arg_max" ] \
+    || fail "large snapshot fixture did not exceed the OS argument limit ($snapshot_bytes <= $arg_max)"
+  jq -e --argjson backlog_n "$row_count" '
+    .schema == "fm-fleet-snapshot.v1"
+      and (.backlog.records | length) == $backlog_n
+      and (.tasks | length) == 24
+      and .tasks[0].id == "task-000"
+      and .tasks[-1].id == "task-023"
+  ' "$snapshot_out" >/dev/null || fail "large snapshot lost fleet or task rows"
+
+  child_summary=$home/registered-home-summary.json
+  PATH="$fakebin:$PATH" FM_HOME="$child" "$SNAPSHOT" --secondmate-home-summary > "$child_summary" \
+    || fail "dependency-heavy public secondmate summary failed"
+  child_summary_bytes=$(wc -c < "$child_summary" | tr -d ' ')
+  [ "$child_summary_bytes" -gt 131072 ] && [ "$child_summary_bytes" -le 262144 ] \
+    || fail "individual summary must exceed 128 KiB while fitting the default byte cap (got $child_summary_bytes bytes)"
+  jq -e --argjson n "$dependency_count" '
+    .schema == "fm-secondmate-home-summary.v1" and .valid == true
+      and (.queued | length) == 20 and (.holds | length) == 20
+      and all((.queued + .holds)[];
+        (.blocked_by_ids | length) == $n and .unresolved_blocker_ids == .blocked_by_ids)
+  ' "$child_summary" >/dev/null || fail "individual summary lost dependency arrays"
+
+  jq -e --arg title "$child_title" --arg deps "$dependencies" '
+    .secondmate_current
+      | .total_registered == 20 and .total == 20 and .shown == 20 and .truncated == 0
+        and ([.records[].id] == [range(0;20) | "registered-" + (if . < 10 then "0" else "" end) + tostring])
+        and all(.records[];
+          .registered == true and .provenance.summary_valid == true
+          and .provenance.selected == "structured-home"
+          and .current.reason == null and .counts.queued == 20
+          and (.queued | length) == 20
+          and ([.queued[].id] | sort) == [range(0;20) | "queued-" + (if . < 10 then "0" else "" end) + tostring]
+          and all(.queued[]; .title == $title)
+          and (.holds | length) == 20 and .counts.holds == 20
+          and all((.queued + .holds)[];
+            .blocked_by_ids == ($deps | split(",")) and .unresolved_blocker_ids == .blocked_by_ids))
+  ' "$snapshot_out" >/dev/null || fail "large aggregate lost registered homes or queued rows"
+  records_out=$home/secondmate-records.json
+  jq '.secondmate_current.records' "$snapshot_out" > "$records_out"
+  [ "$(wc -c < "$records_out" | tr -d ' ')" -gt "$arg_ceiling" ] \
+    || fail "registered summaries did not exceed the reported host argument ceiling"
+  if LC_ALL=C jq -n --argjson records "$(< "$records_out")" '$records | length' \
+    > "$home/argv-counterfactual.out" 2> "$home/argv-counterfactual.err"; then
+    fail "registered summaries did not exceed the host argument limit"
+  fi
+  grep -i 'argument list too long' "$home/argv-counterfactual.err" >/dev/null \
+    || fail "aggregate argv counterfactual failed for an unexpected reason"
+
+  PATH="$fakebin:$PATH" FM_HOME="$home" "$SNAPSHOT" --secondmate-home-summary > "$summary_out" \
+    || fail "large secondmate home summary failed"
+  jq -e '.schema == "fm-secondmate-home-summary.v1"' "$summary_out" >/dev/null \
+    || fail "large secondmate home summary changed schema"
+
+  PATH="$fakebin:$PATH" FM_HOME="$home" "$VIEW" > "$view_out" \
+    || fail "large public fleet view failed"
+  grep -F '| task-000 |' "$view_out" >/dev/null \
+    || fail "large fleet view omitted its first task row"
+  grep -F '| task-023 |' "$view_out" >/dev/null \
+    || fail "large fleet view omitted its last task row"
+  grep -F '| queued-00000 |' "$view_out" >/dev/null \
+    || fail "large fleet view omitted its first backlog row"
+  grep -F "| queued-$(printf '%05d' $((row_count - 1))) |" "$view_out" >/dev/null \
+    || fail "large fleet view omitted its last backlog row"
+  pass "snapshot and view stream payloads larger than the OS argument limit without dropping rows"
+}
+
+test_secondmate_record_generation_failures_propagate() {
+  local home child fakebin real_jq mode surface
+  home=$(make_home record-failure)
+  child=$(make_home record-failure-child)
+  mkdir -p "$child/bin"
+  printf '# Synthetic home\n' > "$child/AGENTS.md"
+  printf 'registered-00\n' > "$child/.fm-secondmate-home"
+  printf '## Queued\n' > "$child/data/backlog.md"
+  printf -- '- registered-00 (home: %s; scope: synthetic; projects: alpha; added 2026-07-08)\n' \
+    "$child" > "$home/data/secondmates.md"
+  fakebin=$(make_fakebin "$home")
+  real_jq=$(command -v jq)
+  cat > "$fakebin/jq" <<'SH'
+#!/usr/bin/env bash
+out=$("${FM_TEST_REAL_JQ:?}" "$@") || exit $?
+if printf '%s' "$out" | "$FM_TEST_REAL_JQ" -e '
+  type == "object" and .id == "registered-00" and has("current")
+' >/dev/null 2>&1; then
+  case "${FM_TEST_RECORD_FAILURE:?}" in
+    error) exit 71 ;;
+    empty) exit 0 ;;
+  esac
+fi
+printf '%s\n' "$out"
+SH
+  chmod +x "$fakebin/jq"
+  for mode in error empty; do
+    for surface in "$SNAPSHOT" "$VIEW"; do
+      if PATH="$fakebin:$PATH" FM_HOME="$home" FM_TEST_REAL_JQ="$real_jq" \
+        FM_TEST_RECORD_FAILURE="$mode" "$surface" > "$home/result" 2> "$home/error"; then
+        fail "$surface accepted $mode record generation"
+      fi
+      [ ! -s "$home/result" ] || fail "$surface emitted a partial snapshot on $mode record generation"
+      grep -F 'registered secondmate aggregation failed' "$home/error" >/dev/null \
+        || fail "$surface did not report $mode record generation failure"
+    done
+  done
+  pass "snapshot and view propagate failed or missing secondmate record generation"
+}
+
 # R1 owner contract: main_inventory discloses orphan in-flight and unstructured
 # current rows without inventing task rows.
 test_main_inventory_orphan_and_unstructured_disclosure() {
@@ -801,6 +983,8 @@ test_parked_scout_decision_stays_pending() {
 
 test_empty_fleet_json
 test_fixture_snapshot_json
+test_large_fleet_payloads_use_stream_transport
+test_secondmate_record_generation_failures_propagate
 test_main_inventory_orphan_and_unstructured_disclosure
 test_normalized_roles_and_plural_blocker_readiness
 test_event_hints_follow_reconciled_current_state
