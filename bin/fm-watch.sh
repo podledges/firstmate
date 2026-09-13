@@ -1210,9 +1210,7 @@ EOF
     if [ -e "$STATE/.lavish-wait-since-$key" ]; then
       if { [ "$busy_now" -ne 0 ] && [ "$n" -ge 2 ]; } ||
          { [ "$busy_now" -eq 0 ] && busy_turn_over_age "$task"; }; then
-        clear_pause_tracking "$key"
-        fm_wake_append stale "$w" "stale: $w" || exit 1
-        wake "stale: $w"
+        wedge_timer_check "$w" "$ssf" "failed foreground Lavish review" "$ewf" "$task"
       fi
       continue
     fi

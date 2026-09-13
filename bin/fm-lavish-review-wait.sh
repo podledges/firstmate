@@ -98,7 +98,7 @@ poll_artifact_in_tree() {  # <newline root pids>
     my %artifact;
     for my $pid (keys %inside) {
       my $cmd = $args{$pid} // "";
-      $artifact{$1} = 1 if $cmd =~ m{(?:^|/)lavish-axi poll ([^[:space:]]+)\s*$};
+      $artifact{$1} = 1 if $cmd =~ m{(?:^|/)lavish-axi poll ([^[:space:]]+)(?: --agent-reply \S[^\r\n]*)?\s*$};
     }
     exit 1 unless keys(%artifact) == 1;
     print((keys %artifact)[0], "\n");

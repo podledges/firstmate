@@ -2161,8 +2161,11 @@ test_terminal_first_sight_drops_a_finished_write_deferral_chain() {
 # reports busy.
 test_captain_held_lavish_poll_suppresses_only_while_healthy() {
   local dir state fakebin out capture artifact window key statusf turnf poll_pid watcher_pid
-  local mode=${1:-attended} failure=${2:-poll} busy_bound=1
-  dir=$(make_case "lavish-review-wait-$mode-$failure"); state="$dir/state"; fakebin="$dir/fakebin"; out="$dir/watch.out"
+  local mode=${1:-attended} failure=${2:-poll} busy_bound=1 round transport
+  local command_shape=${3:-plain}
+  local -a poll_options=()
+  [ "$command_shape" != agent-reply ] || poll_options=(--agent-reply 'Updated board; ready for captain feedback')
+  dir=$(make_case "lavish-review-wait-$mode-$failure-$command_shape"); state="$dir/state"; fakebin="$dir/fakebin"; out="$dir/watch.out"
   capture="$dir/pane.txt"; artifact="$dir/data/review-scout/board.html"; window="test:fm-review-scout"
   key=$(printf '%s' "$window" | tr ':/.' '___')
   mkdir -p "$(dirname "$artifact")"
@@ -2208,7 +2211,7 @@ SH
 SH
   chmod +x "$fakebin/tasks-axi" "$fakebin/lavish-axi" "$fakebin/curl"
 
-  FM_FAKE_LAVISH_ARTIFACT="$artifact" "$fakebin/lavish-axi" poll "$artifact" &
+  FM_FAKE_LAVISH_ARTIFACT="$artifact" "$fakebin/lavish-axi" poll "$artifact" "${poll_options[@]}" &
   poll_pid=$!
   export FM_FAKE_TMUX_PANE_PID="$poll_pid"
   export FM_FAKE_TMUX_WINDOW="$window"
@@ -2279,18 +2282,41 @@ SH
     fi
     wait_for_exit "$watcher_pid" 100 || { reap "$watcher_pid"; reap "$poll_pid"; fail "$mode: failed Lavish $failure did not restore stale escalation"; }
     [ "$failure" != session ] || reap "$poll_pid"
-    grep -F "stale: $window" "$out" >/dev/null || fail "failed review escalation omitted the stale pane"
-    grep -F "stale: $window" "$state/.wake-queue" >/dev/null || fail "failed review did not queue escalation"
-  fi
-  if [ "$failure" != feedback ]; then
-    [ ! -e "$state/.lavish-wait-since-$key" ] || fail "failed review retained healthy-review suppression"
-    [ ! -e "$state/.paused-$key" ] || fail "failed review fell back to declared pause"
+    for round in 1 2; do
+      grep -F "stale: $window" "$out" >/dev/null || fail "failed review escalation omitted the stale pane"
+      grep -F "possible wedge, escalation $round" "$out" >/dev/null || fail "failed review bypassed repeated wedge escalation"
+      grep -F "stale: $window" "$state/.wake-queue" >/dev/null || fail "failed review did not queue escalation"
+      if [ -e "$state/.afk" ]; then
+        transport=$(make_supercase "lavish-delivery-$mode-$failure-$command_shape-$round")
+        printf '\342\235\257 \n' > "$transport/composer.txt"
+        (
+          . "$ROOT/bin/fm-supervise-daemon.sh"
+          FM_DAEMON_PRIMARY_HARNESS=claude
+          PATH="$transport/fakebin:$PATH" FM_HOME="$dir" FM_STATE_OVERRIDE="$state" \
+            FM_FAKE_TMUX_CAPTURE="$transport/composer.txt" FM_FAKE_TMUX_SENT="$transport/sent.log" \
+            FM_ESCALATE_BATCH_SECS=0 LOG="$transport/daemon.log" \
+            handle_wake "$(cat "$out")" "$state"
+        ) || fail "daemon failed to consume the Lavish wedge wake"
+        grep -F "possible wedge, escalation $round" "$transport/sent.log" >/dev/null || fail "daemon absorbed the failed review instead of delivering escalation"
+        grep -F '[ENTER]' "$transport/sent.log" >/dev/null || fail "daemon did not submit the failure digest"
+      fi
+      if [ "$round" -eq 1 ]; then
+        ack_stopped_cycle "$state" || fail "could not acknowledge the first failed-review escalation"
+        PATH="$fakebin:$PATH" FM_HOME="$dir" FM_STATE_OVERRIDE="$state" \
+          FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_BUSY_TURN_MAX_SECS="$busy_bound" \
+          FM_STALE_ESCALATE_SECS=0 FM_PAUSE_RESURFACE_SECS=999 \
+          FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+        watcher_pid=$!
+        wait_for_exit "$watcher_pid" 100 || { reap "$watcher_pid"; fail "subsequent watcher cycle suppressed the failed review"; }
+      fi
+    done
+    [ -e "$state/.lavish-wait-since-$key" ] || fail "failed review discarded reconciliation before recovery"
   fi
 
   unset FM_FAKE_TMUX_PANE_PID FM_FAKE_TMUX_WINDOW FM_FAKE_TMUX_CAPTURE
   unset FM_FAKE_TMUX_CURRENT_COMMAND FM_FAKE_CREW_STATE
   unset FM_FAKE_LAVISH_ARTIFACT FM_FAKE_LAVISH_HTTP_OK
-  pass "$mode: healthy Lavish wait is bounded and $failure follows pane progress"
+  pass "$mode/$command_shape: healthy Lavish wait is bounded and $failure follows pane progress"
 }
 
 # --- triage debug log stays size capped -------------------------------------
@@ -2800,6 +2826,7 @@ for lavish_mode in attended afk attended-paused afk-paused; do
     test_captain_held_lavish_poll_suppresses_only_while_healthy "$lavish_mode" "$lavish_failure"
   done
 done
+test_captain_held_lavish_poll_suppresses_only_while_healthy afk-paused poll agent-reply
 test_triage_log_size_cap_accepts_spaced_wc_counts
 test_procevent_captured_result_surfaces_proactively
 test_procevent_unacknowledged_result_redrains_until_handled
