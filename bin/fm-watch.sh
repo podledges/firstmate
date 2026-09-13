@@ -1210,9 +1210,15 @@ EOF
     if [ -e "$STATE/.lavish-wait-since-$key" ]; then
       if { [ "$busy_now" -ne 0 ] && [ "$n" -ge 2 ]; } ||
          { [ "$busy_now" -eq 0 ] && busy_turn_over_age "$task"; }; then
-        wedge_timer_check "$w" "$ssf" "failed foreground Lavish review" "$ewf" "$task"
+        review_state=$("$FM_CREW_STATE_BIN" "$task" 2>/dev/null) || review_state=""
+        case "$review_state" in
+          "state: done "*) clear_pause_tracking "$key" ;;
+          *) wedge_timer_check "$w" "$ssf" "failed foreground Lavish review" "$ewf" "$task"
+             continue ;;
+        esac
+      else
+        continue
       fi
-      continue
     fi
     if [ "$h" = "$prev" ]; then
       if [ "$n" -ge 2 ] && [ "$busy_now" -ne 0 ]; then

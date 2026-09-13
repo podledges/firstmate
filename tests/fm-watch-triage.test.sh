@@ -2265,6 +2265,33 @@ SH
     [ ! -s "$out" ] || { reap "$watcher_pid"; fail "normal feedback processing printed a wake"; }
     [ ! -s "$state/.wake-queue" ] || { reap "$watcher_pid"; fail "normal feedback processing queued a wake"; }
     reap "$watcher_pid"
+    ack_stopped_cycle "$state" || fail "could not acknowledge the feedback fixture stop"
+    printf 'resolved [key=visual-review]: captain accepted the board\ndone: visual review complete\n' >> "$statusf"
+    prime_status_seen "$state" "$statusf" || fail "could not prime handled completion status"
+    "$ROOT/bin/fm-busy-event.sh" apply "$state" review-scout idle --current-gen \
+      --source pi-ext --event agent-end
+    printf 'review complete; idle prompt\n' > "$capture"
+    export FM_FAKE_CREW_STATE='state: done · source: status-log · visual review complete'
+    PATH="$fakebin:$PATH" FM_HOME="$dir" FM_STATE_OVERRIDE="$state" \
+      FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_BUSY_TURN_MAX_SECS=1 \
+      FM_STALE_ESCALATE_SECS=0 FM_PAUSE_RESURFACE_SECS=999 \
+      FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+    watcher_pid=$!
+    wait_for_exit "$watcher_pid" 100 || { reap "$watcher_pid"; fail "completed review never returned to terminal classification"; }
+    [ "$(cat "$out")" = "stale: $window" ] || fail "completed review was classified as a wedge"
+    [ ! -e "$state/.lavish-wait-since-$key" ] || fail "authoritative completion retained review reconciliation"
+    ack_stopped_cycle "$state" || fail "could not acknowledge completed review classification"
+    for round in 1 2; do
+      PATH="$fakebin:$PATH" FM_HOME="$dir" FM_STATE_OVERRIDE="$state" \
+        FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_BUSY_TURN_MAX_SECS=1 \
+        FM_STALE_ESCALATE_SECS=0 FM_PAUSE_RESURFACE_SECS=999 \
+        FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+      watcher_pid=$!
+      wait_poll_cycle "$state" "$watcher_pid" || { reap "$watcher_pid"; fail "completed review re-escalated on a subsequent cycle"; }
+      [ ! -s "$out" ] && [ ! -s "$state/.wake-queue" ] || { reap "$watcher_pid"; fail "completed review emitted a repeated wake"; }
+      reap "$watcher_pid"
+      ack_stopped_cycle "$state" || fail "could not acknowledge the completed-review fixture stop"
+    done
   else
     if [ "$failure" = early-poll ]; then
       wait_poll_cycle "$state" "$watcher_pid" || { reap "$watcher_pid"; fail "$mode: poll loss escalated before the busy bound"; }
