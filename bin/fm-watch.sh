@@ -184,7 +184,7 @@ BUSY_TURN_MAX_SECS=${FM_BUSY_TURN_MAX_SECS:-3600}
 # longer than the wedge threshold, but finite so a forgotten hold cannot rot invisibly.
 PAUSE_RESURFACE_SECS=${FM_PAUSE_RESURFACE_SECS:-$FM_PAUSE_RESURFACE_SECS_DEFAULT}
 LAVISH_REVIEW_WAIT_BIN=$SCRIPT_DIR/fm-lavish-review-wait.sh
-LAVISH_REVIEW_WAIT_TIMEOUT=${FM_LAVISH_REVIEW_WAIT_TIMEOUT:-8}
+LAVISH_REVIEW_WAIT_TIMEOUT=8
 # Consecutive event-path failures (fm_backend_wait_transition returning 2 -
 # connect/subscribe failure) before the push fast-path is disabled for the rest
 # of this watcher process and the loop reverts to pure polling (report section
@@ -1189,25 +1189,38 @@ EOF
     ssf="$STATE/.stale-since-$key"
     ewf="$STATE/.wedge-escalations-$key"
     pf="$STATE/.paused-$key"   # flag: this key's stale is using the bounded pause cadence
+    prev=$(cat "$hf" 2>/dev/null || true)
+    if [ "$h" = "$prev" ]; then
+      n=$(( $(cat "$cf" 2>/dev/null || echo 0) + 1 ))
+    else
+      printf '%s' "$h" > "$hf"
+      n=0
+    fi
+    echo "$n" > "$cf"
     if lavish_review_wait_healthy "$task"; then
       handle_lavish_review_stale "$w" "$task" "$h"
       continue
     fi
-    if [ -e "$STATE/.lavish-wait-since-$key" ]; then
-      clear_pause_tracking "$key"
-      fm_wake_append stale "$w" "stale: $w" || exit 1
-      wake "stale: $w"
-    fi
-    prev=$(cat "$hf" 2>/dev/null || true)
     # Busy match: a backend's native semantic state when available (herdr), else
     # the last 6 non-blank lines only (the TUI footer area, where every verified
     # harness renders its busy indicator) so busy-looking strings in displayed
     # content cannot suppress stale detection. Read once per window per poll and
     # reused below so a busy verdict is consistent within one cycle.
     if window_is_busy "$w" "$tail40"; then busy_now=0; else busy_now=1; fi
+    if [ -e "$STATE/.lavish-wait-since-$key" ]; then
+      if { [ "$busy_now" -ne 0 ] && [ "$n" -ge 2 ]; } ||
+         { [ "$busy_now" -eq 0 ] && busy_turn_over_age "$task"; }; then
+        clear_pause_tracking "$key"
+        fm_wake_append stale "$w" "stale: $w" || exit 1
+        wake "stale: $w"
+      fi
+      if [ "$busy_now" -eq 0 ]; then
+        clear_pause_tracking "$key"
+      else
+        continue
+      fi
+    fi
     if [ "$h" = "$prev" ]; then
-      n=$(( $(cat "$cf" 2>/dev/null || echo 0) + 1 ))
-      echo "$n" > "$cf"
       if [ "$n" -ge 2 ] && [ "$busy_now" -ne 0 ]; then
         # The pane is idle/stale at hash $h. Triage decides whether this wakes
         # firstmate. Detection itself is unchanged from above.
@@ -1330,8 +1343,6 @@ EOF
         fi
       fi
     else
-      printf '%s' "$h" > "$hf"
-      echo 0 > "$cf"
       paused_bound=1
       if [ "$busy_now" -eq 0 ] && busy_turn_over_age "$task"; then
         busy_turn_bound_check "$w" "$task" "$h" "$ssf" "$ewf" && paused_bound=0
