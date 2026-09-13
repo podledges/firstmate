@@ -183,6 +183,8 @@ BUSY_TURN_MAX_SECS=${FM_BUSY_TURN_MAX_SECS:-3600}
 # These cases re-surface once for a recheck every PAUSE_RESURFACE_SECS - far
 # longer than the wedge threshold, but finite so a forgotten hold cannot rot invisibly.
 PAUSE_RESURFACE_SECS=${FM_PAUSE_RESURFACE_SECS:-$FM_PAUSE_RESURFACE_SECS_DEFAULT}
+LAVISH_REVIEW_WAIT_BIN=${FM_LAVISH_REVIEW_WAIT_BIN:-$SCRIPT_DIR/fm-lavish-review-wait.sh}
+LAVISH_REVIEW_WAIT_TIMEOUT=${FM_LAVISH_REVIEW_WAIT_TIMEOUT:-8}
 # Consecutive event-path failures (fm_backend_wait_transition returning 2 -
 # connect/subscribe failure) before the push fast-path is disabled for the rest
 # of this watcher process and the loop reverts to pure polling (report section
@@ -431,6 +433,10 @@ busy_turn_over_age() {  # <task>
 handle_paused_stale() {  # <window> <task> <hash>
   local win=$1 task=$2 h=$3 key statusf mtime age detail reason
   key=$(window_key "$win")
+  if [ -e "$STATE/.lavish-wait-since-$key" ]; then
+    handle_lavish_review_stale "$win" "$task" "$h"
+    return
+  fi
   printf '%s' "$h" > "$STATE/.stale-$key"
   : > "$STATE/.paused-$key"
   rm -f "$STATE/.stale-since-$key" "$STATE/.wedge-escalations-$key"
@@ -450,6 +456,38 @@ handle_paused_stale() {  # <window> <task> <hash>
   triage_log "absorbed stale ($detail, age ${age}s): $win"
 }
 
+# Admit one foreground Lavish poll to the existing bounded captain-wait cadence
+# only after its dedicated executable proves the exact task, hold, open review,
+# pane-owned process, artifact, Lavish session, and loopback URL all agree.
+# Failure is deliberately silent and means "no suppression": the ordinary stale
+# path keeps escalating when any evidence is absent, ambiguous, unsupported, or
+# unavailable.
+lavish_review_wait_healthy() {  # <task>
+  [ -x "$LAVISH_REVIEW_WAIT_BIN" ] || return 1
+  FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+    fm_run_timed "$LAVISH_REVIEW_WAIT_TIMEOUT" "$LAVISH_REVIEW_WAIT_BIN" check "$1" \
+      >/dev/null 2>&1
+}
+
+# A proven foreground review is a captain wait, not a wedge. Reuse the declared
+# wait's bounded re-surface mechanism, but anchor its first recheck on when the
+# proof was first established rather than on an older status line. Every later
+# watcher poll re-proves health before preserving this marker.
+handle_lavish_review_stale() {  # <window> <task> <hash>
+  local win=$1 task=$2 h=$3 key since age
+  key=$(window_key "$win")
+  printf '%s' "$h" > "$STATE/.stale-$key"
+  : > "$STATE/.paused-$key"
+  since="$STATE/.lavish-wait-since-$key"
+  [ -e "$since" ] || date +%s > "$since"
+  age=$(age_of "$since")
+  rm -f "$STATE/.stale-since-$key" "$STATE/.wedge-escalations-$key"
+  clear_write_tracking "$key"
+  resurface_absorbed "$win" "$STATE/.paused-resurfaced-$key" "$age" \
+    "stale: $win (captain-held visual review ${age}s, healthy foreground Lavish poll rechecked on a long cadence not a wedge; answer or end the review)"
+  triage_log "absorbed stale (captain-held visual review, healthy foreground Lavish poll, age ${age}s): $win"
+}
+
 # Apply the busy-pane completed-turn bound to a window whose bound has already
 # crossed, honoring the worker's OWN declared external wait. Prints/queues
 # nothing itself; it only chooses which absorber owns the crossed bound.
@@ -466,6 +504,10 @@ handle_paused_stale() {  # <window> <task> <hash>
 # classification.
 busy_turn_bound_check() {  # <window> <task> <hash> <since-file> <escalation-file>
   local win=$1 task=$2 h=$3 since_file=$4 escalation_file=$5
+  if ! afk_present && lavish_review_wait_healthy "$task"; then
+    handle_lavish_review_stale "$win" "$task" "$h"
+    return 0
+  fi
   if ! afk_present && status_is_paused_or_captain_held "$(last_status_line "$STATE/$task.status")"; then
     handle_paused_stale "$win" "$task" "$h"
     return 0
@@ -476,7 +518,8 @@ busy_turn_bound_check() {  # <window> <task> <hash> <since-file> <escalation-fil
 
 clear_pause_state() {  # <window-key>
   local key=$1
-  rm -f "$STATE/.paused-$key" "$STATE/.paused-rechecked-$key" "$STATE/.paused-resurfaced-$key"
+  rm -f "$STATE/.paused-$key" "$STATE/.paused-rechecked-$key" "$STATE/.paused-resurfaced-$key" \
+    "$STATE/.lavish-wait-since-$key"
 }
 
 clear_pause_tracking() {  # <window-key>
@@ -495,6 +538,12 @@ pause_state_class() {  # <window> <task>
   key=$(window_key "$win")
   last=$(last_status_line "$STATE/$task.status")
   recheck_file="$STATE/.paused-rechecked-$key"
+  if lavish_review_wait_healthy "$task"; then
+    [ -e "$STATE/.lavish-wait-since-$key" ] || date +%s > "$STATE/.lavish-wait-since-$key"
+    rm -f "$recheck_file"
+    printf 'paused'
+    return
+  fi
   if ! status_is_paused_or_captain_held "$last"; then
     rm -f "$recheck_file"
     crew_absorb_class "$task"
@@ -1134,7 +1183,11 @@ EOF
     key=$(window_key "$w")
     last=$(last_status_line "$STATE/$task.status")
     if ! status_is_paused_or_captain_held "$last" && [ -e "$STATE/.paused-$key" ]; then
-      clear_pause_tracking "$key"
+      if [ -e "$STATE/.lavish-wait-since-$key" ] && lavish_review_wait_healthy "$task"; then
+        :
+      else
+        clear_pause_tracking "$key"
+      fi
     fi
     # An idle secondmate endpoint is healthy by design, so a mate is admitted to
     # the pane-stale path ONLY to serve a declared wait's bounded re-surface -

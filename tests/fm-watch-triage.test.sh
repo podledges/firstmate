@@ -2152,6 +2152,108 @@ test_terminal_first_sight_drops_a_finished_write_deferral_chain() {
   pass "both first-sight paths through a captain-relevant status drop a finished write-deferral chain with the idle window"
 }
 
+# --- captain-held foreground Lavish review wait -----------------------------
+
+# Drive the public watcher and Lavish-wait executable against isolated process,
+# backlog, session-listing, and HTTP fixtures. The healthy phase must enter the
+# existing bounded captain-wait cadence; killing only the exact poll must remove
+# that proof and restore the ordinary wedge escalation even though the pane still
+# reports busy.
+test_captain_held_lavish_poll_suppresses_only_while_healthy() {
+  local dir state fakebin out capture artifact window key statusf turnf poll_pid watcher_pid
+  dir=$(make_case lavish-review-wait); state="$dir/state"; fakebin="$dir/fakebin"; out="$dir/watch.out"
+  capture="$dir/pane.txt"; artifact="$dir/data/review-scout/board.html"; window="test:fm-review-scout"
+  key=$(printf '%s' "$window" | tr ':/.' '___')
+  mkdir -p "$(dirname "$artifact")"
+  printf '<!doctype html><title>isolated review</title>\n' > "$artifact"
+  printf 'foreground review poll\n' > "$capture"
+  printf 'window=%s\nkind=scout\nharness=pi\n' "$window" > "$state/review-scout.meta"
+  record_pi_busy "$state" review-scout
+  statusf="$state/review-scout.status"
+  printf 'needs-decision [key=visual-review]: review the isolated board\n' > "$statusf"
+  prime_status_seen "$state" "$statusf" || fail "could not prime the Lavish review status"
+  turnf="$state/review-scout.turn-ended"
+  : > "$turnf"
+  set_mtime "$(( $(date +%s) - 120 ))" "$turnf"
+  prime_turnend_seen "$turnf"
+
+  cat > "$fakebin/tasks-axi" <<'SH'
+#!/usr/bin/env bash
+[ "${1:-}" = show ] || exit 1
+cat <<'OUT'
+task:
+  id: review-scout
+  state: in_flight
+  blocked: no
+  held: yes
+  hold_kind: captain
+OUT
+SH
+  cat > "$fakebin/lavish-axi" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = poll ]; then
+  while :; do sleep 10; done
+fi
+cat <<OUT
+sessions[1]{file,status,url,pending_prompts}:
+  $FM_FAKE_LAVISH_ARTIFACT,open,"http://127.0.0.1:4387/session/fixture",0
+OUT
+SH
+  cat > "$fakebin/curl" <<'SH'
+#!/usr/bin/env bash
+[ "${FM_FAKE_LAVISH_HTTP_OK:-0}" = 1 ]
+SH
+  chmod +x "$fakebin/tasks-axi" "$fakebin/lavish-axi" "$fakebin/curl"
+
+  FM_FAKE_LAVISH_ARTIFACT="$artifact" "$fakebin/lavish-axi" poll "$artifact" &
+  poll_pid=$!
+  export FM_FAKE_TMUX_PANE_PID="$poll_pid"
+  export FM_FAKE_TMUX_WINDOW="$window"
+  export FM_FAKE_TMUX_CAPTURE="$capture"
+  export FM_FAKE_TMUX_CURRENT_COMMAND=pi
+  export FM_FAKE_CREW_STATE='state: working · source: pane · harness busy'
+  export FM_FAKE_LAVISH_ARTIFACT="$artifact"
+  export FM_FAKE_LAVISH_HTTP_OK=1
+
+  PATH="$fakebin:$PATH" FM_HOME="$dir" FM_STATE_OVERRIDE="$state" \
+    FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_BUSY_TURN_MAX_SECS=1 \
+    FM_PAUSE_RESURFACE_SECS=999 FM_LAVISH_REVIEW_WAIT_TIMEOUT=2 FM_POLL=1 \
+    FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+  watcher_pid=$!
+  if ! wait_poll_cycle "$state" "$watcher_pid"; then
+    reap "$watcher_pid"; reap "$poll_pid"
+    fail "healthy foreground Lavish review woke as stale: $(cat "$out")"
+  fi
+  [ ! -s "$out" ] || { reap "$watcher_pid"; reap "$poll_pid"; fail "healthy Lavish wait printed a wake: $(cat "$out")"; }
+  [ -e "$state/.lavish-wait-since-$key" ] \
+    || { reap "$watcher_pid"; reap "$poll_pid"; fail "healthy Lavish wait did not enter bounded wait tracking"; }
+  [ ! -e "$state/.stale-since-$key" ] \
+    || { reap "$watcher_pid"; reap "$poll_pid"; fail "healthy Lavish wait started a wedge timer"; }
+  reap "$watcher_pid"
+  ack_stopped_cycle "$state" || { reap "$poll_pid"; fail "could not acknowledge the healthy Lavish fixture stop"; }
+
+  # Keep every other fact unchanged and remove only the pane-owned poll. The
+  # helper must stop proving health, clear its wait marker, and let the existing
+  # stale escalation fire from the still-busy pane.
+  reap "$poll_pid"
+  : > "$out"
+  PATH="$fakebin:$PATH" FM_HOME="$dir" FM_STATE_OVERRIDE="$state" \
+    FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_BUSY_TURN_MAX_SECS=1 \
+    FM_STALE_ESCALATE_SECS=0 FM_PAUSE_RESURFACE_SECS=999 \
+    FM_LAVISH_REVIEW_WAIT_TIMEOUT=2 FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+  watcher_pid=$!
+  wait_for_exit "$watcher_pid" 100 || { reap "$watcher_pid"; fail "missing Lavish poll did not restore stale escalation"; }
+  grep -F "stale: $window" "$out" >/dev/null || fail "dead poll escalation omitted the stale pane"
+  grep -F 'possible wedge' "$out" >/dev/null || fail "dead poll did not use the ordinary wedge escalation"
+  [ ! -e "$state/.lavish-wait-since-$key" ] || fail "dead poll retained healthy-review suppression"
+
+  unset FM_FAKE_TMUX_PANE_PID FM_FAKE_TMUX_WINDOW FM_FAKE_TMUX_CAPTURE
+  unset FM_FAKE_TMUX_CURRENT_COMMAND FM_FAKE_CREW_STATE
+  unset FM_FAKE_LAVISH_ARTIFACT FM_FAKE_LAVISH_HTTP_OK
+  pass "a healthy captain-held foreground Lavish poll uses bounded wait cadence, and a dead poll escalates"
+}
+
 # --- triage debug log stays size capped -------------------------------------
 
 test_triage_log_size_cap_accepts_spaced_wc_counts() {
@@ -2654,6 +2756,7 @@ test_write_deferral_resurfaces_on_the_bounded_cadence
 test_secondmate_home_supervision_churn_is_not_write_evidence
 test_timer_repair_drops_a_finished_write_deferral_chain
 test_terminal_first_sight_drops_a_finished_write_deferral_chain
+test_captain_held_lavish_poll_suppresses_only_while_healthy
 test_triage_log_size_cap_accepts_spaced_wc_counts
 test_procevent_captured_result_surfaces_proactively
 test_procevent_unacknowledged_result_redrains_until_handled
