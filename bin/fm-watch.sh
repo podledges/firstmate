@@ -1214,11 +1214,7 @@ EOF
         fm_wake_append stale "$w" "stale: $w" || exit 1
         wake "stale: $w"
       fi
-      if [ "$busy_now" -eq 0 ]; then
-        clear_pause_tracking "$key"
-      else
-        continue
-      fi
+      continue
     fi
     if [ "$h" = "$prev" ]; then
       if [ "$n" -ge 2 ] && [ "$busy_now" -ne 0 ]; then
