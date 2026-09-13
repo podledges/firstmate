@@ -75,9 +75,8 @@ pane_root_pids() {  # <backend> <target>
 }
 
 poll_artifact_in_tree() {  # <newline root pids>
-  local roots=$1 ps_bin=${FM_LAVISH_PS_BIN:-ps}
-  command -v "$ps_bin" >/dev/null 2>&1 || return 1
-  "$ps_bin" -axo pid=,ppid=,args= 2>/dev/null | perl -e '
+  local roots=$1
+  ps -axo pid=,ppid=,args= 2>/dev/null | perl -e '
     use strict; use warnings;
     my $roots = shift @ARGV // "";
     my %root = map { $_ => 1 } grep { /^[0-9]+$/ && $_ > 1 } split /\n/, $roots;

@@ -183,7 +183,7 @@ BUSY_TURN_MAX_SECS=${FM_BUSY_TURN_MAX_SECS:-3600}
 # These cases re-surface once for a recheck every PAUSE_RESURFACE_SECS - far
 # longer than the wedge threshold, but finite so a forgotten hold cannot rot invisibly.
 PAUSE_RESURFACE_SECS=${FM_PAUSE_RESURFACE_SECS:-$FM_PAUSE_RESURFACE_SECS_DEFAULT}
-LAVISH_REVIEW_WAIT_BIN=${FM_LAVISH_REVIEW_WAIT_BIN:-$SCRIPT_DIR/fm-lavish-review-wait.sh}
+LAVISH_REVIEW_WAIT_BIN=$SCRIPT_DIR/fm-lavish-review-wait.sh
 LAVISH_REVIEW_WAIT_TIMEOUT=${FM_LAVISH_REVIEW_WAIT_TIMEOUT:-8}
 # Consecutive event-path failures (fm_backend_wait_transition returning 2 -
 # connect/subscribe failure) before the push fast-path is disabled for the rest
@@ -433,10 +433,6 @@ busy_turn_over_age() {  # <task>
 handle_paused_stale() {  # <window> <task> <hash>
   local win=$1 task=$2 h=$3 key statusf mtime age detail reason
   key=$(window_key "$win")
-  if [ -e "$STATE/.lavish-wait-since-$key" ]; then
-    handle_lavish_review_stale "$win" "$task" "$h"
-    return
-  fi
   printf '%s' "$h" > "$STATE/.stale-$key"
   : > "$STATE/.paused-$key"
   rm -f "$STATE/.stale-since-$key" "$STATE/.wedge-escalations-$key"
@@ -504,10 +500,6 @@ handle_lavish_review_stale() {  # <window> <task> <hash>
 # classification.
 busy_turn_bound_check() {  # <window> <task> <hash> <since-file> <escalation-file>
   local win=$1 task=$2 h=$3 since_file=$4 escalation_file=$5
-  if ! afk_present && lavish_review_wait_healthy "$task"; then
-    handle_lavish_review_stale "$win" "$task" "$h"
-    return 0
-  fi
   if ! afk_present && status_is_paused_or_captain_held "$(last_status_line "$STATE/$task.status")"; then
     handle_paused_stale "$win" "$task" "$h"
     return 0
@@ -538,12 +530,6 @@ pause_state_class() {  # <window> <task>
   key=$(window_key "$win")
   last=$(last_status_line "$STATE/$task.status")
   recheck_file="$STATE/.paused-rechecked-$key"
-  if lavish_review_wait_healthy "$task"; then
-    [ -e "$STATE/.lavish-wait-since-$key" ] || date +%s > "$STATE/.lavish-wait-since-$key"
-    rm -f "$recheck_file"
-    printf 'paused'
-    return
-  fi
   if ! status_is_paused_or_captain_held "$last"; then
     rm -f "$recheck_file"
     crew_absorb_class "$task"
@@ -1182,12 +1168,8 @@ EOF
     task=$(window_to_task "$w" "$STATE")
     key=$(window_key "$w")
     last=$(last_status_line "$STATE/$task.status")
-    if ! status_is_paused_or_captain_held "$last" && [ -e "$STATE/.paused-$key" ]; then
-      if [ -e "$STATE/.lavish-wait-since-$key" ] && lavish_review_wait_healthy "$task"; then
-        :
-      else
-        clear_pause_tracking "$key"
-      fi
+    if ! status_is_paused_or_captain_held "$last" && [ -e "$STATE/.paused-$key" ] && [ ! -e "$STATE/.lavish-wait-since-$key" ]; then
+      clear_pause_tracking "$key"
     fi
     # An idle secondmate endpoint is healthy by design, so a mate is admitted to
     # the pane-stale path ONLY to serve a declared wait's bounded re-surface -
@@ -1207,6 +1189,15 @@ EOF
     ssf="$STATE/.stale-since-$key"
     ewf="$STATE/.wedge-escalations-$key"
     pf="$STATE/.paused-$key"   # flag: this key's stale is using the bounded pause cadence
+    if lavish_review_wait_healthy "$task"; then
+      handle_lavish_review_stale "$w" "$task" "$h"
+      continue
+    fi
+    if [ -e "$STATE/.lavish-wait-since-$key" ]; then
+      clear_pause_tracking "$key"
+      fm_wake_append stale "$w" "stale: $w" || exit 1
+      wake "stale: $w"
+    fi
     prev=$(cat "$hf" 2>/dev/null || true)
     # Busy match: a backend's native semantic state when available (herdr), else
     # the last 6 non-blank lines only (the TUI footer area, where every verified

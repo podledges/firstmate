@@ -2161,7 +2161,8 @@ test_terminal_first_sight_drops_a_finished_write_deferral_chain() {
 # reports busy.
 test_captain_held_lavish_poll_suppresses_only_while_healthy() {
   local dir state fakebin out capture artifact window key statusf turnf poll_pid watcher_pid
-  dir=$(make_case lavish-review-wait); state="$dir/state"; fakebin="$dir/fakebin"; out="$dir/watch.out"
+  local mode=${1:-attended} failure=${2:-poll}
+  dir=$(make_case "lavish-review-wait-$mode-$failure"); state="$dir/state"; fakebin="$dir/fakebin"; out="$dir/watch.out"
   capture="$dir/pane.txt"; artifact="$dir/data/review-scout/board.html"; window="test:fm-review-scout"
   key=$(printf '%s' "$window" | tr ':/.' '___')
   mkdir -p "$(dirname "$artifact")"
@@ -2171,6 +2172,8 @@ test_captain_held_lavish_poll_suppresses_only_while_healthy() {
   record_pi_busy "$state" review-scout
   statusf="$state/review-scout.status"
   printf 'needs-decision [key=visual-review]: review the isolated board\n' > "$statusf"
+  case "$mode" in *paused*) printf 'paused: waiting for visual feedback\n' >> "$statusf" ;; esac
+  case "$mode" in afk*) : > "$state/.afk" ;; esac
   prime_status_seen "$state" "$statusf" || fail "could not prime the Lavish review status"
   turnf="$state/review-scout.turn-ended"
   : > "$turnf"
@@ -2217,7 +2220,7 @@ SH
 
   PATH="$fakebin:$PATH" FM_HOME="$dir" FM_STATE_OVERRIDE="$state" \
     FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_BUSY_TURN_MAX_SECS=1 \
-    FM_PAUSE_RESURFACE_SECS=999 FM_LAVISH_REVIEW_WAIT_TIMEOUT=2 FM_POLL=1 \
+    FM_STALE_ESCALATE_SECS=0 FM_PAUSE_RESURFACE_SECS=999 FM_LAVISH_REVIEW_WAIT_TIMEOUT=2 FM_POLL=1 \
     FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
   watcher_pid=$!
   if ! wait_poll_cycle "$state" "$watcher_pid"; then
@@ -2232,10 +2235,11 @@ SH
   reap "$watcher_pid"
   ack_stopped_cycle "$state" || { reap "$poll_pid"; fail "could not acknowledge the healthy Lavish fixture stop"; }
 
-  # Keep every other fact unchanged and remove only the pane-owned poll. The
-  # helper must stop proving health, clear its wait marker, and let the existing
-  # stale escalation fire from the still-busy pane.
-  reap "$poll_pid"
+  if [ "$failure" = poll ]; then
+    reap "$poll_pid"
+  else
+    export FM_FAKE_LAVISH_HTTP_OK=0
+  fi
   : > "$out"
   PATH="$fakebin:$PATH" FM_HOME="$dir" FM_STATE_OVERRIDE="$state" \
     FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_BUSY_TURN_MAX_SECS=1 \
@@ -2243,15 +2247,17 @@ SH
     FM_LAVISH_REVIEW_WAIT_TIMEOUT=2 FM_POLL=1 FM_SIGNAL_GRACE=1 \
     FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
   watcher_pid=$!
-  wait_for_exit "$watcher_pid" 100 || { reap "$watcher_pid"; fail "missing Lavish poll did not restore stale escalation"; }
-  grep -F "stale: $window" "$out" >/dev/null || fail "dead poll escalation omitted the stale pane"
-  grep -F 'possible wedge' "$out" >/dev/null || fail "dead poll did not use the ordinary wedge escalation"
-  [ ! -e "$state/.lavish-wait-since-$key" ] || fail "dead poll retained healthy-review suppression"
+  wait_for_exit "$watcher_pid" 100 || { reap "$watcher_pid"; reap "$poll_pid"; fail "$mode: failed Lavish $failure did not restore stale escalation"; }
+  [ "$failure" = poll ] || reap "$poll_pid"
+  grep -F "stale: $window" "$out" >/dev/null || fail "failed review escalation omitted the stale pane"
+  grep -F "stale: $window" "$state/.wake-queue" >/dev/null || fail "failed review did not queue escalation"
+  [ ! -e "$state/.lavish-wait-since-$key" ] || fail "failed review retained healthy-review suppression"
+  [ ! -e "$state/.paused-$key" ] || fail "failed review fell back to declared pause"
 
   unset FM_FAKE_TMUX_PANE_PID FM_FAKE_TMUX_WINDOW FM_FAKE_TMUX_CAPTURE
   unset FM_FAKE_TMUX_CURRENT_COMMAND FM_FAKE_CREW_STATE
   unset FM_FAKE_LAVISH_ARTIFACT FM_FAKE_LAVISH_HTTP_OK
-  pass "a healthy captain-held foreground Lavish poll uses bounded wait cadence, and a dead poll escalates"
+  pass "$mode: healthy Lavish wait is bounded and failed $failure escalates"
 }
 
 # --- triage debug log stays size capped -------------------------------------
@@ -2756,7 +2762,11 @@ test_write_deferral_resurfaces_on_the_bounded_cadence
 test_secondmate_home_supervision_churn_is_not_write_evidence
 test_timer_repair_drops_a_finished_write_deferral_chain
 test_terminal_first_sight_drops_a_finished_write_deferral_chain
-test_captain_held_lavish_poll_suppresses_only_while_healthy
+for lavish_mode in attended afk attended-paused afk-paused; do
+  for lavish_failure in poll session; do
+    test_captain_held_lavish_poll_suppresses_only_while_healthy "$lavish_mode" "$lavish_failure"
+  done
+done
 test_triage_log_size_cap_accepts_spaced_wc_counts
 test_procevent_captured_result_surfaces_proactively
 test_procevent_unacknowledged_result_redrains_until_handled
