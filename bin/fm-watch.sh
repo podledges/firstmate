@@ -452,12 +452,8 @@ handle_paused_stale() {  # <window> <task> <hash>
   triage_log "absorbed stale ($detail, age ${age}s): $win"
 }
 
-# Admit one foreground Lavish poll to the existing bounded captain-wait cadence
-# only after its dedicated executable proves the exact task, hold, open review,
-# pane-owned process, artifact, Lavish session, and loopback URL all agree.
-# Failure is deliberately silent and means "no suppression": the ordinary stale
-# path keeps escalating when any evidence is absent, ambiguous, unsupported, or
-# unavailable.
+# The read-only predicate's header owns admission evidence; architecture.md owns
+# the wait/reconciliation lifecycle. A failed proof never authorizes suppression.
 lavish_review_wait_healthy() {  # <task>
   [ -x "$LAVISH_REVIEW_WAIT_BIN" ] || return 1
   FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
@@ -467,8 +463,9 @@ lavish_review_wait_healthy() {  # <task>
 
 # A proven foreground review is a captain wait, not a wedge. Reuse the declared
 # wait's bounded re-surface mechanism, but anchor its first recheck on when the
-# proof was first established rather than on an older status line. Every later
-# watcher poll re-proves health before preserving this marker.
+# proof was first established rather than on an older status line. Later polls
+# re-prove health before absorbing; a retained marker without proof instead
+# keeps failed-review reconciliation ahead of declared-pause fallback.
 handle_lavish_review_stale() {  # <window> <task> <hash>
   local win=$1 task=$2 h=$3 key since age
   key=$(window_key "$win")

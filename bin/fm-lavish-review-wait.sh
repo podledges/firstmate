@@ -7,10 +7,14 @@
 #
 # `check` exits 0 and prints one `healthy:` line only when every independent
 # binding agrees: the task is a live scout held for the captain, its status log
-# has an open decision, one exact `lavish-axi poll <artifact>` command is in the
-# recorded pane's agent process tree, the artifact is a regular HTML file under
+# has an open decision, `lavish-axi poll <artifact>` (optionally followed by
+# `--agent-reply <text>`) identifies exactly one artifact in the recorded pane's
+# process tree, the artifact is a regular HTML file under
 # data/<task-id>/, Lavish reports that exact session open with no queued prompt,
 # and its loopback session URL answers successfully.
+#
+# Process binding supports tmux pane roots and Herdr foreground process roots;
+# other backends and artifact paths containing whitespace cannot establish proof.
 #
 # Any missing, malformed, ambiguous, unsupported, or unavailable evidence exits
 # 1 without output. This command is a read-only stale-classification predicate;
