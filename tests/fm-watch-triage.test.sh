@@ -2317,8 +2317,9 @@ SH
         transport=$(make_supercase "lavish-delivery-$mode-$failure-$command_shape-$round")
         printf '\342\235\257 \n' > "$transport/composer.txt"
         (
+          # shellcheck source=/dev/null
           . "$ROOT/bin/fm-supervise-daemon.sh"
-          FM_DAEMON_PRIMARY_HARNESS=claude
+          FM_DAEMON_PRIMARY_HARNESS=claude \
           PATH="$transport/fakebin:$PATH" FM_HOME="$dir" FM_STATE_OVERRIDE="$state" \
             FM_FAKE_TMUX_CAPTURE="$transport/composer.txt" FM_FAKE_TMUX_SENT="$transport/sent.log" \
             FM_ESCALATE_BATCH_SECS=0 LOG="$transport/daemon.log" \
