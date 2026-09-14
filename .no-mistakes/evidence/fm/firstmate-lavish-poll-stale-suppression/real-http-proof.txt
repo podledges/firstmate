@@ -1,0 +1,13 @@
+Real HTTP verification (retry after re-priming restored fixture status cursor).
+Live pane-owned agent-reply poll with HTTP 200: exit=0 output=healthy: /home/podles/.no-mistakes/worktrees/645a0e01b92d/01M2EFMFFJ65XCZNB4300SC4H5/.test-tmp/fm-watch-triage-tests.BvQj34/lavish-review-wait-afk-paused-poll-agent-reply/data/review-scout/board.html
+No open captain review fails closed: exit=1 output=
+Unrelated recorded pane PID fails closed: exit=1 output=
+Wrong listed session artifact fails closed: exit=1 output=
+Unavailable authoritative captain hold fails closed: exit=1 output=
+Restored exact bindings admit healthy wait: exit=0 output=healthy: /home/podles/.no-mistakes/worktrees/645a0e01b92d/01M2EFMFFJ65XCZNB4300SC4H5/.test-tmp/fm-watch-triage-tests.BvQj34/lavish-review-wait-afk-paused-poll-agent-reply/data/review-scout/board.html
+Live pane-owned agent-reply poll with HTTP 200: exit=0 output=healthy: /home/podles/.no-mistakes/worktrees/645a0e01b92d/01M2EFMFFJ65XCZNB4300SC4H5/.test-tmp/fm-watch-triage-tests.BvQj34/lavish-review-wait-attended-feedback-agent-reply/data/review-scout/board.html
+No open captain review fails closed: exit=1 output=
+Unrelated recorded pane PID fails closed: exit=1 output=
+Wrong listed session artifact fails closed: exit=1 output=
+Unavailable authoritative captain hold fails closed: exit=1 output=
+Restored exact bindings admit healthy wait: exit=0 output=healthy: /home/podles/.no-mistakes/worktrees/645a0e01b92d/01M2EFMFFJ65XCZNB4300SC4H5/.test-tmp/fm-watch-triage-tests.BvQj34/lavish-review-wait-attended-feedback-agent-reply/data/review-scout/board.html

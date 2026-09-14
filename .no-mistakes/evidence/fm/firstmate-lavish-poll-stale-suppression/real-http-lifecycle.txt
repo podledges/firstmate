@@ -1,0 +1,35 @@
+Real HTTP server and curl; isolated mocked task/session listing, pane metadata and crew verdict. Actual watcher, daemon, process table and poll process.
+
+--- lavish-delivery-afk-paused-poll-agent-reply-1/sent.log ---
+⁣FIRSTMATE_OP: v1 away-supervisor: Supervisor escalate (1 event(s)): test:fm-review-scout (idle 2s, possible wedge, escalation 1) (pre-read; re-arm not needed — watcher daemon-managed)
+[ENTER]
+
+
+--- lavish-delivery-afk-paused-poll-agent-reply-2/sent.log ---
+⁣FIRSTMATE_OP: v1 away-supervisor: Supervisor escalate (1 event(s)): test:fm-review-scout (idle 2s, possible wedge, escalation 2) (pre-read; re-arm not needed — watcher daemon-managed)
+[ENTER]
+
+
+--- lavish-review-wait-afk-paused-poll-agent-reply/state/.wake-queue ---
+1789344633	2	stale	test:fm-review-scout	stale: test:fm-review-scout (idle 2s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-afk-paused-poll-agent-reply/state/.watch-triage.log ---
+[2026-09-14T00:10:23+0000] absorbed stale (captain-held visual review, healthy foreground Lavish poll, age 0s): test:fm-review-scout
+[2026-09-14T00:10:26+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+[2026-09-14T00:10:31+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+
+
+--- lavish-review-wait-afk-paused-poll-agent-reply/watch.out ---
+stale: test:fm-review-scout (idle 2s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-attended-feedback-agent-reply/state/.wake-queue ---
+
+
+--- lavish-review-wait-attended-feedback-agent-reply/state/.watch-triage.log ---
+[2026-09-14T00:10:36+0000] absorbed stale (captain-held visual review, healthy foreground Lavish poll, age 0s): test:fm-review-scout
+
+
+--- lavish-review-wait-attended-feedback-agent-reply/watch.out ---
+

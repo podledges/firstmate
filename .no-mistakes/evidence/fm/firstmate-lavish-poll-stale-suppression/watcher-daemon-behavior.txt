@@ -1,0 +1,369 @@
+Isolated executable watcher/daemon fixtures; tmux, task/session listing, HTTP and crew verdict mocked; poll processes and production watcher/daemon real.
+
+--- lavish-delivery-afk-early-poll-plain-1/sent.log ---
+⁣FIRSTMATE_OP: v1 away-supervisor: Supervisor escalate (1 event(s)): test:fm-review-scout (idle 2s, possible wedge, escalation 1) (pre-read; re-arm not needed — watcher daemon-managed)
+[ENTER]
+
+
+--- lavish-delivery-afk-early-poll-plain-2/sent.log ---
+⁣FIRSTMATE_OP: v1 away-supervisor: Supervisor escalate (1 event(s)): test:fm-review-scout (idle 2s, possible wedge, escalation 2) (pre-read; re-arm not needed — watcher daemon-managed)
+[ENTER]
+
+
+--- lavish-delivery-afk-idle-poll-plain-1/sent.log ---
+⁣FIRSTMATE_OP: v1 away-supervisor: Supervisor escalate (1 event(s)): test:fm-review-scout (idle 1s, possible wedge, escalation 1) (pre-read; re-arm not needed — watcher daemon-managed)
+[ENTER]
+
+
+--- lavish-delivery-afk-idle-poll-plain-2/sent.log ---
+⁣FIRSTMATE_OP: v1 away-supervisor: Supervisor escalate (1 event(s)): test:fm-review-scout (idle 2s, possible wedge, escalation 2) (pre-read; re-arm not needed — watcher daemon-managed)
+[ENTER]
+
+
+--- lavish-delivery-afk-paused-early-poll-plain-1/sent.log ---
+⁣FIRSTMATE_OP: v1 away-supervisor: Supervisor escalate (1 event(s)): test:fm-review-scout (idle 2s, possible wedge, escalation 1) (pre-read; re-arm not needed — watcher daemon-managed)
+[ENTER]
+
+
+--- lavish-delivery-afk-paused-early-poll-plain-2/sent.log ---
+⁣FIRSTMATE_OP: v1 away-supervisor: Supervisor escalate (1 event(s)): test:fm-review-scout (idle 2s, possible wedge, escalation 2) (pre-read; re-arm not needed — watcher daemon-managed)
+[ENTER]
+
+
+--- lavish-delivery-afk-paused-idle-poll-plain-1/sent.log ---
+⁣FIRSTMATE_OP: v1 away-supervisor: Supervisor escalate (1 event(s)): test:fm-review-scout (idle 1s, possible wedge, escalation 1) (pre-read; re-arm not needed — watcher daemon-managed)
+[ENTER]
+
+
+--- lavish-delivery-afk-paused-idle-poll-plain-2/sent.log ---
+⁣FIRSTMATE_OP: v1 away-supervisor: Supervisor escalate (1 event(s)): test:fm-review-scout (idle 1s, possible wedge, escalation 2) (pre-read; re-arm not needed — watcher daemon-managed)
+[ENTER]
+
+
+--- lavish-delivery-afk-paused-poll-agent-reply-1/sent.log ---
+⁣FIRSTMATE_OP: v1 away-supervisor: Supervisor escalate (1 event(s)): test:fm-review-scout (idle 1s, possible wedge, escalation 1) (pre-read; re-arm not needed — watcher daemon-managed)
+[ENTER]
+
+
+--- lavish-delivery-afk-paused-poll-agent-reply-2/sent.log ---
+⁣FIRSTMATE_OP: v1 away-supervisor: Supervisor escalate (1 event(s)): test:fm-review-scout (idle 2s, possible wedge, escalation 2) (pre-read; re-arm not needed — watcher daemon-managed)
+[ENTER]
+
+
+--- lavish-delivery-afk-paused-poll-plain-1/sent.log ---
+⁣FIRSTMATE_OP: v1 away-supervisor: Supervisor escalate (1 event(s)): test:fm-review-scout (idle 2s, possible wedge, escalation 1) (pre-read; re-arm not needed — watcher daemon-managed)
+[ENTER]
+
+
+--- lavish-delivery-afk-paused-poll-plain-2/sent.log ---
+⁣FIRSTMATE_OP: v1 away-supervisor: Supervisor escalate (1 event(s)): test:fm-review-scout (idle 1s, possible wedge, escalation 2) (pre-read; re-arm not needed — watcher daemon-managed)
+[ENTER]
+
+
+--- lavish-delivery-afk-paused-session-plain-1/sent.log ---
+⁣FIRSTMATE_OP: v1 away-supervisor: Supervisor escalate (1 event(s)): test:fm-review-scout (idle 2s, possible wedge, escalation 1) (pre-read; re-arm not needed — watcher daemon-managed)
+[ENTER]
+
+
+--- lavish-delivery-afk-paused-session-plain-2/sent.log ---
+⁣FIRSTMATE_OP: v1 away-supervisor: Supervisor escalate (1 event(s)): test:fm-review-scout (idle 2s, possible wedge, escalation 2) (pre-read; re-arm not needed — watcher daemon-managed)
+[ENTER]
+
+
+--- lavish-delivery-afk-poll-plain-1/sent.log ---
+⁣FIRSTMATE_OP: v1 away-supervisor: Supervisor escalate (1 event(s)): test:fm-review-scout (idle 2s, possible wedge, escalation 1) (pre-read; re-arm not needed — watcher daemon-managed)
+[ENTER]
+
+
+--- lavish-delivery-afk-poll-plain-2/sent.log ---
+⁣FIRSTMATE_OP: v1 away-supervisor: Supervisor escalate (1 event(s)): test:fm-review-scout (idle 1s, possible wedge, escalation 2) (pre-read; re-arm not needed — watcher daemon-managed)
+[ENTER]
+
+
+--- lavish-delivery-afk-session-plain-1/sent.log ---
+⁣FIRSTMATE_OP: v1 away-supervisor: Supervisor escalate (1 event(s)): test:fm-review-scout (idle 2s, possible wedge, escalation 1) (pre-read; re-arm not needed — watcher daemon-managed)
+[ENTER]
+
+
+--- lavish-delivery-afk-session-plain-2/sent.log ---
+⁣FIRSTMATE_OP: v1 away-supervisor: Supervisor escalate (1 event(s)): test:fm-review-scout (idle 2s, possible wedge, escalation 2) (pre-read; re-arm not needed — watcher daemon-managed)
+[ENTER]
+
+
+--- lavish-review-wait-afk-early-poll-plain/state/.wake-queue ---
+1789344345	2	stale	test:fm-review-scout	stale: test:fm-review-scout (idle 2s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-afk-early-poll-plain/state/.watch-triage.log ---
+[2026-09-14T00:05:32+0000] absorbed stale (captain-held visual review, healthy foreground Lavish poll, age 0s): test:fm-review-scout
+[2026-09-14T00:05:38+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+[2026-09-14T00:05:43+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+
+
+--- lavish-review-wait-afk-early-poll-plain/watch.out ---
+stale: test:fm-review-scout (idle 2s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-afk-feedback-plain/state/.wake-queue ---
+
+
+--- lavish-review-wait-afk-feedback-plain/state/.watch-triage.log ---
+[2026-09-14T00:05:16+0000] absorbed stale (captain-held visual review, healthy foreground Lavish poll, age 0s): test:fm-review-scout
+
+
+--- lavish-review-wait-afk-feedback-plain/watch.out ---
+
+
+--- lavish-review-wait-afk-idle-poll-plain/state/.wake-queue ---
+1789344313	2	stale	test:fm-review-scout	stale: test:fm-review-scout (idle 2s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-afk-idle-poll-plain/state/.watch-triage.log ---
+[2026-09-14T00:05:01+0000] absorbed stale (captain-held visual review, healthy foreground Lavish poll, age 1s): test:fm-review-scout
+[2026-09-14T00:05:07+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+[2026-09-14T00:05:11+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+
+
+--- lavish-review-wait-afk-idle-poll-plain/watch.out ---
+stale: test:fm-review-scout (idle 2s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-afk-paused-early-poll-plain/state/.wake-queue ---
+1789344478	2	stale	test:fm-review-scout	stale: test:fm-review-scout (idle 2s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-afk-paused-early-poll-plain/state/.watch-triage.log ---
+[2026-09-14T00:07:45+0000] absorbed stale (captain-held visual review, healthy foreground Lavish poll, age 0s): test:fm-review-scout
+[2026-09-14T00:07:51+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+[2026-09-14T00:07:56+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+
+
+--- lavish-review-wait-afk-paused-early-poll-plain/watch.out ---
+stale: test:fm-review-scout (idle 2s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-afk-paused-feedback-plain/state/.wake-queue ---
+
+
+--- lavish-review-wait-afk-paused-feedback-plain/state/.watch-triage.log ---
+[2026-09-14T00:07:29+0000] absorbed stale (captain-held visual review, healthy foreground Lavish poll, age 0s): test:fm-review-scout
+
+
+--- lavish-review-wait-afk-paused-feedback-plain/watch.out ---
+
+
+--- lavish-review-wait-afk-paused-idle-poll-plain/state/.wake-queue ---
+1789344446	2	stale	test:fm-review-scout	stale: test:fm-review-scout (idle 1s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-afk-paused-idle-poll-plain/state/.watch-triage.log ---
+[2026-09-14T00:07:14+0000] absorbed stale (captain-held visual review, healthy foreground Lavish poll, age 0s): test:fm-review-scout
+[2026-09-14T00:07:20+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+[2026-09-14T00:07:25+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+
+
+--- lavish-review-wait-afk-paused-idle-poll-plain/watch.out ---
+stale: test:fm-review-scout (idle 1s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-afk-paused-poll-agent-reply/state/.wake-queue ---
+1789344490	2	stale	test:fm-review-scout	stale: test:fm-review-scout (idle 2s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-afk-paused-poll-agent-reply/state/.watch-triage.log ---
+[2026-09-14T00:08:01+0000] absorbed stale (captain-held visual review, healthy foreground Lavish poll, age 0s): test:fm-review-scout
+[2026-09-14T00:08:04+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+[2026-09-14T00:08:08+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+
+
+--- lavish-review-wait-afk-paused-poll-agent-reply/watch.out ---
+stale: test:fm-review-scout (idle 2s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-afk-paused-poll-plain/state/.wake-queue ---
+1789344419	2	stale	test:fm-review-scout	stale: test:fm-review-scout (idle 1s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-afk-paused-poll-plain/state/.watch-triage.log ---
+[2026-09-14T00:06:49+0000] absorbed stale (captain-held visual review, healthy foreground Lavish poll, age 0s): test:fm-review-scout
+[2026-09-14T00:06:52+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+[2026-09-14T00:06:57+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+
+
+--- lavish-review-wait-afk-paused-poll-plain/watch.out ---
+stale: test:fm-review-scout (idle 1s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-afk-paused-session-plain/state/.wake-queue ---
+1789344431	2	stale	test:fm-review-scout	stale: test:fm-review-scout (idle 2s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-afk-paused-session-plain/state/.watch-triage.log ---
+[2026-09-14T00:07:01+0000] absorbed stale (captain-held visual review, healthy foreground Lavish poll, age 0s): test:fm-review-scout
+[2026-09-14T00:07:04+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+[2026-09-14T00:07:09+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+
+
+--- lavish-review-wait-afk-paused-session-plain/watch.out ---
+stale: test:fm-review-scout (idle 2s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-afk-poll-plain/state/.wake-queue ---
+1789344285	2	stale	test:fm-review-scout	stale: test:fm-review-scout (idle 1s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-afk-poll-plain/state/.watch-triage.log ---
+[2026-09-14T00:04:35+0000] absorbed stale (captain-held visual review, healthy foreground Lavish poll, age 0s): test:fm-review-scout
+[2026-09-14T00:04:38+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+[2026-09-14T00:04:44+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+
+
+--- lavish-review-wait-afk-poll-plain/watch.out ---
+stale: test:fm-review-scout (idle 1s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-afk-session-plain/state/.wake-queue ---
+1789344298	2	stale	test:fm-review-scout	stale: test:fm-review-scout (idle 2s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-afk-session-plain/state/.watch-triage.log ---
+[2026-09-14T00:04:48+0000] absorbed stale (captain-held visual review, healthy foreground Lavish poll, age 0s): test:fm-review-scout
+[2026-09-14T00:04:51+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+[2026-09-14T00:04:56+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+
+
+--- lavish-review-wait-afk-session-plain/watch.out ---
+stale: test:fm-review-scout (idle 2s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-attended-early-poll-plain/state/.wake-queue ---
+1789344274	2	stale	test:fm-review-scout	stale: test:fm-review-scout (idle 2s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-attended-early-poll-plain/state/.watch-triage.log ---
+[2026-09-14T00:04:23+0000] absorbed stale (captain-held visual review, healthy foreground Lavish poll, age 0s): test:fm-review-scout
+[2026-09-14T00:04:29+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+[2026-09-14T00:04:32+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+
+
+--- lavish-review-wait-attended-early-poll-plain/watch.out ---
+stale: test:fm-review-scout (idle 2s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-attended-feedback-plain/state/.wake-queue ---
+
+
+--- lavish-review-wait-attended-feedback-plain/state/.watch-triage.log ---
+[2026-09-14T00:04:06+0000] absorbed stale (captain-held visual review, healthy foreground Lavish poll, age 0s): test:fm-review-scout
+
+
+--- lavish-review-wait-attended-feedback-plain/watch.out ---
+
+
+--- lavish-review-wait-attended-idle-poll-plain/state/.wake-queue ---
+1789344245	2	stale	test:fm-review-scout	stale: test:fm-review-scout (idle 2s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-attended-idle-poll-plain/state/.watch-triage.log ---
+[2026-09-14T00:03:53+0000] absorbed stale (captain-held visual review, healthy foreground Lavish poll, age 0s): test:fm-review-scout
+[2026-09-14T00:03:59+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+[2026-09-14T00:04:03+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+
+
+--- lavish-review-wait-attended-idle-poll-plain/watch.out ---
+stale: test:fm-review-scout (idle 2s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-attended-paused-early-poll-plain/state/.wake-queue ---
+1789344407	2	stale	test:fm-review-scout	stale: test:fm-review-scout (idle 1s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-attended-paused-early-poll-plain/state/.watch-triage.log ---
+[2026-09-14T00:06:36+0000] absorbed stale (captain-held visual review, healthy foreground Lavish poll, age 0s): test:fm-review-scout
+[2026-09-14T00:06:42+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+[2026-09-14T00:06:46+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+
+
+--- lavish-review-wait-attended-paused-early-poll-plain/watch.out ---
+stale: test:fm-review-scout (idle 1s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-attended-paused-feedback-plain/state/.wake-queue ---
+
+
+--- lavish-review-wait-attended-paused-feedback-plain/state/.watch-triage.log ---
+[2026-09-14T00:06:20+0000] absorbed stale (captain-held visual review, healthy foreground Lavish poll, age 0s): test:fm-review-scout
+
+
+--- lavish-review-wait-attended-paused-feedback-plain/watch.out ---
+
+
+--- lavish-review-wait-attended-paused-idle-poll-plain/state/.wake-queue ---
+1789344378	2	stale	test:fm-review-scout	stale: test:fm-review-scout (idle 1s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-attended-paused-idle-poll-plain/state/.watch-triage.log ---
+[2026-09-14T00:06:07+0000] absorbed stale (captain-held visual review, healthy foreground Lavish poll, age 0s): test:fm-review-scout
+[2026-09-14T00:06:13+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+[2026-09-14T00:06:17+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+
+
+--- lavish-review-wait-attended-paused-idle-poll-plain/watch.out ---
+stale: test:fm-review-scout (idle 1s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-attended-paused-poll-plain/state/.wake-queue ---
+1789344356	2	stale	test:fm-review-scout	stale: test:fm-review-scout (idle 2s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-attended-paused-poll-plain/state/.watch-triage.log ---
+[2026-09-14T00:05:48+0000] absorbed stale (captain-held visual review, healthy foreground Lavish poll, age 0s): test:fm-review-scout
+[2026-09-14T00:05:50+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+[2026-09-14T00:05:54+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+
+
+--- lavish-review-wait-attended-paused-poll-plain/watch.out ---
+stale: test:fm-review-scout (idle 2s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-attended-paused-session-plain/state/.wake-queue ---
+1789344365	2	stale	test:fm-review-scout	stale: test:fm-review-scout (idle 1s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-attended-paused-session-plain/state/.watch-triage.log ---
+[2026-09-14T00:05:57+0000] absorbed stale (captain-held visual review, healthy foreground Lavish poll, age 0s): test:fm-review-scout
+[2026-09-14T00:06:00+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+[2026-09-14T00:06:04+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+
+
+--- lavish-review-wait-attended-paused-session-plain/watch.out ---
+stale: test:fm-review-scout (idle 1s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-attended-poll-plain/state/.wake-queue ---
+1789344222	2	stale	test:fm-review-scout	stale: test:fm-review-scout (idle 2s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-attended-poll-plain/state/.watch-triage.log ---
+[2026-09-14T00:03:33+0000] absorbed stale (captain-held visual review, healthy foreground Lavish poll, age 0s): test:fm-review-scout
+[2026-09-14T00:03:37+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+[2026-09-14T00:03:40+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+
+
+--- lavish-review-wait-attended-poll-plain/watch.out ---
+stale: test:fm-review-scout (idle 2s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-attended-session-plain/state/.wake-queue ---
+1789344232	2	stale	test:fm-review-scout	stale: test:fm-review-scout (idle 2s, possible wedge, escalation 2)
+
+
+--- lavish-review-wait-attended-session-plain/state/.watch-triage.log ---
+[2026-09-14T00:03:43+0000] absorbed stale (captain-held visual review, healthy foreground Lavish poll, age 0s): test:fm-review-scout
+[2026-09-14T00:03:46+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+[2026-09-14T00:03:50+0000] absorbed failed foreground Lavish review timer reset: test:fm-review-scout
+
+
+--- lavish-review-wait-attended-session-plain/watch.out ---
+stale: test:fm-review-scout (idle 2s, possible wedge, escalation 2)
+
