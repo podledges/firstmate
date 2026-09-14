@@ -2152,6 +2152,201 @@ test_terminal_first_sight_drops_a_finished_write_deferral_chain() {
   pass "both first-sight paths through a captain-relevant status drop a finished write-deferral chain with the idle window"
 }
 
+# --- captain-held foreground Lavish review wait -----------------------------
+
+# Drive the public watcher and Lavish-wait executable against isolated process,
+# backlog, session-listing, and HTTP fixtures. The healthy phase must enter the
+# existing bounded captain-wait cadence; killing only the exact poll must remove
+# that proof and restore the ordinary wedge escalation even though the pane still
+# reports busy.
+test_captain_held_lavish_poll_suppresses_only_while_healthy() {
+  local dir state fakebin out capture artifact window key statusf turnf poll_pid watcher_pid
+  local mode=${1:-attended} failure=${2:-poll} busy_bound=1 round transport
+  local command_shape=${3:-plain}
+  local -a poll_options=()
+  [ "$command_shape" != agent-reply ] || poll_options=(--agent-reply 'Updated board; ready for captain feedback')
+  dir=$(make_case "lavish-review-wait-$mode-$failure-$command_shape"); state="$dir/state"; fakebin="$dir/fakebin"; out="$dir/watch.out"
+  capture="$dir/pane.txt"; artifact="$dir/data/review-scout/board.html"; window="test:fm-review-scout"
+  key=$(printf '%s' "$window" | tr ':/.' '___')
+  mkdir -p "$(dirname "$artifact")"
+  printf '<!doctype html><title>isolated review</title>\n' > "$artifact"
+  printf 'foreground review poll\n' > "$capture"
+  printf 'window=%s\nkind=scout\nharness=pi\n' "$window" > "$state/review-scout.meta"
+  record_pi_busy "$state" review-scout
+  statusf="$state/review-scout.status"
+  printf 'needs-decision [key=visual-review]: review the isolated board\n' > "$statusf"
+  case "$mode" in *paused*) printf 'paused: waiting for visual feedback\n' >> "$statusf" ;; esac
+  case "$mode" in afk*) : > "$state/.afk" ;; esac
+  prime_status_seen "$state" "$statusf" || fail "could not prime the Lavish review status"
+  turnf="$state/review-scout.turn-ended"
+  : > "$turnf"
+  set_mtime "$(( $(date +%s) - 120 ))" "$turnf"
+  prime_turnend_seen "$turnf"
+
+  cat > "$fakebin/tasks-axi" <<'SH'
+#!/usr/bin/env bash
+[ "${1:-}" = show ] || exit 1
+cat <<'OUT'
+task:
+  id: review-scout
+  state: in_flight
+  blocked: no
+  held: yes
+  hold_kind: captain
+OUT
+SH
+  cat > "$fakebin/lavish-axi" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = poll ]; then
+  while :; do sleep 10; done
+fi
+cat <<OUT
+sessions[1]{file,status,url,pending_prompts}:
+  $FM_FAKE_LAVISH_ARTIFACT,open,"http://127.0.0.1:4387/session/fixture",0
+OUT
+SH
+  cat > "$fakebin/curl" <<'SH'
+#!/usr/bin/env bash
+[ "${FM_FAKE_LAVISH_HTTP_OK:-0}" = 1 ]
+SH
+  chmod +x "$fakebin/tasks-axi" "$fakebin/lavish-axi" "$fakebin/curl"
+
+  FM_FAKE_LAVISH_ARTIFACT="$artifact" "$fakebin/lavish-axi" poll "$artifact" "${poll_options[@]}" &
+  poll_pid=$!
+  export FM_FAKE_TMUX_PANE_PID="$poll_pid"
+  export FM_FAKE_TMUX_WINDOW="$window"
+  export FM_FAKE_TMUX_CAPTURE="$capture"
+  export FM_FAKE_TMUX_CURRENT_COMMAND=pi
+  export FM_FAKE_CREW_STATE='state: working · source: pane · harness busy'
+  export FM_FAKE_LAVISH_ARTIFACT="$artifact"
+  export FM_FAKE_LAVISH_HTTP_OK=1
+
+  PATH="$fakebin:$PATH" FM_HOME="$dir" FM_STATE_OVERRIDE="$state" \
+    FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_BUSY_TURN_MAX_SECS=1 \
+    FM_STALE_ESCALATE_SECS=0 FM_PAUSE_RESURFACE_SECS=999 FM_POLL=1 \
+    FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+  watcher_pid=$!
+  if ! wait_poll_cycle "$state" "$watcher_pid"; then
+    reap "$watcher_pid"; reap "$poll_pid"
+    fail "healthy foreground Lavish review woke as stale: $(cat "$out")"
+  fi
+  [ ! -s "$out" ] || { reap "$watcher_pid"; reap "$poll_pid"; fail "healthy Lavish wait printed a wake: $(cat "$out")"; }
+  [ -e "$state/.lavish-wait-since-$key" ] \
+    || { reap "$watcher_pid"; reap "$poll_pid"; fail "healthy Lavish wait did not enter bounded wait tracking"; }
+  [ ! -e "$state/.stale-since-$key" ] \
+    || { reap "$watcher_pid"; reap "$poll_pid"; fail "healthy Lavish wait started a wedge timer"; }
+  reap "$watcher_pid"
+  ack_stopped_cycle "$state" || { reap "$poll_pid"; fail "could not acknowledge the healthy Lavish fixture stop"; }
+
+  if [ "$failure" = session ]; then
+    export FM_FAKE_LAVISH_HTTP_OK=0
+  else
+    reap "$poll_pid"
+  fi
+  if [ "$failure" = feedback ] || [ "$failure" = early-poll ]; then
+    [ "$failure" != feedback ] || printf 'revising the board from captain feedback\n' > "$capture"
+    touch "$turnf"
+    prime_turnend_seen "$turnf"
+    busy_bound=3600
+  elif [ "$failure" = idle-poll ]; then
+    "$ROOT/bin/fm-busy-event.sh" apply "$state" review-scout idle --current-gen \
+      --source pi-ext --event agent-end
+    printf 'idle after poll loss\n' > "$capture"
+  fi
+  : > "$out"
+  PATH="$fakebin:$PATH" FM_HOME="$dir" FM_STATE_OVERRIDE="$state" \
+    FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_BUSY_TURN_MAX_SECS="$busy_bound" \
+    FM_STALE_ESCALATE_SECS=0 FM_PAUSE_RESURFACE_SECS=999 \
+    FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+  watcher_pid=$!
+  if [ "$failure" = feedback ]; then
+    wait_poll_cycle "$state" "$watcher_pid" || { reap "$watcher_pid"; fail "$mode: normal feedback processing emitted a stale alert"; }
+    [ ! -s "$out" ] || { reap "$watcher_pid"; fail "normal feedback processing printed a wake"; }
+    [ ! -s "$state/.wake-queue" ] || { reap "$watcher_pid"; fail "normal feedback processing queued a wake"; }
+    reap "$watcher_pid"
+    ack_stopped_cycle "$state" || fail "could not acknowledge the feedback fixture stop"
+    printf 'resolved [key=visual-review]: captain accepted the board\ndone: visual review complete\n' >> "$statusf"
+    prime_status_seen "$state" "$statusf" || fail "could not prime handled completion status"
+    "$ROOT/bin/fm-busy-event.sh" apply "$state" review-scout idle --current-gen \
+      --source pi-ext --event agent-end
+    printf 'review complete; idle prompt\n' > "$capture"
+    export FM_FAKE_CREW_STATE='state: done · source: status-log · visual review complete'
+    PATH="$fakebin:$PATH" FM_HOME="$dir" FM_STATE_OVERRIDE="$state" \
+      FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_BUSY_TURN_MAX_SECS=1 \
+      FM_STALE_ESCALATE_SECS=0 FM_PAUSE_RESURFACE_SECS=999 \
+      FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+    watcher_pid=$!
+    wait_for_exit "$watcher_pid" 100 || { reap "$watcher_pid"; fail "completed review never returned to terminal classification"; }
+    [ "$(cat "$out")" = "stale: $window" ] || fail "completed review was classified as a wedge"
+    [ ! -e "$state/.lavish-wait-since-$key" ] || fail "authoritative completion retained review reconciliation"
+    ack_stopped_cycle "$state" || fail "could not acknowledge completed review classification"
+    for round in 1 2; do
+      PATH="$fakebin:$PATH" FM_HOME="$dir" FM_STATE_OVERRIDE="$state" \
+        FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_BUSY_TURN_MAX_SECS=1 \
+        FM_STALE_ESCALATE_SECS=0 FM_PAUSE_RESURFACE_SECS=999 \
+        FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+      watcher_pid=$!
+      wait_poll_cycle "$state" "$watcher_pid" || { reap "$watcher_pid"; fail "completed review re-escalated on a subsequent cycle"; }
+      [ ! -s "$out" ] && [ ! -s "$state/.wake-queue" ] || { reap "$watcher_pid"; fail "completed review emitted a repeated wake"; }
+      reap "$watcher_pid"
+      ack_stopped_cycle "$state" || fail "could not acknowledge the completed-review fixture stop"
+    done
+  else
+    if [ "$failure" = early-poll ]; then
+      wait_poll_cycle "$state" "$watcher_pid" || { reap "$watcher_pid"; fail "$mode: poll loss escalated before the busy bound"; }
+      [ ! -s "$out" ] && [ ! -s "$state/.wake-queue" ] || { reap "$watcher_pid"; fail "poll loss emitted a premature wake"; }
+      [ -e "$state/.lavish-wait-since-$key" ] || { reap "$watcher_pid"; fail "poll loss discarded pending reconciliation before the busy bound"; }
+      reap "$watcher_pid"
+      ack_stopped_cycle "$state" || fail "could not acknowledge the pre-bound fixture stop"
+      set_mtime "$(( $(date +%s) - 7200 ))" "$turnf"
+      prime_turnend_seen "$turnf"
+      PATH="$fakebin:$PATH" FM_HOME="$dir" FM_STATE_OVERRIDE="$state" \
+        FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_BUSY_TURN_MAX_SECS="$busy_bound" \
+        FM_STALE_ESCALATE_SECS=0 FM_PAUSE_RESURFACE_SECS=999 \
+        FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+      watcher_pid=$!
+    fi
+    wait_for_exit "$watcher_pid" 100 || { reap "$watcher_pid"; reap "$poll_pid"; fail "$mode: failed Lavish $failure did not restore stale escalation"; }
+    [ "$failure" != session ] || reap "$poll_pid"
+    for round in 1 2; do
+      grep -F "stale: $window" "$out" >/dev/null || fail "failed review escalation omitted the stale pane"
+      grep -F "possible wedge, escalation $round" "$out" >/dev/null || fail "failed review bypassed repeated wedge escalation"
+      grep -F "stale: $window" "$state/.wake-queue" >/dev/null || fail "failed review did not queue escalation"
+      if [ -e "$state/.afk" ]; then
+        transport=$(make_supercase "lavish-delivery-$mode-$failure-$command_shape-$round")
+        printf '\342\235\257 \n' > "$transport/composer.txt"
+        (
+          # shellcheck source=/dev/null
+          . "$ROOT/bin/fm-supervise-daemon.sh"
+          FM_DAEMON_PRIMARY_HARNESS=claude \
+          PATH="$transport/fakebin:$PATH" FM_HOME="$dir" FM_STATE_OVERRIDE="$state" \
+            FM_FAKE_TMUX_CAPTURE="$transport/composer.txt" FM_FAKE_TMUX_SENT="$transport/sent.log" \
+            FM_ESCALATE_BATCH_SECS=0 LOG="$transport/daemon.log" \
+            handle_wake "$(cat "$out")" "$state"
+        ) || fail "daemon failed to consume the Lavish wedge wake"
+        grep -F "possible wedge, escalation $round" "$transport/sent.log" >/dev/null || fail "daemon absorbed the failed review instead of delivering escalation"
+        grep -F '[ENTER]' "$transport/sent.log" >/dev/null || fail "daemon did not submit the failure digest"
+      fi
+      if [ "$round" -eq 1 ]; then
+        ack_stopped_cycle "$state" || fail "could not acknowledge the first failed-review escalation"
+        PATH="$fakebin:$PATH" FM_HOME="$dir" FM_STATE_OVERRIDE="$state" \
+          FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_BUSY_TURN_MAX_SECS="$busy_bound" \
+          FM_STALE_ESCALATE_SECS=0 FM_PAUSE_RESURFACE_SECS=999 \
+          FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+        watcher_pid=$!
+        wait_for_exit "$watcher_pid" 100 || { reap "$watcher_pid"; fail "subsequent watcher cycle suppressed the failed review"; }
+      fi
+    done
+    [ -e "$state/.lavish-wait-since-$key" ] || fail "failed review discarded reconciliation before recovery"
+  fi
+
+  unset FM_FAKE_TMUX_PANE_PID FM_FAKE_TMUX_WINDOW FM_FAKE_TMUX_CAPTURE
+  unset FM_FAKE_TMUX_CURRENT_COMMAND FM_FAKE_CREW_STATE
+  unset FM_FAKE_LAVISH_ARTIFACT FM_FAKE_LAVISH_HTTP_OK
+  pass "$mode/$command_shape: healthy Lavish wait is bounded and $failure follows pane progress"
+}
+
 # --- triage debug log stays size capped -------------------------------------
 
 test_triage_log_size_cap_accepts_spaced_wc_counts() {
@@ -2654,6 +2849,12 @@ test_write_deferral_resurfaces_on_the_bounded_cadence
 test_secondmate_home_supervision_churn_is_not_write_evidence
 test_timer_repair_drops_a_finished_write_deferral_chain
 test_terminal_first_sight_drops_a_finished_write_deferral_chain
+for lavish_mode in attended afk attended-paused afk-paused; do
+  for lavish_failure in poll session idle-poll feedback early-poll; do
+    test_captain_held_lavish_poll_suppresses_only_while_healthy "$lavish_mode" "$lavish_failure"
+  done
+done
+test_captain_held_lavish_poll_suppresses_only_while_healthy afk-paused poll agent-reply
 test_triage_log_size_cap_accepts_spaced_wc_counts
 test_procevent_captured_result_surfaces_proactively
 test_procevent_unacknowledged_result_redrains_until_handled

@@ -183,6 +183,8 @@ BUSY_TURN_MAX_SECS=${FM_BUSY_TURN_MAX_SECS:-3600}
 # These cases re-surface once for a recheck every PAUSE_RESURFACE_SECS - far
 # longer than the wedge threshold, but finite so a forgotten hold cannot rot invisibly.
 PAUSE_RESURFACE_SECS=${FM_PAUSE_RESURFACE_SECS:-$FM_PAUSE_RESURFACE_SECS_DEFAULT}
+LAVISH_REVIEW_WAIT_BIN=$SCRIPT_DIR/fm-lavish-review-wait.sh
+LAVISH_REVIEW_WAIT_TIMEOUT=8
 # Consecutive event-path failures (fm_backend_wait_transition returning 2 -
 # connect/subscribe failure) before the push fast-path is disabled for the rest
 # of this watcher process and the loop reverts to pure polling (report section
@@ -450,6 +452,35 @@ handle_paused_stale() {  # <window> <task> <hash>
   triage_log "absorbed stale ($detail, age ${age}s): $win"
 }
 
+# The read-only predicate's header owns admission evidence; architecture.md owns
+# the wait/reconciliation lifecycle. A failed proof never authorizes suppression.
+lavish_review_wait_healthy() {  # <task>
+  [ -x "$LAVISH_REVIEW_WAIT_BIN" ] || return 1
+  FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+    fm_run_timed "$LAVISH_REVIEW_WAIT_TIMEOUT" "$LAVISH_REVIEW_WAIT_BIN" check "$1" \
+      >/dev/null 2>&1
+}
+
+# A proven foreground review is a captain wait, not a wedge. Reuse the declared
+# wait's bounded re-surface mechanism, but anchor its first recheck on when the
+# proof was first established rather than on an older status line. Later polls
+# re-prove health before absorbing; a retained marker without proof instead
+# keeps failed-review reconciliation ahead of declared-pause fallback.
+handle_lavish_review_stale() {  # <window> <task> <hash>
+  local win=$1 task=$2 h=$3 key since age
+  key=$(window_key "$win")
+  printf '%s' "$h" > "$STATE/.stale-$key"
+  : > "$STATE/.paused-$key"
+  since="$STATE/.lavish-wait-since-$key"
+  [ -e "$since" ] || date +%s > "$since"
+  age=$(age_of "$since")
+  rm -f "$STATE/.stale-since-$key" "$STATE/.wedge-escalations-$key"
+  clear_write_tracking "$key"
+  resurface_absorbed "$win" "$STATE/.paused-resurfaced-$key" "$age" \
+    "stale: $win (captain-held visual review ${age}s, healthy foreground Lavish poll rechecked on a long cadence not a wedge; answer or end the review)"
+  triage_log "absorbed stale (captain-held visual review, healthy foreground Lavish poll, age ${age}s): $win"
+}
+
 # Apply the busy-pane completed-turn bound to a window whose bound has already
 # crossed, honoring the worker's OWN declared external wait. Prints/queues
 # nothing itself; it only chooses which absorber owns the crossed bound.
@@ -476,7 +507,8 @@ busy_turn_bound_check() {  # <window> <task> <hash> <since-file> <escalation-fil
 
 clear_pause_state() {  # <window-key>
   local key=$1
-  rm -f "$STATE/.paused-$key" "$STATE/.paused-rechecked-$key" "$STATE/.paused-resurfaced-$key"
+  rm -f "$STATE/.paused-$key" "$STATE/.paused-rechecked-$key" "$STATE/.paused-resurfaced-$key" \
+    "$STATE/.lavish-wait-since-$key"
 }
 
 clear_pause_tracking() {  # <window-key>
@@ -1133,7 +1165,7 @@ EOF
     task=$(window_to_task "$w" "$STATE")
     key=$(window_key "$w")
     last=$(last_status_line "$STATE/$task.status")
-    if ! status_is_paused_or_captain_held "$last" && [ -e "$STATE/.paused-$key" ]; then
+    if ! status_is_paused_or_captain_held "$last" && [ -e "$STATE/.paused-$key" ] && [ ! -e "$STATE/.lavish-wait-since-$key" ]; then
       clear_pause_tracking "$key"
     fi
     # An idle secondmate endpoint is healthy by design, so a mate is admitted to
@@ -1155,15 +1187,37 @@ EOF
     ewf="$STATE/.wedge-escalations-$key"
     pf="$STATE/.paused-$key"   # flag: this key's stale is using the bounded pause cadence
     prev=$(cat "$hf" 2>/dev/null || true)
+    if [ "$h" = "$prev" ]; then
+      n=$(( $(cat "$cf" 2>/dev/null || echo 0) + 1 ))
+    else
+      printf '%s' "$h" > "$hf"
+      n=0
+    fi
+    echo "$n" > "$cf"
+    if lavish_review_wait_healthy "$task"; then
+      handle_lavish_review_stale "$w" "$task" "$h"
+      continue
+    fi
     # Busy match: a backend's native semantic state when available (herdr), else
     # the last 6 non-blank lines only (the TUI footer area, where every verified
     # harness renders its busy indicator) so busy-looking strings in displayed
     # content cannot suppress stale detection. Read once per window per poll and
     # reused below so a busy verdict is consistent within one cycle.
     if window_is_busy "$w" "$tail40"; then busy_now=0; else busy_now=1; fi
+    if [ -e "$STATE/.lavish-wait-since-$key" ]; then
+      if { [ "$busy_now" -ne 0 ] && [ "$n" -ge 2 ]; } ||
+         { [ "$busy_now" -eq 0 ] && busy_turn_over_age "$task"; }; then
+        review_state=$("$FM_CREW_STATE_BIN" "$task" 2>/dev/null) || review_state=""
+        case "$review_state" in
+          "state: done "*) clear_pause_tracking "$key" ;;
+          *) wedge_timer_check "$w" "$ssf" "failed foreground Lavish review" "$ewf" "$task"
+             continue ;;
+        esac
+      else
+        continue
+      fi
+    fi
     if [ "$h" = "$prev" ]; then
-      n=$(( $(cat "$cf" 2>/dev/null || echo 0) + 1 ))
-      echo "$n" > "$cf"
       if [ "$n" -ge 2 ] && [ "$busy_now" -ne 0 ]; then
         # The pane is idle/stale at hash $h. Triage decides whether this wakes
         # firstmate. Detection itself is unchanged from above.
@@ -1286,8 +1340,6 @@ EOF
         fi
       fi
     else
-      printf '%s' "$h" > "$hf"
-      echo 0 > "$cf"
       paused_bound=1
       if [ "$busy_now" -eq 0 ] && busy_turn_over_age "$task"; then
         busy_turn_bound_check "$w" "$task" "$h" "$ssf" "$ewf" && paused_bound=0
