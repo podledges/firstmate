@@ -188,11 +188,15 @@ stop_home_processes() {  # <home>
     kill -TERM "$pid" 2>/dev/null || true
   done < <(cat "$home/orphan-pid" 2>/dev/null)
 }
-suite_cleanup() {
+stop_registered_home_processes() {
   local home
   while IFS= read -r home; do
     [ -n "$home" ] && stop_home_processes "$home"
   done < <(cat "$HOMES_FILE" 2>/dev/null)
+  : > "$HOMES_FILE"
+}
+suite_cleanup() {
+  stop_registered_home_processes
   fm_test_cleanup
 }
 trap suite_cleanup EXIT
@@ -1450,6 +1454,11 @@ SH
   start_hook_session "$home"
   turn_end "$home"
   wait_until 150 watcher_live "$home" || fail "hook write failure: no watcher started"
+  # This case returns a failed hand-back without a close. Wait for the host's
+  # emitted readiness before triggering it, so an empty-output startup retry
+  # cannot race the failure notification this case exercises.
+  wait_until 150 bash -c 'grep -qs "^watcher: started pid=" "$1"/state/.claude-autoarm-output.*' _ "$home" \
+    || fail "hook write failure: the host did not report readiness"
   append_status "$home" 'step one'
   wait_until 250 hook_exited "$home" || fail "hook write failure: the Stop hook did not finish"
   [ "$(cat "$home/offer-count" 2>/dev/null)" -ge 2 ] || fail "fixture: the close did not turn main-only at its turn"
@@ -2953,6 +2962,13 @@ test_superseded_host_leaves_the_owner_untouched() {
   pass "host: a host under a superseded auto-arm generation stands down without touching the owner"
 }
 
+# Retire each case's homes before starting the next case. A handled wake parks
+# indefinitely, and pass-through leaves a successor running: keeping all of
+# those cycles until EXIT accumulates pollers and starves later cases on CI.
+while IFS= read -r test_case; do
+  "$test_case" </dev/null
+  stop_registered_home_processes
+done <<'CASES'
 test_claude_stop_hook_restores_handoff_when_successor_closed_before_exit_to_main
 test_claude_stop_hook_restores_handoff_when_successor_closed_mid_engine_turn
 test_claude_stop_hook_notifies_when_closed_successor_downtime_restore_fails
@@ -3028,3 +3044,4 @@ test_unchanged_held_outcome_reaches_the_captain_once_until_a_new_event
 test_unverified_engine_hands_every_away_wake_to_main
 test_host_outside_the_lock_owner_stands_down
 test_superseded_host_leaves_the_owner_untouched
+CASES
