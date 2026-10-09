@@ -3,48 +3,11 @@
 # teardown cleanup, and Grok session-lock holder detection.
 set -u
 
-# shellcheck source=tests/lib.sh
-. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+# shellcheck source=tests/fixtures.sh
+. "$(dirname "${BASH_SOURCE[0]}")/fixtures.sh"
 
-SPAWN="$ROOT/bin/fm-spawn.sh"
 TEARDOWN="$ROOT/bin/fm-teardown.sh"
 TMP_ROOT=$(fm_test_tmproot fm-grok-harness)
-
-make_spawn_fakebin() {
-  local dir=$1 fakebin
-  fakebin=$(fm_fakebin "$dir")
-  cat > "$fakebin/tmux" <<'SH'
-#!/usr/bin/env bash
-set -u
-case "$*" in
-  *"#{pane_current_path}"*) printf '%s\n' "${FM_FAKE_PANE_PATH:-}"; exit 0 ;;
-esac
-case "${1:-}" in
-  display-message) printf 'firstmate\n'; exit 0 ;;
-  list-windows) exit 0 ;;
-  send-keys)
-    shift
-    while [ $# -gt 0 ]; do
-      case "$1" in
-        -t) shift 2 ;;
-        -l)
-          shift
-          [ -z "${FM_FAKE_LAUNCH_LOG:-}" ] || printf '%s\n' "${1:-}" >> "$FM_FAKE_LAUNCH_LOG"
-          exit 0
-          ;;
-        *) shift ;;
-      esac
-    done
-    exit 0
-    ;;
-  has-session|new-session|new-window|kill-window) exit 0 ;;
-esac
-exit 0
-SH
-  chmod +x "$fakebin/tmux"
-  fm_fake_exit0 "$fakebin" treehouse gh-axi gh
-  printf '%s\n' "$fakebin"
-}
 
 make_spawn_case() {
   local name=$1 case_dir home proj wt fakebin personal_grok_home id
@@ -52,12 +15,13 @@ make_spawn_case() {
   home="$case_dir/home"
   proj="$case_dir/project"
   wt="$case_dir/wt"
-  fakebin=$(make_spawn_fakebin "$case_dir/fake")
+  fakebin=$(make_spawn_fakebin "$case_dir/fake" gh-axi gh)
   personal_grok_home="$case_dir/personal-grok"
   id="grok-$name-x1"
-  mkdir -p "$home/data/$id" "$home/projects" "$home/state" "$home/config" "$personal_grok_home"
+  mkdir -p "$personal_grok_home"
   printf 'personal state\n' > "$personal_grok_home/personal-marker"
-  printf 'brief\n' > "$home/data/$id/brief.md"
+  fm_test_spawn_home "$home"
+  fm_test_spawn_brief "$home" "$id" brief
   fm_git_worktree "$proj" "$wt" "fm/$id"
   touch "$home/state/.last-watcher-beat"
   printf '%s\n' "$case_dir|$home|$proj|$wt|$fakebin|$personal_grok_home|$id"
@@ -65,14 +29,11 @@ make_spawn_case() {
 
 run_harness_spawn() {
   local home=$1 proj=$2 wt=$3 fakebin=$4 personal_grok_home=$5 id=$6 harness=$7
-  FM_ROOT_OVERRIDE='' FM_HOME="$home" \
-    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
-    FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
-    FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$wt" \
-    FM_FAKE_LAUNCH_LOG="$home/launch.log" TMUX="fake,1,0" \
+  FM_FAKE_LAUNCH_LOG="$home/launch.log" \
     CODEX_HOME="${personal_grok_home%/}/../personal-codex" \
-    GROK_HOME="$personal_grok_home" PATH="$fakebin:$PATH" \
-    "$SPAWN" "$id" "$proj" "$harness" --mode no-mistakes --yolo off 2>&1
+    GROK_HOME="$personal_grok_home" \
+    fm_test_run_spawn "$home" "$wt" "$fakebin" \
+    "$id" "$proj" "$harness" --mode no-mistakes --yolo off
 }
 
 path_mode() {
@@ -81,6 +42,7 @@ path_mode() {
   else
     stat -f %Lp "$1"
   fi
+
 }
 
 test_grok_hook_requires_registered_token() {
