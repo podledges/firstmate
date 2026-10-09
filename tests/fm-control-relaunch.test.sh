@@ -984,6 +984,7 @@ test_turnend_auth_paths_are_owned_by_the_control_adapter() {
 
 run_liveness_recovery() {
   local dir=$1 id=$2
+  # shellcheck disable=SC2016 # Expand in the child bash, and defer trap expansion until its EXIT.
   env -u HERDR_ENV -u HERDR_PANE_ID -u HERDR_SESSION -u HERDR_SOCKET_PATH \
     -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID \
     PATH="$dir/fakebin:$PATH" FM_HOME="$dir/home" STATE="$dir/home/state" \
