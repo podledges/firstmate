@@ -274,7 +274,6 @@ function lockOwnership(): LockOwnership {
   return pidAlive(lockPid) ? "other" : "missing";
 }
 
-// Resource discovery runs after all startup owners, including lock acquisition.
 // Legacy daemon ownership suppresses a new first cycle; the Pi branch's newer
 // .afk-contract posture still needs this watcher and is routed by the branch.
 function firstCycleNeeded(): boolean {
@@ -1226,21 +1225,28 @@ export default function (pi: ExtensionAPI) {
   });
 
   let resourcesDiscovered = false;
-  pi.events?.on?.("firstmate:sessionstart-settled", () => {
-    if (resourcesDiscovered && firstCycleNeeded()) activateOwnedWatch(generation);
+  let sessionStart: { reason?: string } | undefined;
+  const settledSessionStarts = new WeakSet<object>();
+  const activateFirstCycle = (): void => {
+    if (!resourcesDiscovered || !sessionStart || !settledSessionStarts.has(sessionStart)) return;
+    const needed = sessionStart.reason === "startup" ? firstCycleNeeded() : !existsSync(`${state}/.afk`);
+    if (needed) activateOwnedWatch(generation);
+  };
+  pi.events?.on?.("firstmate:sessionstart-settled", (data) => {
+    const settled = data as { sessionStart?: object; successful?: boolean } | undefined;
+    if (!settled?.successful || !settled.sessionStart) return;
+    settledSessionStarts.add(settled.sessionStart);
+    if (settled.sessionStart === sessionStart) activateFirstCycle();
   });
-  pi.on?.("session_start", async (event) => {
+  pi.on?.("session_start", (event) => {
     resourcesDiscovered = false;
+    sessionStart = event;
     if (generation.stopping) generation = createGeneration();
     activateGeneration(generation);
-    if (lockOwnership() !== "owned") return;
-    // A replacement must commit the successor before retiring its predecessor.
-    // Initial startup waits for resource discovery and the completed startup owner.
-    if (event.reason !== "startup" && !existsSync(`${state}/.afk`)) activateOwnedWatch(generation);
   });
   pi.on?.("resources_discover", () => {
     resourcesDiscovered = true;
-    if (firstCycleNeeded()) activateOwnedWatch(generation);
+    activateFirstCycle();
   });
   pi.on?.("session_shutdown", async (event) => {
     const replacement = event.reason === "reload" || event.reason === "new" || event.reason === "resume" || event.reason === "fork";

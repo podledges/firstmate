@@ -683,8 +683,13 @@ export default function (pi: ExtensionAPI) {
     const pending = sessionstartGeneration;
     // Startup is deliberately nonblocking. Notify the first-cycle owner once
     // the prerequisite has settled, even when no model turn has begun yet.
-    void pending.result.then(() => {
-      if (sessionstartGenerationIsLive(pending)) pi.events?.emit?.("firstmate:sessionstart-settled", {});
+    void pending.result.then((result) => {
+      if (sessionstartGenerationIsLive(pending)) {
+        pi.events?.emit?.("firstmate:sessionstart-settled", {
+          sessionStart: event,
+          successful: result.kind === "ready" || result.kind === "empty",
+        });
+      }
     });
   });
 

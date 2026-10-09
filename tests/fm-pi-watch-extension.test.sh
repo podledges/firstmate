@@ -41,6 +41,26 @@ install_pi_watch_extension_fixture() {
   mkdir -p "$repo/bin"
   cp "$ROOT/bin/fm-operational-input.sh" "$repo/bin/fm-operational-input.sh"
   chmod +x "$repo/bin/fm-operational-input.sh"
+  cat > "$repo/.pi/extensions/test-sessionstart.mjs" <<'JS'
+import { EventEmitter } from "node:events";
+const initialized = new WeakSet();
+export function simulateSettledStartup(pi, handlers) {
+  if (initialized.has(pi)) return;
+  initialized.add(pi);
+  const startup = new EventEmitter();
+  const events = pi.events;
+  pi.events = {
+    on(name, handler) { return name === "firstmate:sessionstart-settled" ? startup.on(name, handler) : events.on(name, handler); },
+    emit(name, data) { return name === "firstmate:sessionstart-settled" ? startup.emit(name, data) : events.emit?.(name, data); },
+  };
+  const register = pi.on.bind(pi);
+  pi.on = (name, handler) => register(name, name === "session_start" ? async (event, ctx) => {
+    await handler(event, ctx);
+    startup.emit("firstmate:sessionstart-settled", { sessionStart: event, successful: true });
+    await handlers.get("resources_discover")?.({ type: "resources_discover", reason: "startup" }, ctx);
+  } : handler);
+}
+JS
   cat > "$repo/node_modules/@earendil-works/pi-coding-agent/package.json" <<'JSON'
 {"name":"@earendil-works/pi-coding-agent","type":"module","exports":"./index.js"}
 JSON
@@ -3039,6 +3059,7 @@ function liveArmPids() {
 const mod = await import(pathToFileURL(process.env.PLUGIN).href);
 
 const startup = makePi();
+(await import(new URL("./test-sessionstart.mjs", pathToFileURL(process.env.PLUGIN)))).simulateSettledStartup(startup.pi, startup.handlers);
 mod.default(startup.pi);
 if (!/^generation=[1-9][0-9]* phase=active$/.test(extensionOwner())) {
   throw new Error(`extension bind did not publish its pre-lock active generation: ${extensionOwner()}`);
@@ -3071,6 +3092,7 @@ async function replaceSession(previous, reason) {
     throw new Error(`${reason} shutdown did not publish its generation handoff: ${extensionOwner()}`);
   }
   const next = makePi();
+  (await import(new URL("./test-sessionstart.mjs", pathToFileURL(process.env.PLUGIN)))).simulateSettledStartup(next.pi, next.handlers);
   mod.default(next.pi);
   await next.handlers.get("session_start")?.({
     type: "session_start",
@@ -3301,6 +3323,7 @@ writeFileSync(`${process.env.FM_HOME}/state/replacement-race.meta`, "project=/pr
 writeFileSync(`${process.env.FM_HOME}/state/.wake-queue`, "1\t1\tsignal\treplacement-race.status\tsignal: replacement-race actionable outcome\n");
 const mod = await import(pathToFileURL(process.env.PLUGIN).href);
 const previous = makePi(true);
+(await import(new URL("./test-sessionstart.mjs", pathToFileURL(process.env.PLUGIN)))).simulateSettledStartup(previous.pi, previous.handlers);
 mod.default(previous.pi);
 const initial = await previous.getTool().execute("initial-arm", {}, undefined, undefined, {});
 if (!initial.details?.ok || !String(initial.details.message).includes("started Pi extension arm child")) {
@@ -3322,6 +3345,7 @@ await waitFor(() => liveArms().length === 0, "retired old-session successor");
 
 const replacement = makePi(false);
 const replacementMod = await import(`${pathToFileURL(process.env.PLUGIN).href}?replacement=durable-handoff`);
+(await import(new URL("./test-sessionstart.mjs", pathToFileURL(process.env.PLUGIN)))).simulateSettledStartup(replacement.pi, replacement.handlers);
 replacementMod.default(replacement.pi);
 const replacementStart = replacement.handlers.get("session_start")?.({
   type: "session_start",
@@ -3433,6 +3457,7 @@ async function waitFor(pred, label) {
 writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
 const originalMod = await import(pathToFileURL(process.env.PLUGIN).href);
 const original = makePi();
+(await import(new URL("./test-sessionstart.mjs", pathToFileURL(process.env.PLUGIN)))).simulateSettledStartup(original.pi, original.handlers);
 originalMod.default(original.pi);
 writeFileSync(`${process.env.FM_HOME}/state/task.meta`, "kind=ship\n");
 await original.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, {});
@@ -3447,6 +3472,7 @@ await original.handlers.get("session_shutdown")?.({ type: "session_shutdown", re
 
 const replacementMod = await import(`${pathToFileURL(process.env.PLUGIN).href}?replacement=streaming-followup`);
 const replacement = makePi();
+(await import(new URL("./test-sessionstart.mjs", pathToFileURL(process.env.PLUGIN)))).simulateSettledStartup(replacement.pi, replacement.handlers);
 replacementMod.default(replacement.pi);
 await replacement.handlers.get("session_start")?.({ type: "session_start", reason: "new" }, {});
 await waitFor(
@@ -3460,6 +3486,7 @@ await replacement.handlers.get("session_shutdown")?.({ type: "session_shutdown",
 
 const finalMod = await import(`${pathToFileURL(process.env.PLUGIN).href}?replacement=idle-followup`);
 const finalSession = makePi();
+(await import(new URL("./test-sessionstart.mjs", pathToFileURL(process.env.PLUGIN)))).simulateSettledStartup(finalSession.pi, finalSession.handlers);
 finalMod.default(finalSession.pi);
 const { unlinkSync } = await import("node:fs");
 unlinkSync(`${process.env.FM_HOME}/state/.lock`);
@@ -3556,6 +3583,7 @@ const wakes = (text) => prompts.filter((message) => message.includes(text)).leng
 
 writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
 const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+(await import(new URL("./test-sessionstart.mjs", pathToFileURL(process.env.PLUGIN)))).simulateSettledStartup(pi, handlers);
 mod.default(pi);
 writeFileSync(`${process.env.FM_HOME}/state/task.meta`, "kind=ship\n");
 await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, {});
@@ -3583,6 +3611,7 @@ if (handoff.pending.length !== 1 || handoff.pending[0].delivered || !handoff.pen
 }
 streaming = false;
 const replacementMod = await import(`${pathToFileURL(process.env.PLUGIN).href}?replacement=streaming-chain`);
+(await import(new URL("./test-sessionstart.mjs", pathToFileURL(process.env.PLUGIN)))).simulateSettledStartup(pi, handlers);
 replacementMod.default(pi);
 await handlers.get("session_start")?.({ type: "session_start", reason: "new" }, {});
 await waitFor(() => prompts.length === 3, "replacement replay of the unconsumed wake");
@@ -3761,6 +3790,7 @@ async function waitFor(pred, label) {
 writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
 const originalMod = await import(pathToFileURL(process.env.PLUGIN).href);
 const original = makePi();
+(await import(new URL("./test-sessionstart.mjs", pathToFileURL(process.env.PLUGIN)))).simulateSettledStartup(original.pi, original.handlers);
 originalMod.default(original.pi);
 const armed = await original.getTool().execute("initial-arm", {}, undefined, undefined, {});
 if (!armed.details?.ok) throw new Error(`initial arm failed: ${JSON.stringify(armed.details)}`);
@@ -3774,6 +3804,7 @@ writeFileSync(`${foreignState}/.lock`, `${process.pid}\n`);
 process.env.FM_STATE_OVERRIDE = foreignState;
 const foreignMod = await import(`${pathToFileURL(process.env.PLUGIN).href}?replacement=foreign-state`);
 const foreign = makePi();
+(await import(new URL("./test-sessionstart.mjs", pathToFileURL(process.env.PLUGIN)))).simulateSettledStartup(foreign.pi, foreign.handlers);
 foreignMod.default(foreign.pi);
 await foreign.handlers.get("session_start")?.({ type: "session_start", reason: "resume" }, {});
 await new Promise((resolve) => setTimeout(resolve, 250));
@@ -3785,6 +3816,7 @@ delete process.env.FM_STATE_OVERRIDE;
 
 const replacementMod = await import(`${pathToFileURL(process.env.PLUGIN).href}?replacement=late-retiring-close`);
 const replacement = makePi();
+(await import(new URL("./test-sessionstart.mjs", pathToFileURL(process.env.PLUGIN)))).simulateSettledStartup(replacement.pi, replacement.handlers);
 replacementMod.default(replacement.pi);
 await replacement.handlers.get("session_start")?.({ type: "session_start", reason: "new" }, {});
 await waitFor(
@@ -3977,6 +4009,7 @@ async function waitFor(pred, label) {
 
 writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
 const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+(await import(new URL("./test-sessionstart.mjs", pathToFileURL(process.env.PLUGIN)))).simulateSettledStartup(pi, handlers);
 mod.default(pi);
 const armed = await tool.execute("initial-arm", {}, undefined, undefined, {});
 if (!armed.details?.ok) throw new Error(`initial arm failed: ${JSON.stringify(armed.details)}`);
@@ -3989,6 +4022,7 @@ if (!existsSync(process.env.FM_CHILD_MARKER)) {
 const { unlinkSync } = await import("node:fs");
 unlinkSync(`${process.env.FM_HOME}/state/extensions`);
 const replacementMod = await import(`${pathToFileURL(process.env.PLUGIN).href}?replacement=persistence-failure`);
+(await import(new URL("./test-sessionstart.mjs", pathToFileURL(process.env.PLUGIN)))).simulateSettledStartup(pi, handlers);
 replacementMod.default(pi);
 await handlers.get("session_start")?.({ type: "session_start", reason: "new" }, {});
 await waitFor(() => prompts.length >= 2, "in-process handoff after persistence failure");
@@ -4019,7 +4053,14 @@ test_pi_first_cycle_waits_for_startup_owner() {
   cp "$ROOT/.pi/extensions/fm-primary-turnend-guard.ts" "$repo/.pi/extensions/"
   cp -R "$ROOT/bin/." "$repo/bin/"
   cp -R "$ROOT/docs/supervision-protocols" "$repo/docs/"
-  printf '#!/usr/bin/env bash\nexit 0\n' > "$repo/bin/fm-bootstrap.sh"
+  cat > "$repo/bin/fm-bootstrap.sh" <<'SH'
+#!/usr/bin/env bash
+if [ ! -e "$FM_HOME/bootstrap-release" ]; then
+  touch "$FM_HOME/bootstrap-entered"
+  while [ ! -e "$FM_HOME/bootstrap-release" ]; do sleep 0.02; done
+fi
+exit 0
+SH
   printf '#!/usr/bin/env bash\nexit 0\n' > "$repo/bin/fm-startup-network.sh"
   cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
 #!/usr/bin/env bash
@@ -4056,6 +4097,7 @@ async function waitFor(predicate) {
   }
   throw new Error("startup-owner integration timed out");
 }
+let previousSessionStart = { type: "session_start", reason: "startup" };
 
 for (const order of [[watch, guard], [guard, watch]]) {
   for (const initial of ["absent", "stale"]) {
@@ -4069,8 +4111,13 @@ for (const order of [[watch, guard], [guard, watch]]) {
         assert.equal(alive(2147483647), false);
         writeFileSync(lock, "2147483647\n");
       }
+      for (const path of [`${home}/bootstrap-entered`, `${home}/bootstrap-release`]) {
+        if (existsSync(path)) unlinkSync(path);
+      }
       const handlers = new Map();
       const messages = [];
+      let currentSessionStart;
+      let settlement;
       const pi = {
         on(name, handler) {
           const list = handlers.get(name) ?? [];
@@ -4082,22 +4129,45 @@ for (const order of [[watch, guard], [guard, watch]]) {
         sendMessage(message) { messages.push(message.content); },
         sendUserMessage() { throw new Error("unexpected watcher failure"); },
       };
+      pi.events.on("firstmate:sessionstart-settled", (data) => {
+        if (data.sessionStart === currentSessionStart) settlement = data;
+      });
       async function emit(type, reason) {
+        const event = { type, reason };
+        if (type === "session_start") currentSessionStart = event;
         for (const handler of handlers.get(type) ?? []) {
-          const result = await handler({ type, reason }, {
+          const result = await handler(event, {
             sessionManager: { getHeader: () => ({ timestamp: "2000-01-01T00:00:00.000Z" }) },
           });
           if (result?.message) messages.push(result.message.content);
         }
+        return event;
       }
       const before = arms().length;
       for (const extension of order) extension.default(pi);
       try {
         await emit("session_start", reason);
-        await emit("resources_discover", "startup");
-        // Startup is a nonblocking prerequisite. Its settlement must start
-        // monitoring even before the first provider-bound turn is requested.
+        await waitFor(() => existsSync(`${home}/bootstrap-entered`));
+        assert.equal(readFileSync(lock, "utf8").trim(), String(process.pid));
+        assert.equal(settlement, undefined, "startup settled while bootstrap remained held");
+        if (initial === "absent") {
+          pi.events.emit("firstmate:sessionstart-settled", { sessionStart: previousSessionStart, successful: true });
+          pi.events.emit("firstmate:sessionstart-settled", { sessionStart: currentSessionStart, successful: false });
+          let discovered = false;
+          void emit("resources_discover", "startup").then(() => { discovered = true; });
+          await waitFor(() => discovered);
+          await new Promise(resolve => setTimeout(resolve, 350));
+          assert.equal(arms().length, before, "discovery armed before current startup successfully settled");
+          writeFileSync(`${home}/bootstrap-release`, "release\n");
+        } else {
+          writeFileSync(`${home}/bootstrap-release`, "release\n");
+          await waitFor(() => settlement?.successful === true);
+          assert.equal(arms().length, before, "settlement armed before resource discovery");
+          await emit("resources_discover", "startup");
+        }
         await waitFor(() => arms().length === before + 1);
+        assert.equal(settlement?.successful, true);
+        previousSessionStart = currentSessionStart;
         await emit("before_agent_start", reason);
         assert.equal(readFileSync(lock, "utf8").trim(), String(process.pid));
         assert.ok(messages.some(message => message.includes("SESSION START - ")));
@@ -4246,6 +4316,7 @@ writeFileSync(meta, "kind=ship\n");
 const mod = await import(pathToFileURL(process.env.PLUGIN).href);
 
 const factoryOnly = makePi();
+(await import(new URL("./test-sessionstart.mjs", pathToFileURL(process.env.PLUGIN)))).simulateSettledStartup(factoryOnly.pi, factoryOnly.handlers);
 mod.default(factoryOnly.pi);
 await new Promise((resolve) => setTimeout(resolve, 80));
 if (armCount() !== 0) throw new Error("factory bind armed before session_start");
@@ -4272,6 +4343,7 @@ async function replaceSession(previous, reason) {
     throw new Error(`${reason} predecessor disappeared before successor activation`);
   }
   const next = makePi();
+  (await import(new URL("./test-sessionstart.mjs", pathToFileURL(process.env.PLUGIN)))).simulateSettledStartup(next.pi, next.handlers);
   mod.default(next.pi);
   const before = armCount();
   await next.handlers.get("session_start")?.({
@@ -4319,6 +4391,7 @@ await current.handlers.get("session_shutdown")?.({ type: "session_shutdown", rea
 await waitFor(() => !pidAlive(activeChild), "quit before negatives");
 
 const negative = makePi();
+(await import(new URL("./test-sessionstart.mjs", pathToFileURL(process.env.PLUGIN)))).simulateSettledStartup(negative.pi, negative.handlers);
 mod.default(negative.pi);
 const afterQuit = armCount();
 setNeed("meta");
@@ -4357,6 +4430,7 @@ await negative.handlers.get("session_shutdown")?.({ type: "session_shutdown", re
 if (!pidAlive(relayChild)) throw new Error("Relay predecessor retired before activation");
 
 const sourcePi = makePi();
+(await import(new URL("./test-sessionstart.mjs", pathToFileURL(process.env.PLUGIN)))).simulateSettledStartup(sourcePi.pi, sourcePi.handlers);
 mod.default(sourcePi.pi);
 setNeed("source");
 await sourcePi.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, {});
@@ -4379,6 +4453,7 @@ const trust = `${state}/custom.check-trust`;
 const executed = `${state}/custom-executed`;
 writeFileSync(check, `#!/bin/sh\nprintf executed > '${executed}'\n`, { mode: 0o700 });
 const customPi = makePi();
+(await import(new URL("./test-sessionstart.mjs", pathToFileURL(process.env.PLUGIN)))).simulateSettledStartup(customPi.pi, customPi.handlers);
 mod.default(customPi.pi);
 const beforeCustom = armCount();
 await customPi.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, {});
