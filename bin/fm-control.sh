@@ -6,6 +6,7 @@
 #        fm-control.sh <task-id> exit
 #        fm-control.sh <task-id> relaunch [--harness <name>] [--model <name>]
 #                                         [--effort <level>]
+#                                         [--pi-extension <absolute-file>]
 #                                         (--note <text> | --note-file <path>)
 #
 # Why this exists, and how it differs from fm-send.sh. bin/fm-send.sh is the
@@ -77,6 +78,10 @@
 #              The same pre-stop refusal applies to this home's worker tool
 #              exclusions (bin/fm-exclude-tools-lib.sh): a malformed list, or a
 #              replacement runtime that cannot hide the listed tools.
+#              --pi-extension selects one explicit Pi extension file and enables
+#              fm-spawn's discovery-isolated Pi launch. The selected absolute
+#              path is persisted in task metadata and reused by later Pi-family
+#              relaunches. Switching away from Pi clears that Pi-only intent.
 #              --note is required for a ship or scout, whose replacement
 #              inherits the local copy but none of the conversation; a
 #              secondmate reconciles its own home's records at startup, so its
@@ -179,6 +184,8 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 . "$SCRIPT_DIR/fm-worker-account-lib.sh"
 # shellcheck source=bin/fm-exclude-tools-lib.sh
 . "$SCRIPT_DIR/fm-exclude-tools-lib.sh"
+# shellcheck source=bin/fm-pi-extension-lib.sh
+. "$SCRIPT_DIR/fm-pi-extension-lib.sh"
 
 POLL=${FM_CONTROL_POLL:-0.5}
 SETTLE_WAIT=${FM_CONTROL_SETTLE_WAIT:-5}
@@ -241,9 +248,11 @@ fi
 NEW_HARNESS=
 NEW_MODEL=
 NEW_EFFORT=
+NEW_PI_EXTENSION=
 HARNESS_SET=0
 MODEL_SET=0
 EFFORT_SET=0
+PI_EXTENSION_SET=0
 NOTE=
 NOTE_SET=0
 control_want_value=
@@ -256,6 +265,11 @@ for control_arg in "$@"; do
       harness) NEW_HARNESS=$control_arg; HARNESS_SET=1 ;;
       model) NEW_MODEL=$control_arg; MODEL_SET=1 ;;
       effort) NEW_EFFORT=$control_arg; EFFORT_SET=1 ;;
+      pi-extension)
+        [ "$PI_EXTENSION_SET" = 0 ] || die "--pi-extension may be passed only once"
+        NEW_PI_EXTENSION=$control_arg
+        PI_EXTENSION_SET=1
+        ;;
       note) NOTE=$control_arg; NOTE_SET=1 ;;
       note_file)
         [ -f "$control_arg" ] || die "--note-file '$control_arg' is not a readable file"
@@ -273,6 +287,12 @@ for control_arg in "$@"; do
     --model=*) NEW_MODEL=${control_arg#--model=}; MODEL_SET=1 ;;
     --effort) control_want_value=effort ;;
     --effort=*) NEW_EFFORT=${control_arg#--effort=}; EFFORT_SET=1 ;;
+    --pi-extension) control_want_value=pi-extension ;;
+    --pi-extension=*)
+      [ "$PI_EXTENSION_SET" = 0 ] || die "--pi-extension may be passed only once"
+      NEW_PI_EXTENSION=${control_arg#--pi-extension=}
+      PI_EXTENSION_SET=1
+      ;;
     --note) control_want_value=note ;;
     --note=*) NOTE=${control_arg#--note=}; NOTE_SET=1 ;;
     --note-file) control_want_value=note_file ;;
@@ -290,12 +310,14 @@ if [ -n "$control_want_value" ]; then
 fi
 
 if [ "$VERB" != relaunch ]; then
-  [ "$HARNESS_SET" = 0 ] && [ "$MODEL_SET" = 0 ] && [ "$EFFORT_SET" = 0 ] && [ "$NOTE_SET" = 0 ] \
-    || die "--harness, --model, --effort, and --note apply to 'relaunch' only"
+  [ "$HARNESS_SET" = 0 ] && [ "$MODEL_SET" = 0 ] && [ "$EFFORT_SET" = 0 ] \
+    && [ "$PI_EXTENSION_SET" = 0 ] && [ "$NOTE_SET" = 0 ] \
+    || die "--harness, --model, --effort, --pi-extension, and --note apply to 'relaunch' only"
 fi
 [ "$HARNESS_SET" = 0 ] || [ -n "$NEW_HARNESS" ] || die "--harness requires a non-empty value"
 [ "$MODEL_SET" = 0 ] || [ -n "$NEW_MODEL" ] || die "--model requires a non-empty value"
 [ "$EFFORT_SET" = 0 ] || [ -n "$NEW_EFFORT" ] || die "--effort requires a non-empty value"
+[ "$PI_EXTENSION_SET" = 0 ] || fm_pi_extension_validate_file "$NEW_PI_EXTENSION" || exit 1
 case "$NEW_EFFORT" in
   ''|default|low|medium|high|xhigh|max|ultra) ;;
   *) die "--effort must be one of default, low, medium, high, xhigh, max, ultra" ;;
@@ -791,6 +813,8 @@ PRIOR_EFFORT=
 TARGET_HARNESS=$HARNESS
 TARGET_MODEL=
 TARGET_EFFORT=
+PRIOR_PI_EXTENSION=
+TARGET_PI_EXTENSION=
 
 journal_write() {  # <phase> [extra-line]...
   local phase=$1
@@ -810,6 +834,8 @@ journal_write() {  # <phase> [extra-line]...
     echo "to_harness=$TARGET_HARNESS"
     echo "to_model=$TARGET_MODEL"
     echo "to_effort=$TARGET_EFFORT"
+    echo "from_pi_extension=$PRIOR_PI_EXTENSION"
+    echo "to_pi_extension=$TARGET_PI_EXTENSION"
     local line
     for line in "$@"; do
       echo "$line"
@@ -892,6 +918,7 @@ resolve_relaunch_profile() {
   PRIOR_RECORDED_HARNESS=$RECORDED_HARNESS
   PRIOR_MODEL=$(fm_meta_get "$META" model)
   PRIOR_EFFORT=$(fm_meta_get "$META" effort)
+  PRIOR_PI_EXTENSION=$(fm_meta_get "$META" pi_extension)
   [ -n "$PRIOR_MODEL" ] || PRIOR_MODEL=default
   [ -n "$PRIOR_EFFORT" ] || PRIOR_EFFORT=default
   if [ "$HARNESS_SET" = 0 ] \
@@ -973,6 +1000,27 @@ resolve_relaunch_profile() {
   # agent stops. Secondmate agents are not covered.
   if [ "$KIND" != secondmate ]; then
     fm_exclude_tools_check "$TARGET_HARNESS" 0 "${FM_CONFIG_OVERRIDE:-$FM_HOME/config}" >/dev/null || return 1
+  fi
+  case "$TARGET_HARNESS" in
+    pi|pi-signed)
+      if [ "$PI_EXTENSION_SET" = 1 ]; then
+        TARGET_PI_EXTENSION=$NEW_PI_EXTENSION
+      else
+        TARGET_PI_EXTENSION=$PRIOR_PI_EXTENSION
+      fi
+      ;;
+    *)
+      [ "$PI_EXTENSION_SET" = 0 ] \
+        || die "--pi-extension applies only when the replacement harness is pi or pi-signed, not '$TARGET_HARNESS'"
+      TARGET_PI_EXTENSION=
+      ;;
+  esac
+  [ -z "$TARGET_PI_EXTENSION" ] || fm_pi_extension_validate_file "$TARGET_PI_EXTENSION" || exit 1
+  fm_pi_extension_validate_harness "$TARGET_PI_EXTENSION" "$TARGET_HARNESS" || exit 1
+  if [ -n "$TARGET_PI_EXTENSION" ]; then
+    TARGET_PI_BIN=$(fm_pi_executable_resolve "$TARGET_HARNESS") \
+      || die "$TARGET_HARNESS executable not found on PATH; refusing relaunch before stopping the current worker"
+    fm_pi_extension_cli_validate "$TARGET_PI_BIN" "$TARGET_HARNESS" || exit 1
   fi
 }
 
@@ -1130,6 +1178,7 @@ do_relaunch() {
   spawn_args=("$ID" --relaunch --harness "$TARGET_HARNESS")
   [ "$TARGET_MODEL" = default ] || spawn_args+=(--model "$TARGET_MODEL")
   [ "$TARGET_EFFORT" = default ] || spawn_args+=(--effort "$TARGET_EFFORT")
+  [ -z "$TARGET_PI_EXTENSION" ] || spawn_args+=(--pi-extension "$TARGET_PI_EXTENSION")
   if FM_CONTROL_RELAUNCH_TX="$RELAUNCH_TX" \
       "$SCRIPT_DIR/fm-spawn.sh" "${spawn_args[@]}" >/dev/null; then
     RELAUNCH_META_PUBLISHED=1

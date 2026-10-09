@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Spawn a direct report: a crewmate in a treehouse or Orca worktree, or a
 # secondmate in its isolated firstmate home.
-# Usage: fm-spawn.sh <task-id> <project-dir> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off> [--branch-prefix <prefix>] [--base-branch <branch>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--herdr-resume-lock-wait]
-#        fm-spawn.sh <task-id> <project-dir> --scout [--base-branch <branch>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--herdr-resume-lock-wait]
-#        fm-spawn.sh <task-id> [<firstmate-home>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] --secondmate
+# Usage: fm-spawn.sh <task-id> <project-dir> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off> [--branch-prefix <prefix>] [--base-branch <branch>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--pi-extension <absolute-file>] [--herdr-resume-lock-wait]
+#        fm-spawn.sh <task-id> <project-dir> --scout [--base-branch <branch>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--pi-extension <absolute-file>] [--herdr-resume-lock-wait]
+#        fm-spawn.sh <task-id> [<firstmate-home>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--pi-extension <absolute-file>] --secondmate
 #   --mode and --yolo are this task's delivery contract, REQUIRED for every ship
 #   spawn and refused on --scout and --secondmate spawns. Firstmate resolves both
 #   per task at intake (AGENTS.md section 7); data/projects.md holds the captain's
@@ -52,7 +52,7 @@
 #   first in the private launch-brief overlay, including the exact task-owned
 #   steering inbox. This never rewrites a project's instruction files or a
 #   secondmate's charter.
-#        fm-spawn.sh <task-id> --relaunch [--harness <name>] [--model <name>] [--effort <level>]
+#        fm-spawn.sh <task-id> --relaunch [--harness <name>] [--model <name>] [--effort <level>] [--pi-extension <absolute-file>]
 #   --relaunch launches a replacement agent for an EXISTING task into that
 #   task's own recorded worktree, reusing its recorded endpoint when that
 #   endpoint still exists, instead of creating either from scratch. It is
@@ -244,6 +244,19 @@
 #   all and relies on omp auto-discovering the home's tracked .omp/extensions/
 #   (verified, omp 18.1.11: a file named both ways loads twice, and discovery is
 #   cwd-only with no trust dialog).
+#   --pi-extension <absolute-file> is a Pi-family-only, task-scoped collision
+#   recovery mode. It disables extension discovery for that worker, explicitly
+#   reloads Pi's four built-in extensions, loads the Firstmate lifecycle
+#   extension(s) required by the task kind (including the supervision branch
+#   for a secondmate), and then loads exactly the selected
+#   readable regular non-symlink extension file. Ordinary launches omit this
+#   flag and retain normal discovery byte-for-byte. The selected absolute path
+#   is recorded as pi_extension= and reused by an otherwise-unqualified
+#   relaunch; an explicit relaunch value replaces it. The option refuses for
+#   other harnesses, remote secondmates, duplicate option occurrences, malformed
+#   paths, missing files, and Pi-family CLIs that do not advertise both
+#   --no-extensions and --extension. Relative paths are refused so a relaunch
+#   cannot reinterpret the selection from another working directory.
 #   config/secondmate-harness may also carry an optional model and effort as extra
 #   whitespace-separated tokens ("<harness> [<model>] [<effort>]"). For a
 #   --secondmate spawn, those tokens apply only when this spawn also resolves its
@@ -393,6 +406,8 @@
 #                  reports (relaunch_resume_args below owns it; it supplies its
 #                  own leading space, and is empty on every fresh spawn and for
 #                  every other harness)
+#     __PIEXTMODE__ optional explicit built-ins and --no-extensions discovery bypass
+#     __PISELECTED__ quoted task-selected extension path, present only with __PIEXTMODE__
 #     __TURNEND__  absolute path to state/<task-id>.turn-ended (for harnesses whose
 #                  turn-end signal rides the launch command, e.g. codex -c notify=[...])
 #     __PIEXT__    absolute path to state/<task-id>.pi-ext.ts (pi turn-end extension,
@@ -683,6 +698,8 @@ fm_backlog_directory_present "$STATE" "state directory" || {
 . "$SCRIPT_DIR/fm-project-capacity-lib.sh"
 # shellcheck source=bin/fm-worker-account-lib.sh
 . "$SCRIPT_DIR/fm-worker-account-lib.sh"
+# shellcheck source=bin/fm-pi-extension-lib.sh
+. "$SCRIPT_DIR/fm-pi-extension-lib.sh"
 # Fail closed before any fleet mutation: a no-mistakes gate agent must never spawn
 # a direct report (see bin/fm-gate-refuse-lib.sh).
 fm_refuse_if_gate_agent
@@ -699,6 +716,7 @@ MODE=
 YOLO=
 BRANCH_PREFIX=fm/
 TRACEPARENT_ARG=
+PI_EXTENSION=
 HARNESS_SET=0
 MODEL_SET=0
 EFFORT_SET=0
@@ -709,6 +727,7 @@ BRANCH_PREFIX_SET=0
 BASE_BRANCH=
 BASE_BRANCH_SET=0
 TRACEPARENT_SET=0
+PI_EXTENSION_SET=0
 RELAUNCH=0
 # Opt-in only: exact-resume presentation-order lock waits instead of refusing.
 # Absent/unset keeps upstream refuse-on-contention. See header.
@@ -760,6 +779,11 @@ for a in "$@"; do
       TRACEPARENT_ARG=$a
       TRACEPARENT_SET=1
       ;;
+      pi-extension)
+        [ "$PI_EXTENSION_SET" -eq 0 ] || { echo "error: --pi-extension may be passed only once" >&2; exit 1; }
+        PI_EXTENSION=$a
+        PI_EXTENSION_SET=1
+        ;;
     *)
       echo "error: internal parser state for --$want_value" >&2
       exit 1
@@ -824,6 +848,12 @@ for a in "$@"; do
     TRACEPARENT_ARG=${a#--traceparent=}
     TRACEPARENT_SET=1
     ;;
+    --pi-extension) want_value=pi-extension ;;
+    --pi-extension=*)
+      [ "$PI_EXTENSION_SET" -eq 0 ] || { echo "error: --pi-extension may be passed only once" >&2; exit 1; }
+      PI_EXTENSION=${a#--pi-extension=}
+      PI_EXTENSION_SET=1
+      ;;
   *) POS+=("$a") ;;
   esac
 done
@@ -859,6 +889,7 @@ done
   echo "error: --traceparent requires a non-empty value" >&2
   exit 1
 }
+[ "$PI_EXTENSION_SET" -eq 0 ] || fm_pi_extension_validate_file "$PI_EXTENSION" || exit 1
 # A parent-delivered carrier replaces this home's own resolution, so it is
 # refused unless it is a secondmate spawn carrying a strictly valid W3C value.
 # Nothing else may reach the pane's TRACEPARENT export.
@@ -991,6 +1022,12 @@ spawn_remote_secondmate() {
     fm_lock_release "$registry_lock" || true
     fm_lock_release "$SPAWN_TASK_LOCK" || true
     return 3
+  fi
+  if [ "$PI_EXTENSION_SET" -eq 1 ]; then
+    fm_lock_release "$registry_lock" || true
+    fm_lock_release "$SPAWN_TASK_LOCK" || true
+    echo "error: --pi-extension cannot select a host-local file for remote secondmate $id" >&2
+    return 1
   fi
   host=$(secondmate_registry_field "$DATA/secondmates.md" "$id" host)
   root=$(secondmate_registry_field "$DATA/secondmates.md" "$id" root)
@@ -1551,6 +1588,7 @@ if [ "${#POS[@]}" -gt 0 ] && [ "${POS[0]}" != "$idpart" ] && case "$idpart" in *
   [ -z "$MODEL" ] || shared_args+=(--model "$MODEL")
   [ -z "$EFFORT" ] || shared_args+=(--effort "$EFFORT")
   [ -z "$BACKEND_ARG" ] || shared_args+=(--backend "$BACKEND_ARG")
+  [ "$PI_EXTENSION_SET" -eq 0 ] || shared_args+=(--pi-extension "$PI_EXTENSION")
   # One delivery contract applies to every pair in a batch, exactly like the shared
   # harness. Each pair still re-validates it against its own brief, so a batch
   # spanning several modes is two invocations rather than a silent mixed dispatch.
@@ -1926,6 +1964,7 @@ if [ "$RELAUNCH" -eq 1 ]; then
     HERDR_TAB_ID=$(fm_meta_get "$RELAUNCH_META" herdr_tab_id)
     HERDR_PANE_ID=$(fm_meta_get "$RELAUNCH_META" herdr_pane_id)
   fi
+  RELAUNCH_PRIOR_PI_EXTENSION=$(fm_meta_get "$RELAUNCH_META" pi_extension)
   # With no explicit harness, a relaunch reuses the harness already recorded
   # for this task. It must NOT fall through to the fresh-spawn config
   # resolution, which would silently move an existing task onto whatever the
@@ -1967,29 +2006,7 @@ shell_quote() {
   printf "'"
 }
 
-resolve_pi_executable() {
-  local candidate dir
-  candidate=$(type -P -- "$1" 2>/dev/null) || return 1
-  [ -x "$candidate" ] || return 1
-  case "$candidate" in
-  /*) printf '%s\n' "$candidate" ;;
-  *)
-    dir=$(cd "$(dirname "$candidate")" 2>/dev/null && pwd -P) || return 1
-    printf '%s/%s\n' "$dir" "$(basename "$candidate")"
-    ;;
-  esac
-}
-
-# Pi's CLI surface is version-dependent, so probe the resolved executable's help
-# before composing the optional regular-TUI flag. An absent or inconclusive probe
-# omits the flag so older Pi versions can still spawn.
-pi_supports_tui_mode() {
-  local executable=$1 help
-  help=$("$executable" --help 2>&1) || return 1
-  printf '%s\n' "$help" | grep -Eq -- '(^|[[:space:]])--tui-mode([[:space:]=]|$)'
-}
-
-# Same help-probe shape as pi_supports_tui_mode for the session-scoped project
+# Help-probe for the session-scoped project
 # trust flag. A seeded secondmate home carries tracked .pi/extensions that gate
 # Pi behind "Trust project folder?" on first launch; --approve trusts that
 # launch cwd for the run without rewriting ~/.pi/agent/trust.json.
@@ -2152,11 +2169,11 @@ launch_template() {
     ;;
   opencode) printf '%s' 'OPENCODE_CONFIG_CONTENT='\''{"permission":{"*":"allow"}__EFFORTFLAG__}'\'' opencode __MODELFLAG__--prompt "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
   pi | pi-signed)
-    printf '%s' '__PIBIN____PITUIMODE____PIAPPROVE____PIEXCLUDE____PIRESUME__'
+    printf '%s' '__PIBIN____PITUIMODE____PIAPPROVE____PIEXCLUDE____PIRESUME____PIEXTMODE__'
     if [ "$kind" = secondmate ]; then
-      printf '%s' ' __MODELFLAG____EFFORTFLAG__-e __PITURNEND__ -e __PIWATCH__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
+      printf '%s' ' __MODELFLAG____EFFORTFLAG__-e __PITURNEND__ -e __PIWATCH____PISELECTED__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
     else
-      printf '%s' ' __MODELFLAG____EFFORTFLAG__-e __PIEXT__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
+      printf '%s' ' __MODELFLAG____EFFORTFLAG__-e __PIEXT____PISELECTED__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
     fi
     ;;
   # omp (Oh My Pi), a Pi fork. Same one-positional-brief, --model, --thinking,
@@ -2373,6 +2390,15 @@ case "$ARG3" in
   ;;
 esac
 
+if [ "$RELAUNCH" -eq 1 ] && [ "$PI_EXTENSION_SET" -eq 0 ]; then
+  case "$HARNESS" in
+    pi|pi-signed) PI_EXTENSION=${RELAUNCH_PRIOR_PI_EXTENSION:-} ;;
+    *) PI_EXTENSION= ;;
+  esac
+fi
+[ -z "$PI_EXTENSION" ] || fm_pi_extension_validate_file "$PI_EXTENSION" || exit 1
+fm_pi_extension_validate_harness "$PI_EXTENSION" "$HARNESS" || exit 1
+
 # muse, gemini, agy, and devin are verified as CREWMATE/SCOUT adapters only. A secondmate is
 # a firstmate instance, so it needs a primary supervision protocol.
 # gemini has none: docs/supervision-protocols/ carries no gemini wake protocol
@@ -2416,14 +2442,23 @@ devin)
   }
   ;;
 pi | pi-signed)
-  PI_BIN=$(resolve_pi_executable "$HARNESS") || {
+  PI_BIN=$(fm_pi_executable_resolve "$HARNESS") || {
     echo "error: $HARNESS executable not found on PATH; install it or select a different verified harness" >&2
     exit 1
   }
+  PI_HELP=
   PI_TUI_MODE=
-  if pi_supports_tui_mode "$PI_BIN"; then
-    PI_TUI_MODE=' --tui-mode regular'
+  PI_EXTENSION_MODE=
+  if PI_HELP=$("$PI_BIN" --help 2>&1); then
+    if fm_pi_help_has_option "$PI_HELP" --tui-mode; then
+      PI_TUI_MODE=' --tui-mode regular'
+    fi
   fi
+  if [ -n "$PI_EXTENSION" ]; then
+    fm_pi_extension_cli_validate "$PI_BIN" "$HARNESS" "$PI_HELP" || exit 1
+    PI_EXTENSION_MODE=' --no-extensions -e builtin:mcp -e builtin:llama.cpp -e builtin:codemode -e builtin:tool-search'
+  fi
+  LAUNCH=${LAUNCH//__PIEXTMODE__/$PI_EXTENSION_MODE}
   LAUNCH=${LAUNCH//__PITUIMODE__/$PI_TUI_MODE}
   # Seeded-home signal is .fm-secondmate-home (required by
   # validate_firstmate_home_for_spawn before any secondmate launch reaches
@@ -5127,7 +5162,7 @@ SPAWN_META_PATH=$SPAWN_META_TMP
 preserve_relaunch_meta() {
   awk -F= '
     BEGIN {
-      split("window endpoint_task_id worktree project harness kind mode yolo branch tasktmp base_branch model effort account account_provider busy_gen spawn_gen traceparent backend tmux_socket_path tmux_server_pid tmux_server_identity tmux_server_token tmux_window_id herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id home projects control_relaunch_tx", keys, " ")
+      split("window endpoint_task_id worktree project harness kind mode yolo branch tasktmp base_branch model effort pi_extension account account_provider busy_gen spawn_gen traceparent backend tmux_socket_path tmux_server_pid tmux_server_identity tmux_server_token tmux_window_id herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id home projects control_relaunch_tx", keys, " ")
       for (i in keys) owned[keys[i]] = 1
     }
     !($1 in owned)
@@ -5152,6 +5187,7 @@ preserve_relaunch_meta() {
   # task record stays byte-identical.
   [ -z "$WORKER_ACCOUNT" ] || echo "account=$WORKER_ACCOUNT_DECLARED"
   [ -z "$WORKER_ACCOUNT_PROVIDER" ] || echo "account_provider=$WORKER_ACCOUNT_PROVIDER"
+  [ -z "$PI_EXTENSION" ] || echo "pi_extension=$PI_EXTENSION"
   [ -z "${BUSY_GEN:-}" ] || echo "busy_gen=$BUSY_GEN"
   echo "spawn_gen=$SPAWN_GEN"
   # Default-off writes no traceparent= line.
@@ -5285,6 +5321,15 @@ sq_piturnend=$(shell_quote "$PROJ_ABS/.pi/extensions/fm-primary-turnend-guard.ts
 sq_piwatch=$(shell_quote "$PROJ_ABS/.pi/extensions/fm-primary-pi-watch.ts")
 sq_ompext=$(shell_quote "$STATE/$ID.omp-ext.ts")
 sq_ompcfg=$(shell_quote "${OMP_WORKER_CFG:-$FM_ROOT/.omp/fm-worker-overlay.yml}")
+sq_pi_selected=
+if [ -n "$PI_EXTENSION" ]; then
+  sq_pi_selected=" -e $(shell_quote "$PI_EXTENSION")"
+  if [ "$KIND" = secondmate ]; then
+    # Normal discovery owns this third primary extension. Restore it only
+    # when recovery disables discovery, never double-load it ordinarily.
+    sq_pi_selected=" -e $(shell_quote "$PROJ_ABS/.pi/extensions/fm-branch-supervision.ts")$sq_pi_selected"
+  fi
+fi
 sq_opinput=$(shell_quote "$FM_ROOT/bin/fm-operational-input.sh")
 sq_worktree=$(shell_quote "$WT")
 MODELFLAG=$(model_flag_for_harness "$HARNESS" "$MODEL")
@@ -5321,6 +5366,8 @@ LAUNCH=${LAUNCH//__PITURNEND__/$sq_piturnend}
 LAUNCH=${LAUNCH//__PIWATCH__/$sq_piwatch}
 LAUNCH=${LAUNCH//__OMPEXT__/$sq_ompext}
 LAUNCH=${LAUNCH//__OMPWORKERCFG__/$sq_ompcfg}
+LAUNCH=${LAUNCH//__PISELECTED__/$sq_pi_selected}
+LAUNCH=${LAUNCH//__PIEXTMODE__/}
 LAUNCH=${LAUNCH//__OPINPUT__/$sq_opinput}
 case "$HARNESS" in
 pi | pi-signed) LAUNCH=${LAUNCH//__PIBIN__/"$(shell_quote "$PI_BIN")"} ;;

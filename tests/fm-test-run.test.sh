@@ -7,6 +7,9 @@
 # focused scheduler checks, not the complete Firstmate suite.
 set -u
 
+FM_TEST_AMBIENT_LOCALE=${LC_ALL:-${LC_COLLATE:-${LANG:-C}}}
+export LC_ALL=C
+
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
@@ -1069,7 +1072,8 @@ test_portable_shard_union_and_coverage_guard() {
     && fail "portable lanes must not include real-herdr-gated smoke"
   printf '%s\n' "$herdr" | grep -Fq 'tests/fm-backend-herdr-smoke.test.sh' \
     || fail "herdr family must include smoke"
-  out=$("$RUNNER" --check-coverage)
+  out=$(LC_ALL="$FM_TEST_AMBIENT_LOCALE" "$RUNNER" --check-coverage) \
+    || fail "coverage guard failed under ambient locale $FM_TEST_AMBIENT_LOCALE"
   assert_contains "$out" "FM_TEST_COVERAGE ok" "coverage guard success marker"
   all_count=$("$RUNNER" --list --all | wc -l | tr -d ' ')
   union_count=$(printf '%s\n' "$s1" "$s2" "$serial" "$herdr" | LC_ALL=C sort -u | wc -l | tr -d ' ')

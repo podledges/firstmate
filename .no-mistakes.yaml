@@ -38,6 +38,7 @@ commands:
 test:
   instructions: |
     Satisfy the repository's declared test dependencies without global installation: bin/fm-tasks-axi-lib.sh owns the tasks-axi minimum (currently 0.2.6), and docs/verification/supervision.md records the TypeScript 5.9.3 installed-SDK check. Supply these with npm exec using a disposable npm_config_cache and FM_HOME; an installed tasks-axi below the declared floor cannot exercise captain-held fixtures. Keep no-mistakes and its shared daemon unchanged.
+    tests/fm-test-run.test.sh also requires Ruby with YAML and JSON support for its workflow assertions. If Ruby is absent, provide a compatible runtime in the disposable test environment and verify `ruby -ryaml -rjson` there; do not skip those assertions or install Ruby globally.
     On Nix hosts, populate the existing FM_TEST_BASE_PATH test hook with resolved executable directories for the fixtures' required base tools, including bash, git, awk, sed, grep, find, ps, python3, perl, node, jq, sleep and cmp. Retain the isolated dependency executables on the invocation PATH; do not change Nix/Home Manager or live shell configuration. Use bin/fm-test-run.sh with an explicit per-script timeout appropriate to its historical durations, and report focused evidence separately from complete-suite results.
     Run live Herdr scenarios only through bin/fm-herdr-lab.sh with a named non-default fm-lab-* session, following that helper's prepare, provision, run, and teardown contract exactly.
     Never touch the live default Herdr session or fleet panes.

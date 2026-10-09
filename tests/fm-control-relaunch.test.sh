@@ -187,6 +187,22 @@ SH
   chmod +x "$fb/sleep"
 }
 
+make_pi_stub() {  # <case-dir> <pi|pi-signed> [supported]
+  local dir=$1 harness=$2 supported=${3:-yes}
+  cat > "$dir/fakebin/$harness" <<SH
+#!/usr/bin/env bash
+if [ "\${1:-}" = --help ]; then
+  if [ "$supported" = yes ]; then
+    printf '%s\\n' 'Options: --tui-mode <mode> --extension, -e <path> --no-extensions, -ne'
+  else
+    printf '%s\\n' 'Options: --tui-mode <mode>'
+  fi
+fi
+exit 0
+SH
+  chmod +x "$dir/fakebin/$harness"
+}
+
 # new_case <name> [id] -> echoes a case dir with a live claude ship task.
 new_case() {
   local id=${2:-t1} dir="$TMP_ROOT/$1-$RANDOM"
@@ -951,7 +967,7 @@ test_turnend_auth_paths_are_owned_by_the_control_adapter() {
 }
 
 test_secondmate_relaunch_picks_up_the_configured_harness_pin() {
-  local dir home out rc
+  local dir home out rc smhome_real
   dir=$(new_case smpin sm3)
   home="$dir/home"
   mkdir -p "$home/config"
@@ -978,6 +994,7 @@ test_secondmate_relaunch_picks_up_the_configured_harness_pin() {
   printf '%s\n' "fm-sm3" > "$dir/fake/windows"
   printf '%s' "$dir/smhome" > "$dir/fake/cwd"
   printf 'codex' > "$dir/fake/becomes"
+  smhome_real=$(cd "$dir/smhome" && pwd -P)
   out=$(run_control "$dir" sm3 relaunch); rc=$?
   expect_code 0 "$rc" "a configured secondmate harness should relaunch"$'\n'"$out"
   [ "$(journal_field "$dir" sm3 to_harness)" = codex ] \
@@ -987,6 +1004,8 @@ test_secondmate_relaunch_picks_up_the_configured_harness_pin() {
   [ "$(journal_field "$dir" sm3 to_effort)" = high ] \
     || fail "the configured effort token should come with the pin"
   assert_not_contains "$out" "not a verified harness" "codex is a verified harness"
+  assert_grep "CODEX_HOME='$smhome_real/data/agent-homes/codex'" "$dir/fake/literal" \
+    "the replacement did not use the secondmate's own private Codex home"
   pass "fm-control relaunch: a secondmate relaunch re-resolves its durable configured harness pin"
 }
 
@@ -1273,6 +1292,77 @@ test_cursor_session_binding_is_retired_on_a_harness_switch() {
   [ ! -e "$dir/home/state/rl35.cursor-session" ] \
     || fail "the retired cursor incarnation's session binding must not outlive it"
   pass "fm-spawn --relaunch: switching away from cursor retires its session binding"
+}
+
+test_pi_extension_selection_persists_across_guarded_relaunches() {
+  local harness id dir extension out rc
+  for harness in pi pi-signed; do
+    case "$harness" in
+      pi) id=rl-pi-extension ;;
+      pi-signed) id=rl-pi-signed-extension ;;
+    esac
+    dir=$(new_case "$harness-extension" "$id")
+    add_ship_task "$dir" "$id" "$harness"
+    make_pi_stub "$dir" "$harness"
+    printf '%s' "$harness" > "$dir/fake/command"
+    printf '%s' "$harness" > "$dir/fake/becomes"
+    mkdir -p "$dir/selected extension's dir"
+    extension="$dir/selected extension's dir/show-reg.ts"
+    printf 'export default function () {}\n' > "$extension"
+
+    out=$(run_control "$dir" "$id" relaunch --pi-extension "$extension" --note "retry with isolated extension discovery"); rc=$?
+    expect_code 0 "$rc" "$harness guarded relaunch with a selected extension should succeed"$'\n'"$out"
+    [ "$(meta_field "$dir" "$id" pi_extension)" = "$extension" ] \
+      || fail "$harness relaunch did not persist its selected extension"
+    [ "$(journal_field "$dir" "$id" to_pi_extension)" = "$extension" ] \
+      || fail "$harness relaunch journal did not record the selection"
+    assert_grep "--no-extensions -e builtin:mcp -e builtin:llama.cpp -e builtin:codemode -e builtin:tool-search" "$dir/fake/literal" \
+      "$harness guarded relaunch did not isolate discovery while restoring built-ins"
+    assert_grep "-e '$dir/home/state/$id.pi-ext.ts' -e '$dir/selected extension'\\''s dir/show-reg.ts'" "$dir/fake/literal" \
+      "$harness guarded relaunch did not preserve lifecycle wiring and quoted extension selection"
+
+    : > "$dir/fake/literal"
+    out=$(run_control "$dir" "$id" relaunch --note "verify persisted isolated extension discovery"); rc=$?
+    expect_code 0 "$rc" "$harness unqualified follow-up relaunch should reuse its selected extension"$'\n'"$out"
+    [ "$(meta_field "$dir" "$id" pi_extension)" = "$extension" ] \
+      || fail "$harness follow-up relaunch lost its selected extension"
+    assert_grep "-e '$dir/selected extension'\\''s dir/show-reg.ts'" "$dir/fake/literal" \
+      "$harness follow-up relaunch did not reuse the persisted selected extension"
+
+    printf 'codex' > "$dir/fake/becomes"
+    out=$(run_control "$dir" "$id" relaunch --harness codex --note "move off Pi and clear Pi-only launch intent"); rc=$?
+    expect_code 0 "$rc" "$harness to codex relaunch should succeed"$'\n'"$out"
+    [ -z "$(meta_field "$dir" "$id" pi_extension)" ] \
+      || fail "$harness to codex relaunch retained Pi-only extension metadata"
+    [ -z "$(journal_field "$dir" "$id" to_pi_extension)" ] \
+      || fail "$harness to codex relaunch retained Pi-only extension intent in the journal"
+  done
+  pass "fm-control relaunch: Pi extension isolation persists within Pi and clears when switching away"
+}
+
+test_pi_extension_relaunch_refuses_bad_inputs_before_stopping() {
+  local dir extension out rc
+  dir=$(new_case pi-extension-refuse rl-pi-refuse)
+  add_ship_task "$dir" rl-pi-refuse pi
+  make_pi_stub "$dir" pi no
+  printf 'pi' > "$dir/fake/command"
+  printf 'pi' > "$dir/fake/becomes"
+  extension="$dir/show-reg.ts"
+  printf 'export default function () {}\n' > "$extension"
+
+  out=$(run_control "$dir" rl-pi-refuse relaunch --pi-extension "$extension" --note "must not stop"); rc=$?
+  expect_code 1 "$rc" "unsupported Pi discovery isolation should refuse before stop"
+  assert_contains "$out" "does not advertise --no-extensions and --extension" \
+    "unsupported Pi relaunch did not name the missing CLI contract"
+  [ "$(cat "$dir/fake/command")" = pi ] || fail "unsupported Pi relaunch stopped the current worker"
+  [ -z "$(cat "$dir/fake/literal")" ] || fail "unsupported Pi relaunch delivered lifecycle input"
+
+  out=$(run_control "$dir" rl-pi-refuse relaunch --pi-extension relative.ts --note "must not stop"); rc=$?
+  expect_code 1 "$rc" "relative Pi extension selection should refuse before stop"
+  assert_contains "$out" "requires an absolute path" \
+    "relative Pi extension relaunch did not name the malformed input"
+  [ "$(cat "$dir/fake/command")" = pi ] || fail "malformed Pi relaunch stopped the current worker"
+  pass "fm-control relaunch: malformed or unsupported Pi extension options refuse before stop"
 }
 
 # --- 3 and 4. refusals before the agent is touched ---------------------------
@@ -2525,6 +2615,8 @@ test_ship_relaunch_ignores_the_crew_harness_config
 test_spawn_relaunch_without_a_harness_reuses_the_recorded_one
 test_spawn_relaunch_of_promoted_scout_uses_the_recorded_branch
 test_promoted_scout_relaunch_receives_the_current_delivery_contract
+test_pi_extension_selection_persists_across_guarded_relaunches
+test_pi_extension_relaunch_refuses_bad_inputs_before_stopping
 test_prefixed_prior_harness_wiring_is_still_retired
 test_muse_session_binding_is_retired_on_a_harness_switch
 test_cursor_session_binding_is_retired_on_a_harness_switch

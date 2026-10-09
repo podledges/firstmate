@@ -6,6 +6,43 @@ This record contains reusable version-scoped evidence for active runtime guarant
 The backend guides own current setup, safety boundaries, and limitations.
 Exact task chronology, branch names, temporary homes, local paths, process ids, thread ids, and delivery transcripts remain in private reports or PR evidence.
 
+## Pi task-scoped extension isolation
+
+Pi and pi-signed 1.1.0 were verified on 2026-10-09 with disposable home, cache, agent and project directories and an existing read-only Show Reg provider.
+The real RPC startup guard reproduced both duplicate tool-name failures under ordinary discovery, then proved that an explicit discovery bypass loaded exactly one provider for `show_register` and `show_register_setup` while an explicit lifecycle observer reached `session_start`.
+The observer is test instrumentation, not an installed Firstmate primary; the portable launch tests below separately verify the actual lifecycle-extension paths.
+The same guard compared the ordinary successful one-provider discovery path, and both identities registered the same two tools there without a collision.
+
+```sh
+pi --version
+pi-signed --version
+HOME="$LAB/home" FM_HOME="$LAB/fm-home" XDG_CACHE_HOME="$LAB/cache" \
+  FM_SHOW_REG_EXTENSION="$SHOW_REG_EXTENSION" FM_PI_EXTENSION_ISOLATION_LIVE=1 \
+  bash tests/fm-pi-extension-isolation-live-e2e.test.sh
+```
+
+Observed output:
+
+```text
+1.1.0
+1.1.0
+ok - pi 1.1.0: real startup isolates one show-reg provider and retains lifecycle events
+ok - pi-signed 1.1.0: real startup isolates one show-reg provider and retains lifecycle events
+# checked 2 installed Pi-family harness(es)
+```
+
+The portable launch and recovery regressions exercise ordinary discovery unchanged, both Pi identities, explicit built-in restoration, worker lifecycle wiring, all three secondmate supervision extensions, quoted paths, invalid input, comma-separated CLI aliases, unsupported CLI surfaces, and persisted guarded relaunch intent.
+Set `SHOW_REG_EXTENSION` to an existing provider file; the guard reads it without changing or installing it.
+The signed wrapper's executable delegate must also be available inside the disposable home when that wrapper resolves its binary relative to `HOME`.
+
+```sh
+tests/fm-spawn-dispatch-profile.test.sh
+tests/fm-control-relaunch.test.sh
+```
+
+These portable tests capture the command delivered through the shared launch interface with a fake tmux endpoint.
+The launch command is composed before backend delivery and is shared by tmux, Herdr, Zellij, Orca, and cmux, but this verification did not start real task endpoints on those five backends and makes no backend-specific runtime claim.
+
 ## Harness detection precedence
 
 Firstmate's own harness comes from two kinds of evidence, and `bin/fm-harness.sh` owns how they combine: an environment marker names its harness, and the nearest harness process in the parent chain proves who owns the process tree.
