@@ -1,0 +1,17 @@
+Transport fixture executes the real remote entrypoint; no live remote/Herdr endpoint.
+$ fm-send rsm "please rename the metric"
+exit=0
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the requested message WILL still be sent.
+●  repair a missing or failed watcher cycle with the Pi tool fm_watch_arm_pi, or restart Pi with -e /home/podles/.no-mistakes/worktrees/2002dab646f9/01M4F836KH2E1G78F77GAH92WJ/.pi/extensions/fm-primary-turnend-guard.ts -e /home/podles/.no-mistakes/worktrees/2002dab646f9/01M4F836KH2E1G78F77GAH92WJ/.pi/extensions/fm-primary-pi-watch.ts if the extensions are not loaded.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+notice: doorbell not typed because the agent in fm-remote:p1 has exited; the steer is durably recorded at <disposable-lab>/remote-inbox-rhome/state/parent-route/rsm.inbox/001.msg for recovery
+Persisted remote steering inbox record:
+schema=fm-task-inbox.v1
+at=2026-10-09T03:52:14Z
+--
+[fm-from-firstmate]⁣corr=d82c6f430801b5c4 please rename the metric
+Pending reply phase=awaiting_report

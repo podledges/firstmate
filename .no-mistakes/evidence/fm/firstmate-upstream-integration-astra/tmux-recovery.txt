@@ -1,0 +1,23 @@
+Isolated real tmux; codex is a native process stand-in, not an installed harness.
+$ tmux join-pane -d -s <original-pane> -t lab:keeper
+Recorded window absent; original pane=%1 pid=3494318 survives.
+$ fm-control <task> relaunch --note "must refuse surviving moved pane"
+error: cannot recover missing tmux endpoint: the recorded tmux window still exists or its server inventory is unreadable; a moved or renamed endpoint is not gone
+After refusal: pane_pid|pane_dead=3494318|0
+After the fixture returns the surviving pane to its original window name: named task windows=1; uncommitted.txt=unfinished work
+$ fm-control <task> relaunch on a second server
+error: task <task>'s tmux server identity is mismatched or unreadable; refusing lifecycle input on another server
+
+$ fm-control <task> relaunch --note "recover on the bound server"
+warning: <disposable-lab>/home/data/<task>/launch-brief.md records no ship branch; defaulting to legacy branch fm/<task>
+warning: <disposable-lab>/home/data/<task>/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+relaunched <task> harness=codex from=codex model=default effort=default backend=tmux endpoint=lab:fm-<task> worktree=<disposable-lab>/task space ' dollar$
+Same task worktree=true; same HEAD=31447659748e412564a590e18df4b9f7927646d6; uncommitted.txt=unfinished work
+Named task windows=1
+Published endpoint binding:
+tmux_socket_path=<disposable-lab>/a.sock
+tmux_server_pid=3494294
+tmux_server_identity=linux-starttime=15258825 cmdline-hex=2f686f6d652f706f646c65732f2e6e69782d70726f66696c652f62696e2f746d7578002d66002f6465762f6e756c6c002d53002f746d702f666d2d746d75782d6964656e746974792e4a765252376a2f612e736f636b006e65772d73657373696f6e002d64002d73006c6162002d6e006b656570657200
+tmux_server_token=ebb86b51571f35f8be4418e4dc16bc3b0ad44d5b6e0d0391a1a056c57740d670
+tmux_window_id=@5
+tmux_pane_id=%4

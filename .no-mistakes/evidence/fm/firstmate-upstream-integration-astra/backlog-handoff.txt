@@ -1,0 +1,19 @@
+Disposable homes and tmux transport fixture.
+$ fm-backlog-handoff design wake-item
+handed off 1 item(s) to design: wake-item
+  into <disposable-lab>/live-wake-sub/data/backlog.md
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the requested message WILL still be sent.
+●  repair a missing or failed watcher cycle with the Pi tool fm_watch_arm_pi, or restart Pi with -e /home/podles/.no-mistakes/worktrees/2002dab646f9/01M4F836KH2E1G78F77GAH92WJ/.pi/extensions/fm-primary-turnend-guard.ts -e /home/podles/.no-mistakes/worktrees/2002dab646f9/01M4F836KH2E1G78F77GAH92WJ/.pi/extensions/fm-primary-pi-watch.ts if the extensions are not loaded.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Receiver backlog after idempotent rerun:
+## Queued
+- [ ] wake-item - routed to a live receiver (repo: alpha)
+
+## Done
+## In flight
+Receiver steering inbox:
+[fm-from-firstmate]⁣corr=caaef2b85a30ecb6 New routed work is in your backlog. Run bin/fm-session-start.sh now, then act on the routed task.Inbox records=1; doorbells=1

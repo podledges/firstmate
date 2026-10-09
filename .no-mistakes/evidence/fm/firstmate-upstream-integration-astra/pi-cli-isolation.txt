@@ -1,0 +1,24 @@
+
+Installed pi version 1.1.0; offline RPC startup; no model call.
+Two discovered test providers: startup refused with exit=1
+Error: Failed to load extension "/tmp/fm-pi-extension-isolation-live.veoOnu/agent/extensions/global.ts": Tool "show_register" conflicts with /tmp/fm-pi-extension-isolation-live.veoOnu/collision/.pi/extensions/project.ts
+Error: Failed to load extension "/tmp/fm-pi-extension-isolation-live.veoOnu/agent/extensions/global.ts": Tool "show_register_setup" conflicts with /tmp/fm-pi-extension-isolation-live.veoOnu/collision/.pi/extensions/project.ts
+Hint: Start without extensions using "pi -ne".
+Explicit --no-extensions + Pi built-ins + lifecycle observer + selected test provider:
+firstmate-lifecycle-factory
+selected-test-provider
+firstmate-session-start
+registered=show_register,show_register_setup count=2
+Repaired stderr bytes=0
+
+Installed pi-signed version 1.1.0; offline RPC startup; no model call.
+Two discovered test providers: startup refused with exit=1
+Error: Failed to load extension "/tmp/fm-pi-extension-isolation-live.veoOnu/agent/extensions/global.ts": Tool "show_register" conflicts with /tmp/fm-pi-extension-isolation-live.veoOnu/collision/.pi/extensions/project.ts
+Error: Failed to load extension "/tmp/fm-pi-extension-isolation-live.veoOnu/agent/extensions/global.ts": Tool "show_register_setup" conflicts with /tmp/fm-pi-extension-isolation-live.veoOnu/collision/.pi/extensions/project.ts
+Hint: Start without extensions using "pi -ne".
+Explicit --no-extensions + Pi built-ins + lifecycle observer + selected test provider:
+firstmate-lifecycle-factory
+selected-test-provider
+firstmate-session-start
+registered=show_register,show_register_setup count=2
+Repaired stderr bytes=0

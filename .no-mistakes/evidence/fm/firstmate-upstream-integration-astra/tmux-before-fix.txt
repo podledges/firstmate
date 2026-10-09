@@ -1,0 +1,3 @@
+Prior collision change 26ce778: isolated real tmux, same worker pid survives join-pane.
+Original window absent=true; original pane alive=true; prior recovery verdict=gone	
+Current target: same scenario refuses moved/renamed endpoint (see tmux-recovery.txt).

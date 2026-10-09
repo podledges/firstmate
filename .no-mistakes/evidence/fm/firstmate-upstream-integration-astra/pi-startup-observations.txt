@@ -1,0 +1,112 @@
+extensionOrder=watch,guard initialLock=absent sessionReason=startup args=none
+bootstrap entered; lock owner is current process=true; cycles added=0
+resources discovered while startup held; stale-success/failed-current events ignored; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=watch,guard initialLock=absent sessionReason=new args=none
+bootstrap entered; lock owner is current process=true; cycles added=0
+resources discovered while startup held; stale-success/failed-current events ignored; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=watch,guard initialLock=absent sessionReason=resume args=none
+bootstrap entered; lock owner is current process=true; cycles added=0
+resources discovered while startup held; stale-success/failed-current events ignored; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=watch,guard initialLock=absent sessionReason=fork args=none
+bootstrap entered; lock owner is current process=true; cycles added=0
+resources discovered while startup held; stale-success/failed-current events ignored; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=watch,guard initialLock=absent sessionReason=reload args=none
+bootstrap entered; lock owner is current process=true; cycles added=0
+resources discovered while startup held; stale-success/failed-current events ignored; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=watch,guard initialLock=absent sessionReason=startup args=--resume
+bootstrap entered; lock owner is current process=true; cycles added=0
+resources discovered while startup held; stale-success/failed-current events ignored; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=watch,guard initialLock=absent sessionReason=startup args=--continue
+bootstrap entered; lock owner is current process=true; cycles added=0
+resources discovered while startup held; stale-success/failed-current events ignored; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=watch,guard initialLock=stale sessionReason=startup args=none
+bootstrap entered; lock owner is current process=true; cycles added=0
+current startup settled before discovery; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=watch,guard initialLock=stale sessionReason=new args=none
+bootstrap entered; lock owner is current process=true; cycles added=0
+current startup settled before discovery; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=watch,guard initialLock=stale sessionReason=resume args=none
+bootstrap entered; lock owner is current process=true; cycles added=0
+current startup settled before discovery; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=watch,guard initialLock=stale sessionReason=fork args=none
+bootstrap entered; lock owner is current process=true; cycles added=0
+current startup settled before discovery; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=watch,guard initialLock=stale sessionReason=reload args=none
+bootstrap entered; lock owner is current process=true; cycles added=0
+current startup settled before discovery; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=watch,guard initialLock=stale sessionReason=startup args=--resume
+bootstrap entered; lock owner is current process=true; cycles added=0
+current startup settled before discovery; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=watch,guard initialLock=stale sessionReason=startup args=--continue
+bootstrap entered; lock owner is current process=true; cycles added=0
+current startup settled before discovery; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=guard,watch initialLock=absent sessionReason=startup args=none
+bootstrap entered; lock owner is current process=true; cycles added=0
+resources discovered while startup held; stale-success/failed-current events ignored; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=guard,watch initialLock=absent sessionReason=new args=none
+bootstrap entered; lock owner is current process=true; cycles added=0
+resources discovered while startup held; stale-success/failed-current events ignored; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=guard,watch initialLock=absent sessionReason=resume args=none
+bootstrap entered; lock owner is current process=true; cycles added=0
+resources discovered while startup held; stale-success/failed-current events ignored; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=guard,watch initialLock=absent sessionReason=fork args=none
+bootstrap entered; lock owner is current process=true; cycles added=0
+resources discovered while startup held; stale-success/failed-current events ignored; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=guard,watch initialLock=absent sessionReason=reload args=none
+bootstrap entered; lock owner is current process=true; cycles added=0
+resources discovered while startup held; stale-success/failed-current events ignored; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=guard,watch initialLock=absent sessionReason=startup args=--resume
+bootstrap entered; lock owner is current process=true; cycles added=0
+resources discovered while startup held; stale-success/failed-current events ignored; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=guard,watch initialLock=absent sessionReason=startup args=--continue
+bootstrap entered; lock owner is current process=true; cycles added=0
+resources discovered while startup held; stale-success/failed-current events ignored; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=guard,watch initialLock=stale sessionReason=startup args=none
+bootstrap entered; lock owner is current process=true; cycles added=0
+current startup settled before discovery; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=guard,watch initialLock=stale sessionReason=new args=none
+bootstrap entered; lock owner is current process=true; cycles added=0
+current startup settled before discovery; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=guard,watch initialLock=stale sessionReason=resume args=none
+bootstrap entered; lock owner is current process=true; cycles added=0
+current startup settled before discovery; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=guard,watch initialLock=stale sessionReason=fork args=none
+bootstrap entered; lock owner is current process=true; cycles added=0
+current startup settled before discovery; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=guard,watch initialLock=stale sessionReason=reload args=none
+bootstrap entered; lock owner is current process=true; cycles added=0
+current startup settled before discovery; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=guard,watch initialLock=stale sessionReason=startup args=--resume
+bootstrap entered; lock owner is current process=true; cycles added=0
+current startup settled before discovery; cycles added=0
+discovery and successful current settlement observed; cycles added=1
+extensionOrder=guard,watch initialLock=stale sessionReason=startup args=--continue
+bootstrap entered; lock owner is current process=true; cycles added=0
+current startup settled before discovery; cycles added=0
+discovery and successful current settlement observed; cycles added=1

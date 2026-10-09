@@ -1,0 +1,22 @@
+# Focused integration evidence
+
+No live installation, fleet worker, default terminal session, dispatch configuration, credential store, or external footer source was changed. These are isolated tests, not deployment evidence or a full-suite/CI result.
+
+## Product surfaces
+
+- `calm-terminal.png` / `calm-terminal.html`: Chromium rendering of the exact ANSI viewport captured from installed Pi 1.1.0 in a private tmux session after resume with Calm enabled. The existing external PiFooter was loaded read-only. The deterministic test provider makes no model/network request; its deliberately injected errors and aborts remain visible while operational input rows are hidden. This is a terminal reconstruction, not a desktop screenshot. The footer's complete extension-tree checksums were unchanged before and after testing; quota refresh was disabled and caches were isolated.
+- `calm-export.html` / `calm-export.png`: actual Pi-generated session export and its browser screenshot. Export intentionally retains transcript/tool/provenance data; it is not the Calm-hidden terminal view. `calm-rendered.html` is its browser-rendered DOM.
+- `tmux-recovery.txt`: real two-server tmux CLI reproduction. The original running pane survives `join-pane` destruction of its recorded window. Recovery refuses duplication. Verified original-server recovery later reuses the worktree and preserves unfinished work. The worker process is a native fixture, not an installed Codex harness.
+- `tmux-before-fix.txt`: the prior backend from commit 26ce778 classifies that surviving moved-pane endpoint as gone. The current backend refuses it.
+- `pi-cli-isolation.txt`: installed `pi` and `pi-signed` 1.1.0 offline RPC startup, ordinary discovery, duplicate-tool refusal, and explicit discovery-disabled selection with built-ins and a lifecycle observer. Providers and the observer are test fixtures. The actual show-reg extension is not installed at the test's expected location on this host, so this proves the installed CLI isolation contract, not show-reg's feature implementation.
+- `pi-startup-observations.txt`: executable guard/watch coordination with bootstrap held after lock acquisition. Both extension/event orders preserve zero cycles before prerequisites and start one afterward; stale-success and unsuccessful-current events do not authorize arming. The prior watcher from cd041b7 reproduced an early arm (`1` instead of `0`) in the same held-startup scenario.
+- `remote-inbox.txt`: real remote entrypoint executed through a transport fixture, showing durable enqueue despite a failed endpoint doorbell and the persisted reply expectation. No live remote host or Herdr endpoint was contacted.
+- `backlog-handoff.txt`: generated handoff output, receiver-local backlog and steering inbox, with one record and doorbell after an idempotent rerun in disposable homes.
+
+## Scope and corrections
+
+Targeted runner checks covered tmux/control/relaunch, local/remote secondmate recovery, generation/branch continuity, selected-extension persistence/refusal, worker instructions/nonmutation, Hermes submit/ack, Bot Trust, Handy, voice, fleet sync, instruction inboxes, secondmate sync, and dispatch. Focused selectors additionally exercised file-backed fleet payloads above the argument limit, trusted no-CI versus unqualified empty checks, healthy/failed Lavish waits, OMP/AGY executable resolution, backlog handoff, and remote durable/idempotent delivery.
+
+Initial in-worktree fixture temp storage hit Unix-socket length and secondmate-home placement restrictions; affected scripts passed with normal ephemeral `/tmp` test storage. The installed-SDK branch fixture needed generation-matched successful settlement plus resource discovery and a completed first-delivery confirmation before its independent replacement probe. Only `tests/fm-pi-branch-live-e2e.test.sh` was changed; all its existing assertions were retained. The corrected installed-SDK test passed three consecutive focused runs.
+
+No linters, formatters, static analysis, complete repository suite, pipeline-control commands, push/PR/CI phase, live Herdr action, or global installation was performed. Kimi and Muse remain unverified; OMP/AGY executable-resolution evidence is fixture-based. Dependency versions were tasks-axi 0.2.6 and TypeScript 5.9.3 supplied through a disposable npm cache; TypeScript static checks and Ruby-dependent runner assertions were not selected. Original integration merge and separate collision commit remain ancestors of the target.
