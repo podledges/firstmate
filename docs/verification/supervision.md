@@ -555,7 +555,8 @@ tests/fm-pi-primary-types.test.sh
 Observed guarantee: after ordinary `session_shutdown` for `/new`, `/resume`, `/fork`, and reload, plus same-instance shutdown-plus-start, an owning `session_start` armed the replacement generation before any model turn and without the `watcher: not armed - Pi session is shutting down` refusal.
 A fresh module rebind also received exactly once the actionable close whose first delivery was still in flight at shutdown, while retaining one live successor.
 Stale prior-generation tool callbacks could not mutate the active child, repeated transitions kept exactly one live arm cycle, and terminal `quit` still refused late rearm.
-Eligible post-startup first-cycle auto-arm, both extension orders with initially absent or stale locks, compaction contrast, factory-only inertness, and lock, away-mode, and no-work/no-Relay negative controls are covered by the same portable suite.
+The same portable suite covers the [current automatic first-cycle protocol](../supervision-protocols/pi.md): both extension orders, a bootstrap barrier after lock acquisition, discovery-before-settlement and settlement-before-discovery, stale and unsuccessful settlement events, and exactly one arm after both prerequisites.
+It also covers initially absent or stale locks, compaction contrast, factory-only inertness, registered-custom-check-only eligibility without executing checks, and lock, away-mode, unregistered-check, and no-supervision-need negative controls.
 The strict no-emit check used the installed Pi SDK declarations to hold the lifecycle event contract.
 It was refreshed on 2026-10-09 against installed Pi 1.1.0 using the existing TypeScript 5.9.3 verification dependency in a disposable npm cache:
 

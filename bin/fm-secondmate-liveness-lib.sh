@@ -41,9 +41,16 @@
 #          check; repair still happens, but inside fm-spawn's launch gate only
 #          when a relaunch is actually authorized.
 #
-# Concurrency: fm_secondmate_liveness_lock serializes probe+kill+relaunch per
-# task across the bootstrap sweep and the watcher tick, so a concurrent
-# relaunch can never be observed mid-flight as a dead endpoint and killed.
+# Concurrency: fm_secondmate_liveness_lock acquires the shared per-task
+# .control-<id>.lock before .secondmate-liveness-<id>.lock and releases them in
+# reverse order. Callers retain both from before probing through replacement
+# publication, so an idle-shell gap in explicit lifecycle control cannot be
+# mistaken for a dead mate. Contention skips recovery rather than inspecting a
+# moving endpoint. Explicit local control shares the first lock; remote
+# relaunch holds it in the parent through route publication, and its host-local
+# launch/control leg acquires that host's lifecycle ownership before probing.
+# tests/fm-control-relaunch.test.sh and
+# tests/fm-remote-secondmate-relaunch.test.sh cover both ownership boundaries.
 # The attempt ledger (.secondmate-relaunch-<id>, one line per attempt plus one
 # per outcome) is both the durable relaunch record and the input to the
 # watcher's relaunch bound; teardown removes it.
@@ -59,9 +66,7 @@ FM_SM_LIVE_LIB_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=bin/fm-timeout-lib.sh
 . "$FM_SM_LIVE_LIB_DIR/fm-timeout-lib.sh"
 
-# Per-task probe+kill+relaunch serialization. A busy lock means another
-# supervisor (the other sweep, or a racing tick) is mid-episode on this mate;
-# callers skip and let that episode finish rather than probe a moving target.
+# Lock ordering and caller obligations are owned by the concurrency header.
 # The lock helpers live in bin/fm-wake-lib.sh, which creates the state
 # directory when sourced; load it only when a lock is actually taken so that
 # sourcing this library stays side-effect free for read-only bootstrap runs.

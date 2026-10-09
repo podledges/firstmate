@@ -42,9 +42,7 @@ Before relaunch, prove that no live agent still owns the recorded task and that 
 Preserve its uncommitted changes and commits, keep the same task identity, and resume or relaunch the recorded harness in that existing worktree with the same brief plus a concise progress note.
 A HERDR endpoint that is not merely idle but destroyed - a pane or workspace removed in Herdr churn - is recovered by that same relaunch, which creates one fresh endpoint in the existing worktree and rebinds the task's record to it; nothing special is needed, and the worktree is untouched ([`docs/agent-control.md`](../../../docs/agent-control.md) "Reclaiming a task whose endpoint is gone").
 That relaunch proves the endpoint is destroyed before it rebinds, so a Herdr server that was merely stopped is adopted back rather than duplicated.
-Tmux recreation is restricted to ordinary ship tasks with a complete, matching recorded server-incarnation and immutable-window binding, under the same control-plane transaction.
-Legacy, partial, wrong-server, moved, renamed and ambiguous records refuse without losing work; never manufacture identity from the ambient server.
-[`docs/agent-control.md`](../../../docs/agent-control.md#reclaiming-a-task-whose-endpoint-is-gone) owns the recovery contract.
+For tmux recreation, follow the [identity-bound reclaim contract](../../../docs/agent-control.md#reclaiming-a-task-whose-endpoint-is-gone); never manufacture identity from the ambient server.
 Do not work around either refusal by respawning - it means a live agent may still hold that worktree.
 That reclaim is the owning home's operation only, and a secondmate is the one exception: recover it through `bin/fm-spawn.sh <id> --secondmate` as above.
 Do not use a fresh generic spawn while the recorded worktree is unaccounted for, because allocating another worktree can split one task across two copies.
@@ -77,7 +75,6 @@ Escalate in order:
 2. If the crewmate is waiting on a question its brief already answers, answer in one line via `FM_HOME=<this-firstmate-home> bin/fm-send.sh` from an active firstmate session unless `FM_HOME` is already set to the active firstmate home.
 3. If the crewmate is confused or looping, interrupt with `FM_HOME=<this-firstmate-home> bin/fm-control.sh <task-id> interrupt`, then redirect with one corrective line through `fm-send`.
 4. If the crewmate is genuinely wedged after redirection, relaunch it with `FM_HOME=<this-firstmate-home> bin/fm-control.sh <task-id> relaunch --note '<progress so far>'`, which stops the agent, carries the brief plus that note into a replacement in the same local copy, and restores the prior record if the replacement cannot start.
-   For the narrow confirmed-missing ordinary-ship tmux exception, follow [`docs/agent-control.md`](../../../docs/agent-control.md)'s transactional relaunch contract; every other recovery stays fail-closed.
    Pass `--harness`, `--model`, or `--effort` on that same command when the worker should come back on a different runtime.
    Genuine wedging means looping, unresponsive, repeating the same obstacle, or truly dead.
    A low context reading is not wedging; modern harnesses auto-compact and keep going.

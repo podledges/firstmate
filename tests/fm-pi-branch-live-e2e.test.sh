@@ -221,12 +221,26 @@ if (!existsSync(`${home}/state/branch-session`)) {
 // A model pin the branch's REAL runtime cannot resolve must refuse the build
 // and reject the offer back to watcher-owned main delivery rather than
 // silently running the branch on whatever model main would have used.
+// Main delivery is observed before its asynchronous confirmation finishes.
+// Finish that first transaction before replacing the session and reusing the
+// fixture's trigger and queue for the independent model-pin probe.
+await waitFor(() => readFileSync(process.env.FM_LIVE_WATCH_LOG, "utf8")
+  .split(/\n/).filter((line) => line.startsWith("confirmed ")).length === 1,
+"first watcher delivery confirmation");
 writeFileSync(`${home}/config/supervision-branch-model`, "openai/no-such-live-model\n");
 for (const handler of piHandlers.get("session_shutdown") ?? []) {
   await handler({ type: "session_shutdown", reason: "new" }, sessionCtx);
 }
+const replacementSessionStart = { type: "session_start", reason: "new" };
 for (const handler of piHandlers.get("session_start") ?? []) {
-  await handler({ type: "session_start", reason: "new" }, sessionCtx);
+  await handler(replacementSessionStart, sessionCtx);
+}
+// This SDK dispatch probe deliberately omits the startup guard. Model its
+// settled generation and resource discovery explicitly; real guard/watch
+// startup ordering is covered by fm-pi-watch-extension.test.sh.
+bus.emit("firstmate:sessionstart-settled", { sessionStart: replacementSessionStart, successful: true });
+for (const handler of piHandlers.get("resources_discover") ?? []) {
+  await handler({ type: "resources_discover", reason: "startup" }, sessionCtx);
 }
 await waitFor(() => armCount() >= 3, "replacement watcher arm");
 writeFileSync(`${home}/state/.wake-queue`, "1\t2\tsignal\tlive-probe.status\tsignal: live pin probe\n");

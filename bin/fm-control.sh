@@ -43,7 +43,7 @@
 #              claimed about it, because `missing` also covers an endpoint that
 #              is merely unreachable from this seat. Herdr reads are scoped to
 #              the recorded session; tmux requires the recorded server and
-#              immutable-window identity to prove absence:
+#              immutable endpoint identity to prove absence:
 #              proven gone reports `endpoint-gone` rather than
 #              `already-stopped`, because the endpoint this verb normally
 #              preserves did not survive; a pane that turns out to be there and

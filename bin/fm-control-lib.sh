@@ -343,11 +343,9 @@ fm_control_backend_state_verified() {  # <backend>
 #     passes `--session <session>`, so the recheck starts and reads the session
 #     the RECORD names, through that session's own socket. The answer is about
 #     the task's endpoint and nothing else.
-#   tmux requires a complete recorded server-incarnation and window binding.
-#     The server must match before/after reading its full window inventory,
-#     and the recorded immutable window id must be absent everywhere in it.
-#     Legacy, partial, renamed, wrong-server and replaced-server records cannot
-#     prove absence. The adapter owns the identity field schema and reads.
+#   tmux follows docs/agent-control.md's identity-bound reclaim contract.
+#     bin/backends/tmux.sh owns the complete server/window/pane schema and
+#     server-wide absence reads; loss of a window alone is not pane absence.
 #
 # Both control-plane callers share this one implementation so the proof cannot
 # drift into two answers for the same endpoint.

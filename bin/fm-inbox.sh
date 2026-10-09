@@ -8,7 +8,8 @@
 #           answer. Writes a durable record and appends ONE `check` wake, so the
 #           note survives a crash and is presented at firstmate's next drain.
 #           `announce` may append that same wake for an already-saved note.
-#           These two are the only subcommands that touch firstmate's wake queue.
+#           `say` shares this path; fixed-home `hermes-submit` also publishes a
+#           wake under the protocol owned by docs/hermes-inbox-pilot.md.
 #   say     Same as `note`, but the body comes from spoken audio on stdin.
 #           Speech is an INPUT METHOD here, not an architecture: it transcribes
 #           and then takes exactly the `note` path.

@@ -72,8 +72,8 @@
 #   worktree and the republished record rebinds the task to it. That proof is
 #   its own step, because a backend's `missing` also covers an endpoint that is
 #   merely unreachable from here. Herdr rechecks through the recorded session;
-#   tmux requires a complete server-incarnation and immutable-window binding,
-#   a missing ordinary ship endpoint, and the control-plane transaction.
+#   tmux follows docs/agent-control.md's identity-bound ordinary-ship reclaim
+#   contract through fm_control_endpoint_absence_verdict.
 #   Legacy, partial and mismatched tmux records refuse rather than borrowing
 #   recovery authority from the ambient server. The worktree is reused; a
 #   rebind is a recovery, never a teardown. Only a crewmate or scout rebinds: a
@@ -251,12 +251,19 @@
 #   for a secondmate), and then loads exactly the selected
 #   readable regular non-symlink extension file. Ordinary launches omit this
 #   flag and retain normal discovery byte-for-byte. The selected absolute path
-#   is recorded as pi_extension= and reused by an otherwise-unqualified
-#   relaunch; an explicit relaunch value replaces it. The option refuses for
-#   other harnesses, remote secondmates, duplicate option occurrences, malformed
-#   paths, missing files, and Pi-family CLIs that do not advertise both
-#   --no-extensions and --extension. Relative paths are refused so a relaunch
-#   cannot reinterpret the selection from another working directory.
+#   is recorded as pi_extension= and reused by later Pi-family relaunches,
+#   including existing-secondmate recovery through --secondmate. That recovery
+#   validates the recorded task, kind, endpoint and matching home/worktree/project
+#   before restoring selection. An explicit current value takes precedence;
+#   switching away from Pi clears the Pi-only selection. The option requires a
+#   canonical pi or pi-signed launch: raw commands refuse before provisioning
+#   rather than being rewritten, while raw launches without selection stay
+#   unchanged. It also refuses for other harnesses, remote secondmates, duplicate
+#   occurrences, malformed paths, missing files, and Pi-family CLIs that do not
+#   advertise both --no-extensions and --extension. Exact long-option probes
+#   accept comma-separated aliases without accepting longer-name lookalikes.
+#   Relative paths are refused so a relaunch cannot reinterpret the selection
+#   from another working directory.
 #   config/secondmate-harness may also carry an optional model and effort as extra
 #   whitespace-separated tokens ("<harness> [<model>] [<effort>]"). For a
 #   --secondmate spawn, those tokens apply only when this spawn also resolves its
@@ -1868,10 +1875,9 @@ if [ "$RELAUNCH" -eq 1 ]; then
   #           survived the restart and is adopted after all; `alive` means the
   #           agent came back and refuses; only a second `missing` proves the
   #           pane itself did not survive.
-  #   tmux  - requires a matching recorded server incarnation and proof the
-  #           immutable window id is absent everywhere on that server. Only a
-  #           ship under the control-plane transaction can recreate it; legacy,
-  #           partial, moved, renamed or wrong-server endpoints refuse.
+  #   tmux  - follows the identity-bound ordinary-ship reclaim contract in
+  #           docs/agent-control.md; the shared absence proof below and the
+  #           adapter's atomic recreation guard both enforce that boundary.
   # Every transient or self-contradicting read stays `unreadable`/`ambiguous`
   # and refuses as it always did (bin/fm-backend.sh's fm_backend_agent_state
   # owns that vocabulary). The proof itself lives in one place for the whole

@@ -31,7 +31,7 @@ ok - pi-signed 1.1.0: real startup isolates one show-reg provider and retains li
 # checked 2 installed Pi-family harness(es)
 ```
 
-The portable launch and recovery regressions exercise ordinary discovery unchanged, both Pi identities, explicit built-in restoration, worker lifecycle wiring, all three secondmate supervision extensions, quoted paths, invalid input, comma-separated CLI aliases, unsupported CLI surfaces, and persisted guarded relaunch intent.
+The portable launch and recovery regressions exercise ordinary discovery unchanged, both Pi identities, explicit built-in restoration, worker lifecycle wiring, all three secondmate supervision extensions, quoted paths, invalid input, raw-command selection refusal, comma-separated CLI aliases, unsupported CLI surfaces, persisted guarded relaunch intent, and same-task/home-validated secondmate recovery with explicit-selection precedence and clearing when leaving Pi.
 Set `SHOW_REG_EXTENSION` to an existing provider file; the guard reads it without changing or installing it.
 The signed wrapper's executable delegate must also be available inside the disposable home when that wrapper resolves its binary relative to `HOME`.
 

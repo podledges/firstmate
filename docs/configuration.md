@@ -484,6 +484,8 @@ Task meta records `backend=` only for a non-default backend; an absent `backend=
 
 - Every new task records `endpoint_task_id=` as the cleanup binding between the metadata filename and its opaque runtime endpoint.
 
+- Verifiable fresh tmux launches also record the [adapter-owned recovery binding](../bin/backends/tmux.sh); [agent-control.md](agent-control.md#reclaiming-a-task-whose-endpoint-is-gone) owns its reclaim limits.
+
 - A herdr task additionally records `herdr_session=`, `herdr_workspace_id=`, `herdr_tab_id=`, and `herdr_pane_id=`.
 
 - A zellij task additionally records `zellij_session=`, `zellij_tab_id=`, and `zellij_pane_id=`.
@@ -799,7 +801,7 @@ A Claude worker's launch brief is published as an operational record in the rece
 Other harnesses retain the typed operational-marker launch path.
 
 Pi-family launches adapt the regular-TUI safeguard to the installed CLI's capabilities; [`fm-spawn.sh --help`](../bin/fm-spawn.sh) owns the exact version-safe launch mechanics.
-When one Pi worker would otherwise discover colliding extension providers, its task may select one extension file through the guarded spawn or relaunch interface; the launch owner disables discovery only for that task, explicitly restores Pi's built-ins and Firstmate lifecycle extensions, and persists the selection for later Pi-family relaunches.
+For colliding extension providers, canonical Pi-family task launches can select one file through the [launch owner's collision-recovery interface](../bin/fm-spawn.sh), which owns discovery isolation, lifecycle restoration, input refusals, and persistence through guarded relaunch or automatic secondmate recovery.
 Ordinary Pi workers and every non-Pi harness keep their existing discovery behavior.
 Enabled primary-session turn-end guard integrations are tracked as repo-level hook files and documented in [`docs/turnend-guard.md`](turnend-guard.md).
 

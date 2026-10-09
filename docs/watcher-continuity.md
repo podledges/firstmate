@@ -51,7 +51,7 @@ Pi same-process session replacement follows the generation-owner contract in `.p
 
 1. `session_shutdown` changes the current generation's durable extension marker from `active` to `handoff`, but keeps its established arm child alive.
 2. The owning `session_start` publishes a distinct active generation.
-3. That `session_start` commits its tracked replacement arm.
+3. The replacement commits its tracked arm after the [Pi protocol's startup prerequisites](supervision-protocols/pi.md) settle.
 4. Only after that commit does the replacement arm retire the predecessor.
 
 A state-scoped replacement handoff carries every actionable close whose delivery overlapped `session_shutdown`, including:

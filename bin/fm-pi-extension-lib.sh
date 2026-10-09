@@ -3,7 +3,7 @@
 # The launch owner remains bin/fm-spawn.sh; fm-control.sh uses this helper only
 # to reject an invalid relaunch before stopping the current worker.
 
-fm_pi_executable_resolve() {  # <pi|pi-signed>
+fm_pi_executable_resolve() {  # <executable-name>
   local candidate dir
   candidate=$(type -P -- "$1" 2>/dev/null) || return 1
   [ -x "$candidate" ] || return 1

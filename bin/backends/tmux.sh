@@ -106,10 +106,13 @@ fm_backend_tmux_create_task() {  # <session> <window-name> <proj-abs> -> prints 
   printf '%s\n' "$wid"
 }
 
-# Server identity for recovery. A window name or socket path does not identify
-# a server incarnation. Fresh launches bind the actual socket, kernel process
-# identity (fm_pid_identity), and a random server-local token. Reads never mint
-# a token: legacy, partial, wrong-server and replaced-server records refuse.
+# Recovery binding: tmux_socket_path, tmux_server_pid, tmux_server_identity
+# (fm_pid_identity), tmux_server_token, tmux_window_id and tmux_pane_id are all
+# required exactly once. Names or a socket path alone identify no incarnation;
+# a window-only binding cannot prove absence after join-pane preserves its
+# running pane. Fresh launches bind the actual server and both immutable ids.
+# Reads never mint a token or backfill legacy/partial records; wrong-server and
+# replaced-server records refuse. docs/agent-control.md owns reclaim policy.
 # The token also guards recreation inside the server command queue, closing the
 # gap between the client-side absence proof and endpoint creation. if-shell
 # does not start a stopped server. Only the fresh-spawn owner may initialize it.
@@ -173,7 +176,7 @@ fm_backend_tmux_binding_matches() {  # <meta>
   [ "$recorded" = "$actual" ]
 }
 
-# A moved/renamed window is still the original endpoint, not a destroyed one.
+# A moved/renamed window or a pane moved out of it is not a destroyed endpoint.
 # A new window borrowing its old name is not authority to send lifecycle input.
 fm_backend_tmux_endpoint_consistent() {  # <meta> <session:window>
   local current windows rc target=$2 session window

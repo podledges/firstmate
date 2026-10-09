@@ -263,11 +263,11 @@ Pi and pi-signed are run-tier harnesses.
 The tracked transport is `.pi/extensions/fm-primary-turnend-guard.ts`.
 The extension maps Pi events onto wrapper sources:
 
-- It maps `session_start` reasons `startup`, `new`, `resume`, and `fork` onto wrapper sources.
+- It maps `session_start` reasons `startup`, `new`, `resume`, `fork`, and `reload` onto wrapper sources.
 - It refines a Pi-reported `startup` to `resume` only when a continuation, resume-selection, or explicit-session flag accompanies a session header older than the current process.
 - It maps a fork flag to `fork`.
 - It handles `session_compact` as the compaction equivalent.
-- Pi's `reload` reason is deliberately unmapped, as it always was.
+- A context-preserving `resume`, `fork`, or `reload` source becomes `startup` when the session lock is missing, so cold restoration can acquire ownership rather than relying on a silent nudge.
 
 Setup-created entries such as `--name` are not restoration evidence.
 

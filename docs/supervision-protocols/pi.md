@@ -4,15 +4,18 @@ When this session owns supervision, in either posture:
 1. Drain first with `bin/fm-wake-drain.sh`.
    After handling all emitted wakes and reconciling open decisions and unread status lines, run the exact `--ack-through` command printed as `WAKE_ACK_REQUIRED`; until then the work remains durable for idempotent re-handling after interruption.
 2. Confirm the Pi primary auto-loaded both project extensions (plain `pi` or `pi-signed`, after approving project trust once per clone); if not, restart the selected executable with `-e __FM_PI_TURNEND_EXT__ -e __FM_PI_EXT__` as a trust-free fallback.
-3. The extension starts the first required cycle from post-startup resource discovery when this session holds the lock, no legacy away daemon owns supervision, and work, a process-event source, or Relay needs supervision.
-   Idle homes with no work and no Relay stay unarmed.
+3. The extension starts the first required cycle nonblockingly only after resource discovery and successful native startup settlement for the current session generation, in either event order.
+   Lock acquisition alone or a stale generation's settlement is insufficient.
+   On startup, this session must hold the lock, no legacy away daemon may own supervision, and a task record, registered custom check, process-event source, or Relay must need supervision.
+   Custom-check eligibility requires the existing check/trust pair without executing the check; unregistered checks alone do not arm.
+   Homes with none of those supervision needs stay unarmed.
    Compaction is not a session replacement and does not start a new generation.
    Use `fm_watch_arm_pi` only if that required first cycle did not start or for an explicit repair.
    Use `/fm-watch-arm-pi` only as a human-entered fallback.
    Never run `bin/fm-watch-arm.sh` through Pi's bash tool because that foreground arm can wedge the agent and bypasses extension-owned cleanup.
 4. If a later notification says no live session holds the lock, run `bin/fm-session-start.sh` to reclaim the session lock, then call `fm_watch_arm_pi` once.
 5. The extension starts `bin/fm-watch-arm.sh --restart`, keeps the child attached to the live Pi process, and owns every later successor launch.
-6. Ordinary same-process session replacement (`/new`, `/resume`, `/fork`, reload) retains the predecessor until the replacement commits its arm; when the replacement owns the fleet lock and no legacy away daemon owns supervision, its `session_start` arms the new generation without a model turn or another `fm_watch_arm_pi` call.
+6. Ordinary same-process session replacement (`/new`, `/resume`, `/fork`, reload) retains the predecessor until the replacement commits its arm after both prerequisites in step 3; when the replacement owns the fleet lock and no legacy away daemon owns supervision, it arms without a model turn or another `fm_watch_arm_pi` call.
    The generation-owner contract and in-flight actionable-close handoff live in `.pi/extensions/fm-primary-pi-watch.ts`.
 7. After an actionable child close, the extension rechecks session-lock ownership and verifies one successor before it delivers the follow-up wake; its bounded fallback is defined in `docs/watcher-continuity.md`.
 8. Ordinary work, turn completion, and ordinary signal, stale, check, heartbeat, or other wake handling: do not call `fm_watch_arm_pi` because continuity is extension-owned rather than model-memory-owned.
