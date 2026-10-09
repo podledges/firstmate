@@ -8,10 +8,7 @@ set -eu
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-[ "${FM_PI_EXTENSION_ISOLATION_LIVE:-0}" = 1 ] || {
-  echo "skip: set FM_PI_EXTENSION_ISOLATION_LIVE=1 to run the real Pi extension-isolation guard"
-  exit 0
-}
+fm_live_gate opt-in FM_PI_EXTENSION_ISOLATION_LIVE
 
 TMP_ROOT=$(fm_test_tmproot fm-pi-extension-isolation-live)
 mkdir -p "$TMP_ROOT/agent/extensions" "$TMP_ROOT/collision/.pi/extensions" "$TMP_ROOT/ordinary"

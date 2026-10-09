@@ -273,6 +273,7 @@ chmod +x "$FAKEBIN/herdr"
   touch "$TMP/host-ready"
   while [ ! -e "$TMP/host-release" ]; do sleep 0.01; done
 ) &
+# shellcheck disable=SC2031 # The caller's $! is this background job, unaffected by sourced helpers inside its subshell.
 REMOTE_LOCK_HOLDER_PID=$!
 for _ in $(seq 1 500); do
   [ -e "$TMP/host-ready" ] && break
