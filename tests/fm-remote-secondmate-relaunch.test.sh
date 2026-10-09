@@ -23,6 +23,15 @@ set -u
 command -v perl >/dev/null 2>&1 || { echo "skip: perl not found"; exit 0; }
 
 TMP=$(fm_test_tmproot fm-remote-secondmate-relaunch)
+REMOTE_RELAUNCH_PID=
+REMOTE_LOCK_HOLDER_PID=
+remote_relaunch_cleanup() {
+  touch "$TMP/ssh-release" "$TMP/publication-release" "$TMP/host-release" 2>/dev/null || true
+  [ -z "$REMOTE_RELAUNCH_PID" ] || wait "$REMOTE_RELAUNCH_PID" 2>/dev/null || true
+  [ -z "$REMOTE_LOCK_HOLDER_PID" ] || wait "$REMOTE_LOCK_HOLDER_PID" 2>/dev/null || true
+  fm_test_cleanup
+}
+trap remote_relaunch_cleanup EXIT
 HOME_DIR="$TMP/home"
 FAKEBIN=$(fm_fakebin "$TMP/fake")
 mkdir -p "$HOME_DIR/data" "$HOME_DIR/state" "$HOME_DIR/config"
@@ -72,6 +81,10 @@ $command_fields
 EOF
 [ "$cmd" = fm-remote-secondmate-control.sh ] || exit 93
 [ "$action" = relaunch ] || exit 94
+if [ -n "${FM_FAKE_RELAUNCH_READY:-}" ]; then
+  : > "$FM_FAKE_RELAUNCH_READY"
+  while [ ! -e "$FM_FAKE_RELAUNCH_RELEASE" ]; do sleep 0.01; done
+fi
 case "$FM_FAKE_RELAUNCH_MODE" in
   refuse)
     printf 'error: unverified remote secondmate harness: %s\n' "$harness" >&2
@@ -96,8 +109,10 @@ SH
 chmod +x "$FAKEBIN/fake-ssh"
 
 run_relaunch() {  # <args...>
-  env FM_HOME="$HOME_DIR" FM_SSH_BIN="$FAKEBIN/fake-ssh" \
+  env FM_HOME="$HOME_DIR" FM_SSH_BIN="$FAKEBIN/fake-ssh" PATH="$FAKEBIN:$PATH" \
     FM_FAKE_RELAUNCH_MODE="${FM_FAKE_RELAUNCH_MODE:-}" \
+    FM_FAKE_RELAUNCH_READY="${FM_FAKE_RELAUNCH_READY:-}" \
+    FM_FAKE_RELAUNCH_RELEASE="${FM_FAKE_RELAUNCH_RELEASE:-}" \
     "$ROOT/bin/fm-remote-secondmate-relaunch.sh" "$@" 2>&1
 }
 
@@ -188,5 +203,93 @@ expect_code 0 "$RC" "a confirmed remote relaunch should succeed with an armed PR
 fm_pr_poll_artifacts_valid "$HOME_DIR/state" ios "$ROOT/bin/fm-pr-poll.sh" \
   || fail "a remote relaunch broke PR poll authentication by writing harness/model/effort after pr="
 pass "a remote relaunch keeps an already-armed PR poll authenticating"
+
+try_parent_recovery_lock() {
+  FM_HOME="$HOME_DIR" FM_STATE_OVERRIDE="$HOME_DIR/state" bash -c '
+    . "$1/bin/fm-secondmate-liveness-lib.sh"
+    if fm_secondmate_liveness_lock ios; then
+      trap '\''fm_secondmate_liveness_unlock ios'\'' EXIT
+      printf "acquired\n"
+    else
+      printf "deferred\n"
+    fi
+  ' _ "$ROOT"
+}
+
+reset_meta
+FM_REAL_MV=$(command -v mv)
+export FM_REAL_MV FM_TEST_PUBLICATION_TARGET="$HOME_DIR/state/ios.meta"
+export FM_TEST_PUBLICATION_READY="$TMP/publication-ready" FM_TEST_PUBLICATION_RELEASE="$TMP/publication-release"
+cat > "$FAKEBIN/mv" <<'SH'
+#!/usr/bin/env bash
+if [ "${!#}" = "${FM_TEST_PUBLICATION_TARGET:-}" ]; then
+  : > "$FM_TEST_PUBLICATION_READY"
+  while [ ! -e "$FM_TEST_PUBLICATION_RELEASE" ]; do sleep 0.01; done
+fi
+exec "$FM_REAL_MV" "$@"
+SH
+chmod +x "$FAKEBIN/mv"
+FM_FAKE_RELAUNCH_READY="$TMP/ssh-ready" FM_FAKE_RELAUNCH_RELEASE="$TMP/ssh-release" \
+  run_relaunch ios claude claude-opus-5-5 medium > "$TMP/concurrent.out" &
+REMOTE_RELAUNCH_PID=$!
+for _ in $(seq 1 500); do
+  [ -e "$TMP/ssh-ready" ] && break
+  sleep 0.01
+done
+[ -e "$TMP/ssh-ready" ] || fail "remote relaunch never reached the transport gap"
+[ "$(try_parent_recovery_lock)" = deferred ] || fail "automatic recovery acquired ownership during remote relaunch"
+touch "$TMP/ssh-release"
+for _ in $(seq 1 500); do
+  [ -e "$TMP/publication-ready" ] && break
+  sleep 0.01
+done
+[ -e "$TMP/publication-ready" ] || fail "remote relaunch never reached parent publication"
+assert_grep 'harness=pi' "$HOME_DIR/state/ios.meta" "the publication barrier did not retain the prior record"
+[ "$(try_parent_recovery_lock)" = deferred ] || fail "remote relaunch released ownership before publishing the parent record"
+touch "$TMP/publication-release"
+wait "$REMOTE_RELAUNCH_PID"; RC=$?
+REMOTE_RELAUNCH_PID=
+expect_code 0 "$RC" "serialized remote relaunch must complete"$'\n'"$(cat "$TMP/concurrent.out")"
+assert_grep 'harness=claude' "$HOME_DIR/state/ios.meta" "the confirmed remote replacement did not publish"
+[ "$(try_parent_recovery_lock)" = acquired ] || fail "completed remote relaunch leaked lifecycle ownership"
+pass "remote relaunch excludes automatic recovery through transport and parent record publication"
+
+HOST_HOME="$TMP/host-home"
+HOST_STATE="$HOST_HOME/state/parent-route"
+mkdir -p "$HOST_HOME/bin" "$HOST_HOME/user" "$HOST_STATE"
+printf 'ios\n' > "$HOST_HOME/.fm-secondmate-home"
+printf '# Firstmate\n' > "$HOST_HOME/AGENTS.md"
+cat > "$FAKEBIN/herdr" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$FM_TEST_HOST_BACKEND_LOG"
+exit 1
+SH
+chmod +x "$FAKEBIN/herdr"
+(
+  export FM_HOME="$HOST_HOME" FM_STATE_OVERRIDE="$HOST_STATE"
+  . "$ROOT/bin/fm-wake-lib.sh"
+  fm_lock_try_acquire "$HOST_STATE/.control-ios.lock" || exit 1
+  trap 'fm_lock_release "$HOST_STATE/.control-ios.lock"' EXIT
+  touch "$TMP/host-ready"
+  while [ ! -e "$TMP/host-release" ]; do sleep 0.01; done
+) &
+REMOTE_LOCK_HOLDER_PID=$!
+for _ in $(seq 1 500); do
+  [ -e "$TMP/host-ready" ] && break
+  sleep 0.01
+done
+[ -e "$TMP/host-ready" ] || fail "host lifecycle fixture never acquired ownership"
+OUT=$(env FM_HOME="$HOST_HOME" HOME="$HOST_HOME/user" FM_ROOT_OVERRIDE="$ROOT" \
+  FM_TEST_HOST_BACKEND_LOG="$TMP/host-backend.log" PATH="$FAKEBIN:$PATH" \
+  "$ROOT/bin/fm-remote-secondmate-control.sh" launch ios claude - - herdr 2>&1); RC=$?
+expect_code 1 "$RC" "host-local recovery launch must refuse concurrent lifecycle control"
+assert_contains "$OUT" 'another lifecycle action is already running' "host-local contention refusal lost its reason"
+[ ! -s "$TMP/host-backend.log" ] || fail "host-local recovery probed or stopped an endpoint before acquiring ownership"
+[ ! -e "$HOST_STATE/ios.meta" ] || fail "refused host-local recovery published a replacement"
+touch "$TMP/host-release"
+wait "$REMOTE_LOCK_HOLDER_PID"; RC=$?
+REMOTE_LOCK_HOLDER_PID=
+expect_code 0 "$RC" "host lifecycle fixture must release ownership cleanly"
+pass "host-local remote recovery launch refuses before probing a lifecycle-owned endpoint"
 
 echo "ALL TESTS PASSED"

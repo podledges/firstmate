@@ -400,6 +400,7 @@ test_sweep_skips_mate_whose_liveness_lock_is_held() {
   assert_contains "$out" "SECONDMATE_LIVENESS: secondmate sm1: skipped: another liveness check is already in progress" \
     "a mate under an active liveness lock should be skipped, not probed"
   [ ! -s "$log" ] || fail "a locked mate must never be killed or respawned: $(cat "$log")"
+  [ ! -e "$w/home/state/.control-sm1.lock" ] || fail "failed liveness admission retained lifecycle ownership"
   kill "$holder" 2>/dev/null || true
   wait "$holder" 2>/dev/null || true
   pass "sweep: a mate mid-episode under the shared liveness lock is skipped entirely"

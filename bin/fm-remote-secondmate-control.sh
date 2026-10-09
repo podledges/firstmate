@@ -159,7 +159,7 @@ cmd_route() {
   print_route "$id"
 }
 
-cmd_launch() {
+cmd_launch() (
   local id=$1 harness=$2 model=$3 effort=$4 selected_backend=$5 traceparent=${6:-}
   local current meta out herdr_session
 
@@ -178,6 +178,10 @@ cmd_launch() {
   # a remote route depends on. bin/fm-remote-doctor.sh is the readiness owner.
   case "$selected_backend" in herdr) ;; *) die "a remote secondmate runs only on the herdr backend, not '$selected_backend'" ;; esac
   mkdir -p "$CONTROL_STATE" "$CONTROL_DATA"
+  local launch_lock="$CONTROL_STATE/.control-$id.lock"
+  fm_lock_try_acquire "$launch_lock" \
+    || die "another lifecycle action is already running for task $id"
+  trap 'fm_lock_release "$launch_lock"' EXIT
   meta=$(meta_path "$id")
   if [ -f "$meta" ]; then
     remote_endpoint_require "$id"
@@ -216,7 +220,7 @@ cmd_launch() {
   [ "$herdr_session" = "$REMOTE_HERDR_SESSION" ] \
     || die "remote launch recorded Herdr session '${herdr_session:-missing}', expected '$REMOTE_HERDR_SESSION'"
   print_route "$id"
-}
+)
 
 # Restart the second-mate agent this host runs, by executing the ORDINARY local
 # control plane here. From this host's point of view the mate is a plain local

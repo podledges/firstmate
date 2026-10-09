@@ -41,9 +41,15 @@ TMP_ROOT=$(fm_test_tmproot fm-control-relaunch)
 mkdir -p "$TMP_ROOT"
 TMP_ROOT=$(cd "$TMP_ROOT" && pwd)
 TASK_TMPS=()
+LIVENESS_GAP_RELEASE=
+LIVENESS_CONTROL_PID=
+LIVENESS_RECOVERY_PID=
 
 relaunch_cleanup() {
   local d
+  [ -z "$LIVENESS_GAP_RELEASE" ] || touch "$LIVENESS_GAP_RELEASE" 2>/dev/null || true
+  [ -z "$LIVENESS_CONTROL_PID" ] || wait "$LIVENESS_CONTROL_PID" 2>/dev/null || true
+  [ -z "$LIVENESS_RECOVERY_PID" ] || wait "$LIVENESS_RECOVERY_PID" 2>/dev/null || true
   for d in "${TASK_TMPS[@]:-}"; do
     [ -n "$d" ] && rm -rf "$d"
   done
@@ -84,6 +90,10 @@ case "${1:-}" in
       case "$payload" in
         /exit|/quit)
           printf 'zsh' > "$D/command"
+          if [ -n "${FM_FAKE_EXIT_GAP_READY:-}" ]; then
+            : > "$FM_FAKE_EXIT_GAP_READY"
+            while [ ! -e "$FM_FAKE_EXIT_GAP_RELEASE" ]; do "$FM_REAL_SLEEP" 0.01; done
+          fi
           [ -z "${FM_FAKE_EXIT_TRANSPORT_FAIL_AFTER_STOP:-}" ] || exit 1
           ;;
         *'encode launch-brief'* | *'Firstmate operational input waiting: read'*)
@@ -157,6 +167,10 @@ case "${1:-}" in
       esac
     done
     printf '%s\n' "$ses" >> "$D/created-sessions"
+    exit 0 ;;
+  kill-window)
+    printf '%s\n' "$*" >> "$D/killed-windows"
+    : > "$D/windows"
     exit 0 ;;
   new-window)
     # Model the one thing an endpoint re-creation depends on: the window now
@@ -269,6 +283,8 @@ run_control() {  # <case-dir> <args...>
     FM_FAKE_TRACE_RELEASE="${FM_FAKE_TRACE_RELEASE:-}" \
     FM_FAKE_META_WRITER_READY="${FM_FAKE_META_WRITER_READY:-}" \
     FM_FAKE_TRACE_EXPORTED="${FM_FAKE_TRACE_EXPORTED:-}" \
+    FM_FAKE_EXIT_GAP_READY="${FM_FAKE_EXIT_GAP_READY:-}" \
+    FM_FAKE_EXIT_GAP_RELEASE="${FM_FAKE_EXIT_GAP_RELEASE:-}" \
     "$CONTROL" "$@" 2>&1
 }
 
@@ -964,6 +980,106 @@ test_turnend_auth_paths_are_owned_by_the_control_adapter() {
   grok_path=$(GROK_HOME="$dir/gh" fm_control_harness_turnend_auth_path grok 'not a token/../..')
   [ -z "$grok_path" ] || fail "a malformed token must resolve to no path, got '$grok_path'"
   pass "fm-control-lib: one owner resolves each harness's turn-end registry entry, and refuses a malformed token"
+}
+
+run_liveness_recovery() {
+  local dir=$1 id=$2
+  env -u HERDR_ENV -u HERDR_PANE_ID -u HERDR_SESSION -u HERDR_SOCKET_PATH \
+    -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID \
+    PATH="$dir/fakebin:$PATH" FM_HOME="$dir/home" STATE="$dir/home/state" \
+    FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$dir/home/state" \
+    FM_DATA_OVERRIDE="$dir/home/data" FM_CONFIG_OVERRIDE="$dir/home/config" \
+    FM_FAKE_DIR="$dir/fake" HOME="$dir/user-home" CLAUDE_CONFIG_DIR='' \
+    FM_TEST_RECOVERY_READY="${FM_TEST_RECOVERY_READY:-}" \
+    FM_TEST_RECOVERY_RELEASE="${FM_TEST_RECOVERY_RELEASE:-}" \
+    bash -c '
+      . "$1/bin/fm-secondmate-liveness-lib.sh"
+      if ! fm_secondmate_liveness_lock "$2"; then printf "deferred\n"; exit 0; fi
+      trap '\''fm_secondmate_liveness_unlock "$2"'\'' EXIT
+      if [ -n "$FM_TEST_RECOVERY_READY" ]; then
+        : > "$FM_TEST_RECOVERY_READY"
+        while [ ! -e "$FM_TEST_RECOVERY_RELEASE" ]; do "$FM_REAL_SLEEP" 0.01; done
+      fi
+      fm_secondmate_liveness_probe "$STATE/$2.meta" "$2" poll
+      if [ "$FM_SM_LIVE_STATUS" = relaunchable ]; then
+        fm_secondmate_liveness_relaunch "$STATE/$2.meta" "$2" || { printf "%s\n" "$FM_SM_LIVE_OUT"; exit 1; }
+        printf "recovered\n"
+      else
+        printf "%s\n" "$FM_SM_LIVE_STATUS"
+      fi
+    ' _ "$ROOT" "$id" 2>&1
+}
+
+test_secondmate_liveness_serializes_the_idle_shell_gap() {
+  local dir home id=sm-gap out rc i before_literals
+  dir=$(new_case sm-gap "$id")
+  home="$dir/home"
+  mkdir -p "$home/config" "$home/data/$id"
+  printf 'claude\n' > "$home/config/secondmate-harness"
+  fm_git_worktree "$dir/proj" "$dir/smhome" sm-branch
+  mkdir -p "$dir/smhome/state" "$dir/smhome/data" "$dir/smhome/bin"
+  printf '%s\n' "$id" > "$dir/smhome/.fm-secondmate-home"
+  printf '# charter\n' > "$dir/smhome/data/charter.md"
+  printf '# agents\n' > "$dir/smhome/AGENTS.md"
+  printf 'unfinished work\n' > "$dir/smhome/unfinished.txt"
+  fm_write_meta "$home/state/$id.meta" \
+    "window=fmses:fm-$id" "endpoint_task_id=$id" \
+    "worktree=$dir/smhome" "project=$dir/smhome" "home=$dir/smhome" \
+    "harness=claude" "kind=secondmate" "mode=secondmate" "yolo=off" \
+    "model=default" "effort=default"
+  printf '%s\n' "fm-$id" > "$dir/fake/windows"
+  printf '%s' "$dir/smhome" > "$dir/fake/cwd"
+  cp "$home/state/$id.meta" "$dir/before.meta"
+  LIVENESS_GAP_RELEASE="$dir/control-release"
+  FM_FAKE_EXIT_GAP_READY="$dir/control-gap" FM_FAKE_EXIT_GAP_RELEASE="$LIVENESS_GAP_RELEASE" \
+    run_control "$dir" "$id" relaunch > "$dir/control.out" &
+  LIVENESS_CONTROL_PID=$!
+  for i in $(seq 1 500); do
+    [ -e "$dir/control-gap" ] && break
+    "$FM_REAL_SLEEP" 0.01
+  done
+  [ -e "$dir/control-gap" ] || fail "explicit relaunch never reached the idle-shell gap"
+  [ "$(cat "$dir/fake/command")" = zsh ] || fail "the gap did not contain an idle shell"
+  out=$(run_liveness_recovery "$dir" "$id"); rc=$?
+  expect_code 0 "$rc" "automatic recovery during explicit relaunch must defer"
+  [ "$out" = deferred ] || fail "automatic recovery acted in the idle-shell gap: $out"
+  [ ! -s "$dir/fake/killed-windows" ] || fail "automatic recovery killed the relaunch endpoint"
+  [ ! -e "$home/state/.secondmate-relaunch-$id" ] || fail "a deferred recovery recorded an attempt"
+  cmp -s "$home/state/$id.meta" "$dir/before.meta" || fail "automatic recovery republished the in-flight record"
+  touch "$LIVENESS_GAP_RELEASE"
+  wait "$LIVENESS_CONTROL_PID"; rc=$?
+  LIVENESS_CONTROL_PID=
+  expect_code 0 "$rc" "explicit relaunch must complete after the gap"$'\n'"$(cat "$dir/control.out")"
+  [ "$(cat "$dir/fake/command")" = claude ] || fail "the explicit replacement did not start"
+
+  printf zsh > "$dir/fake/command"
+  LIVENESS_GAP_RELEASE="$dir/recovery-release"
+  FM_TEST_RECOVERY_READY="$dir/recovery-gap" FM_TEST_RECOVERY_RELEASE="$LIVENESS_GAP_RELEASE" \
+    run_liveness_recovery "$dir" "$id" > "$dir/recovery.out" &
+  LIVENESS_RECOVERY_PID=$!
+  for i in $(seq 1 500); do
+    [ -e "$dir/recovery-gap" ] && break
+    "$FM_REAL_SLEEP" 0.01
+  done
+  [ -e "$dir/recovery-gap" ] || fail "independent recovery never acquired ownership"
+  before_literals=$(cat "$dir/fake/literal")
+  out=$(run_control "$dir" "$id" relaunch); rc=$?
+  expect_code 1 "$rc" "explicit relaunch must refuse while automatic recovery owns the task"
+  assert_contains "$out" 'another lifecycle action is already running' "concurrent control refusal lost its reason"
+  [ "$(cat "$dir/fake/literal")" = "$before_literals" ] || fail "refused control sent lifecycle input"
+  touch "$LIVENESS_GAP_RELEASE"
+  wait "$LIVENESS_RECOVERY_PID"; rc=$?
+  LIVENESS_RECOVERY_PID=
+  expect_code 0 "$rc" "independent automatic recovery must complete"$'\n'"$(cat "$dir/recovery.out")"
+  [ "$(cat "$dir/recovery.out")" = recovered ] || fail "independent recovery did not replace the dead endpoint"
+  [ "$(wc -l < "$dir/fake/killed-windows" | tr -d ' ')" = 1 ] || fail "independent recovery must kill exactly one dead endpoint"
+  [ "$(wc -l < "$dir/fake/created-windows" | tr -d ' ')" = 1 ] || fail "independent recovery must create exactly one endpoint"
+  [ "$(cat "$dir/smhome/unfinished.txt")" = 'unfinished work' ] || fail "recovery lost unfinished work"
+  [ "$(run_liveness_recovery "$dir" "$id")" = alive ] || fail "a later recovery did not converge to alive"
+  [ ! -e "$home/state/.control-$id.lock" ] || fail "lifecycle ownership leaked"
+  [ ! -e "$home/state/.secondmate-liveness-$id.lock" ] || fail "liveness ownership leaked"
+  LIVENESS_GAP_RELEASE=
+  pass "secondmate recovery and explicit relaunch serialize both directions across the idle-shell gap"
 }
 
 test_secondmate_relaunch_picks_up_the_configured_harness_pin() {
@@ -2607,6 +2723,7 @@ test_relaunch_onto_an_unverified_harness_is_refused
 test_prior_harness_turnend_registry_entry_is_cleared
 test_wiring_removal_failure_refuses_before_replacement_arm
 test_turnend_auth_paths_are_owned_by_the_control_adapter
+test_secondmate_liveness_serializes_the_idle_shell_gap
 test_secondmate_relaunch_picks_up_the_configured_harness_pin
 test_secondmate_relaunch_ignores_invalid_configured_effort_before_stop
 test_secondmate_relaunch_onto_a_crewmate_only_adapter_refuses_before_stop
