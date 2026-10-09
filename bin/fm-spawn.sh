@@ -2390,11 +2390,49 @@ case "$ARG3" in
   ;;
 esac
 
-if [ "$RELAUNCH" -eq 1 ] && [ "$PI_EXTENSION_SET" -eq 0 ]; then
+if [ "$KIND" = secondmate ]; then
+  SECONDMATE_META="$STATE/$ID.meta"
+  if [ -e "$SECONDMATE_META" ] || [ -L "$SECONDMATE_META" ]; then
+    fm_backlog_record_present "$SECONDMATE_META" "task record" "$STATE" || {
+      echo "error: secondmate task record is unsafe: $FM_BACKLOG_TRANSITION_ERROR" >&2
+      exit 1
+    }
+    if [ -z "$FIRSTMATE_HOME" ]; then
+      FIRSTMATE_HOME=$(fm_meta_get "$SECONDMATE_META" home)
+    fi
+  fi
+  if [ -z "$FIRSTMATE_HOME" ]; then
+    FIRSTMATE_HOME=$(secondmate_registry_field "$DATA/secondmates.md" "$ID" home || true)
+  fi
+fi
+
+if [ "$PI_EXTENSION_SET" -eq 0 ]; then
   case "$HARNESS" in
-    pi|pi-signed) PI_EXTENSION=${RELAUNCH_PRIOR_PI_EXTENSION:-} ;;
+    pi|pi-signed)
+      if [ "$RELAUNCH" -eq 1 ]; then
+        PI_EXTENSION=${RELAUNCH_PRIOR_PI_EXTENSION:-}
+      elif [ "$KIND" = secondmate ] && [ -f "$SECONDMATE_META" ] \
+        && grep -q '^pi_extension=' "$SECONDMATE_META"; then
+        fm_backend_validate_task_endpoint "$SECONDMATE_META" "$ID" || exit 1
+        [ "$(fm_backend_meta_exact_value "$SECONDMATE_META" kind)" = secondmate ] || exit 1
+        SECONDMATE_RECORDED_HOME=$(fm_backend_meta_exact_value "$SECONDMATE_META" home) || exit 1
+        SECONDMATE_RESOLVED_HOME=$(cd "$FIRSTMATE_HOME" && pwd -P) || exit 1
+        for SECONDMATE_HOME_FIELD in "$SECONDMATE_RECORDED_HOME" \
+          "$(fm_meta_get "$SECONDMATE_META" worktree)" "$(fm_meta_get "$SECONDMATE_META" project)"; do
+          [ "$(cd "$SECONDMATE_HOME_FIELD" && pwd -P)" = "$SECONDMATE_RESOLVED_HOME" ] || {
+            echo "error: recorded Pi extension selection belongs to a different secondmate home; refusing launch" >&2
+            exit 1
+          }
+        done
+        PI_EXTENSION=$(fm_backend_meta_exact_value "$SECONDMATE_META" pi_extension) || exit 1
+      fi
+      ;;
     *) PI_EXTENSION= ;;
   esac
+fi
+if [ -n "$PI_EXTENSION" ] && [ "$RAW_LAUNCH" -eq 1 ]; then
+  echo "error: --pi-extension requires a canonical pi or pi-signed launch; raw launch commands cannot disable discovery safely" >&2
+  exit 1
 fi
 [ -z "$PI_EXTENSION" ] || fm_pi_extension_validate_file "$PI_EXTENSION" || exit 1
 fm_pi_extension_validate_harness "$PI_EXTENSION" "$HARNESS" || exit 1
@@ -2491,7 +2529,7 @@ cursor)
   fi
   ;;
 omp)
-  OMP_BIN=$(resolve_pi_executable omp) || {
+  OMP_BIN=$(fm_pi_executable_resolve omp) || {
     echo "error: omp executable not found on PATH; install Oh My Pi or select a different verified harness" >&2
     exit 1
   }
@@ -2502,7 +2540,7 @@ omp)
   }
   ;;
 agy)
-  AGY_BIN=$(resolve_pi_executable agy) || {
+  AGY_BIN=$(fm_pi_executable_resolve agy) || {
     echo "error: agy executable not found on PATH; install Antigravity CLI or select a different verified harness" >&2
     exit 1
   }
@@ -3082,19 +3120,6 @@ validate_firstmate_operational_dirs() {
     fi
   done
 }
-
-if [ "$KIND" = secondmate ]; then
-  if [ -z "$FIRSTMATE_HOME" ] && { [ -e "$STATE/$ID.meta" ] || [ -L "$STATE/$ID.meta" ]; }; then
-    fm_backlog_record_present "$STATE/$ID.meta" "task record" "$STATE" || {
-      echo "error: secondmate task record is unsafe: $FM_BACKLOG_TRANSITION_ERROR" >&2
-      exit 1
-    }
-    FIRSTMATE_HOME=$(grep '^home=' "$STATE/$ID.meta" | cut -d= -f2- || true)
-  fi
-  if [ -z "$FIRSTMATE_HOME" ]; then
-    FIRSTMATE_HOME=$(secondmate_registry_value "$ID" home || true)
-  fi
-fi
 
 if [ "$KIND" = secondmate ]; then
   [ -n "$FIRSTMATE_HOME" ] || {
@@ -5162,7 +5187,7 @@ SPAWN_META_PATH=$SPAWN_META_TMP
 preserve_relaunch_meta() {
   awk -F= '
     BEGIN {
-      split("window endpoint_task_id worktree project harness kind mode yolo branch tasktmp base_branch model effort pi_extension account account_provider busy_gen spawn_gen traceparent backend tmux_socket_path tmux_server_pid tmux_server_identity tmux_server_token tmux_window_id herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id home projects control_relaunch_tx", keys, " ")
+      split("window endpoint_task_id worktree project harness kind mode yolo branch tasktmp base_branch model effort pi_extension account account_provider busy_gen spawn_gen traceparent backend tmux_socket_path tmux_server_pid tmux_server_identity tmux_server_token tmux_window_id tmux_pane_id herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id home projects control_relaunch_tx", keys, " ")
       for (i in keys) owned[keys[i]] = 1
     }
     !($1 in owned)

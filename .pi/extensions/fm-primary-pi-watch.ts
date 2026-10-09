@@ -281,7 +281,11 @@ function firstCycleNeeded(): boolean {
   if (existsSync(`${state}/.afk`)) return false;
   if (existsSync(`${state}/x-watch.check.sh`)) return true;
   try {
-    if (readdirSync(state).some((name) => name.endsWith(".meta"))) return true;
+    if (readdirSync(state).some((name) =>
+      name.endsWith(".meta") ||
+      (name.endsWith(".check.sh") && existsSync(`${state}/${name}`) &&
+        existsSync(`${state}/${name.slice(0, -".check.sh".length)}.check-trust`))
+    )) return true;
   } catch { /* No readable fleet inventory. */ }
   try {
     return readdirSync(`${state}/procevent`).some((name) => name.endsWith(".source"));

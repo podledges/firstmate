@@ -129,32 +129,35 @@ fm_backend_tmux_server_binding() {  # [target] -> metadata fields
 }
 
 fm_backend_tmux_bind_task() {  # <fresh endpoint> -> metadata fields, or no proof
-  local pid nonce wid binding target=$1 session window windows
+  local pid nonce wid pane binding target=$1 session window windows endpoint
   case "$target" in *:*) ;; *) return 1 ;; esac
   session=${target%%:*}
   window=${target#*:}
   windows=$(fm_backend_tmux_window_inventory "=$session") || return 1
   printf '%s\n' "$windows" | grep -Fxq "$window" || return 1
-  wid=$(tmux display-message -p -t "=$session:=$window" '#{window_id}' 2>/dev/null) || return 1
-  [[ "$wid" =~ ^@[0-9]+$ ]] || return 1
+  endpoint=$(tmux display-message -p -t "=$session:=$window" '#{window_id}|#{pane_id}' 2>/dev/null) || return 1
+  IFS='|' read -r wid pane <<< "$endpoint"
+  [[ "$wid" =~ ^@[0-9]+$ ]] && [[ "$pane" =~ ^%[0-9]+$ ]] || return 1
   pid=$(tmux display-message -p -t "$1" '#{pid}' 2>/dev/null) || return 1
   fm_pid_alive "$pid" && fm_pid_identity "$pid" >/dev/null || return 1
   nonce=$(od -An -N32 -tx1 /dev/urandom | tr -d '[:space:]') || return 1
   [[ "$nonce" =~ ^[a-f0-9]{64}$ ]] || return 1
   tmux if-shell -F '#{==:#{@fm-server-id},}' "set-option -s @fm-server-id $nonce" || return 1
   binding=$(fm_backend_tmux_server_binding "$1") || return 1
-  printf '%s\ntmux_window_id=%s\n' "$binding" "$wid"
+  printf '%s\ntmux_window_id=%s\ntmux_pane_id=%s\n' "$binding" "$wid" "$pane"
 }
 
 fm_backend_tmux_has_binding() {  # <meta>; partial bindings count too
-  grep -Eq '^tmux_(socket_path|server_pid|server_identity|server_token|window_id)=' "$1"
+  grep -Eq '^tmux_(socket_path|server_pid|server_identity|server_token|window_id|pane_id)=' "$1"
 }
 
 fm_backend_tmux_binding_matches() {  # <meta>
-  local recorded actual wid
+  local recorded actual wid pane
   [ -f "$1" ] || return 1
   wid=$(awk -F= '/^tmux_window_id=/ { if (++n > 1) exit 1; print $2 } END { if (n != 1) exit 1 }' "$1") || return 1
   [[ "$wid" =~ ^@[0-9]+$ ]] || return 1
+  pane=$(fm_backend_meta_exact_value "$1" tmux_pane_id) || return 1
+  [[ "$pane" =~ ^%[0-9]+$ ]] || return 1
   recorded=$(awk -F= '
     /^tmux_(socket_path|server_pid|server_identity|server_token)=/ {
       if (++seen[$1] != 1) bad=1
@@ -185,22 +188,22 @@ fm_backend_tmux_endpoint_consistent() {  # <meta> <session:window>
     [ "$rc" -eq 2 ] && return 0
     return 1
   fi
-  current=$(tmux display-message -p -t "=$session:=$window" '#{window_id}' 2>/dev/null) || return 1
-  [[ "$current" =~ ^@[0-9]+$ ]] || return 1
-  [ "$current" = "$(fm_meta_get "$1" tmux_window_id)" ]
+  current=$(tmux display-message -p -t "=$session:=$window" '#{window_id}|#{pane_id}' 2>/dev/null) || return 1
+  [ "$current" = "$(fm_meta_get "$1" tmux_window_id)|$(fm_meta_get "$1" tmux_pane_id)" ]
 }
 
 fm_backend_tmux_window_absent() {  # <meta>; authoritative server-wide read
-  local windows wid
-  wid=$(fm_meta_get "$1" tmux_window_id)
-  [[ "$wid" =~ ^@[0-9]+$ ]] || return 1
-  windows=$(tmux list-windows -a -F '#{window_id}') || return 1
-  [ -n "$windows" ] || return 1
-  ! printf '%s\n' "$windows" | grep -Fxq "$wid"
+  local panes wid pane
+  wid=$(fm_backend_meta_exact_value "$1" tmux_window_id) || return 1
+  pane=$(fm_backend_meta_exact_value "$1" tmux_pane_id) || return 1
+  [[ "$wid" =~ ^@[0-9]+$ ]] && [[ "$pane" =~ ^%[0-9]+$ ]] || return 1
+  panes=$(tmux list-panes -a -F '#{window_id}|#{pane_id}') || return 1
+  [ -n "$panes" ] || return 1
+  ! printf '%s\n' "$panes" | awk -F'|' -v wid="$wid" -v pane="$pane" '$1 == wid || $2 == pane { found=1 } END { exit !found }'
 }
 
 fm_backend_tmux_recreate_task() {  # <meta> <session:window> <worktree> -> window id
-  local meta=$1 target=$2 wt=$3 ses wname token windows wid quoted_wt old_wid condition
+  local meta=$1 target=$2 wt=$3 ses wname token windows wid quoted_wt old_wid old_pane condition
   fm_backend_tmux_binding_matches "$meta" || return 1
   fm_backend_tmux_window_absent "$meta" || return 1
   ses=${target%%:*}
@@ -214,9 +217,10 @@ fm_backend_tmux_recreate_task() {  # <meta> <session:window> <worktree> -> windo
   case "$wt" in *$'\n'*|*$'\r'*) return 1 ;; esac
   quoted_wt="'${wt//\'/\'\\\'\'}'"
   old_wid=$(fm_meta_get "$meta" tmux_window_id)
+  old_pane=$(fm_meta_get "$meta" tmux_pane_id)
   # Recheck both old immutable identity and borrowed name inside the same
   # server command queue as creation, not just in a preceding client read.
-  condition="#{&&:#{==:#{@fm-server-id},$token},#{==:#{S:#{W:#{?#{||:#{==:#{window_id},$old_wid},#{&&:#{==:#{session_name},$ses},#{==:#{window_name},$wname}}},x,}}},}}"
+  condition="#{&&:#{==:#{@fm-server-id},$token},#{==:#{S:#{W:#{?#{||:#{||:#{==:#{window_id},$old_wid},#{!=:#{P:#{?#{==:#{pane_id},$old_pane},x,}},}},#{&&:#{==:#{session_name},$ses},#{==:#{window_name},$wname}}},x,}}},}}"
   if tmux has-session -t "=$ses" 2>/dev/null; then
     wid=$(tmux if-shell -F "$condition" \
       "new-window -dP -F '#{window_id}' -t '$ses:' -n '$wname' -c $quoted_wt") || return 1

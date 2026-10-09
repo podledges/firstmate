@@ -4157,9 +4157,9 @@ trap 'exit 0' TERM INT
 while :; do sleep 0.2; done
 SH
   chmod +x "$repo/bin/fm-watch-arm.sh"
-  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_CHILD_PID_FILE="$child_pid_file" FM_ARM_LOG="$arm_log" FM_WATCH_REARM_RETRY_BASE_MS=5 FM_WATCH_REARM_RETRY_MAX_MS=10 FM_WATCH_REARM_RETRY_LIMIT=2 node --input-type=module 2>&1 <<'EOF'
+  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_CHECK_REGISTER="$ROOT/bin/fm-check-register.sh" FM_CHILD_PID_FILE="$child_pid_file" FM_ARM_LOG="$arm_log" FM_WATCH_REARM_RETRY_BASE_MS=5 FM_WATCH_REARM_RETRY_MAX_MS=10 FM_WATCH_REARM_RETRY_LIMIT=2 node --input-type=module 2>&1 <<'EOF'
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
 function makePi() {
@@ -4372,6 +4372,43 @@ if (liveArmPids().length !== 1) {
 const sourceChild = readFileSync(process.env.FM_CHILD_PID_FILE, "utf8").trim();
 await sourcePi.handlers.get("session_shutdown")?.({ type: "session_shutdown", reason: "quit" }, {});
 await waitFor(() => !pidAlive(sourceChild), "process-event child exit");
+
+setNeed("");
+const check = `${state}/custom.check.sh`;
+const trust = `${state}/custom.check-trust`;
+const executed = `${state}/custom-executed`;
+writeFileSync(check, `#!/bin/sh\nprintf executed > '${executed}'\n`, { mode: 0o700 });
+const customPi = makePi();
+mod.default(customPi.pi);
+const beforeCustom = armCount();
+await customPi.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, {});
+await new Promise((resolve) => setTimeout(resolve, 80));
+if (armCount() !== beforeCustom) throw new Error("unregistered custom check auto-armed");
+const registered = spawnSync("bash", [process.env.FM_CHECK_REGISTER, "custom"], {
+  encoding: "utf8",
+  env: { ...process.env, FM_STATE_OVERRIDE: state },
+});
+if (registered.status !== 0) throw new Error(`registration failed: ${registered.stdout}${registered.stderr}`);
+const checkBody = readFileSync(check, "utf8");
+unlinkSync(check);
+await customPi.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, {});
+await new Promise((resolve) => setTimeout(resolve, 80));
+if (armCount() !== beforeCustom) throw new Error("orphan check trust auto-armed");
+writeFileSync(check, checkBody, { mode: 0o700 });
+writeFileSync(afk, "away\n");
+await customPi.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, {});
+await new Promise((resolve) => setTimeout(resolve, 80));
+if (armCount() !== beforeCustom) throw new Error("custom-check-only away home auto-armed");
+unlinkSync(afk);
+await customPi.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, {});
+await waitFor(() => liveArmPids().length === 1, "registered-custom-check-only first cycle");
+if (armCount() !== beforeCustom + 1) throw new Error("custom check spawned duplicate first cycles");
+if (existsSync(executed)) throw new Error("eligibility executed the custom check");
+const customChild = readFileSync(process.env.FM_CHILD_PID_FILE, "utf8").trim();
+await customPi.handlers.get("session_shutdown")?.({ type: "session_shutdown", reason: "quit" }, {});
+await waitFor(() => !pidAlive(customChild), "custom-check child exit");
+unlinkSync(check);
+unlinkSync(trust);
 EOF
 )
   status=$?

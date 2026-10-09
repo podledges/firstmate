@@ -1094,11 +1094,29 @@ test_pi_task_extension_refuses_unsupported_or_malformed_selection() {
   assert_contains "$out" "applies only to pi or pi-signed workers" \
     "non-Pi refusal did not name the supported identities"
   [ ! -s "$LAUNCH_LOG" ] || fail "non-Pi extension isolation reached launch delivery"
-  pass "Pi extension isolation rejects unsupported CLIs, relative paths, and unrelated harnesses"
+  id=profile-pi-isolation-raw-z8h2
+  rec=$(make_spawn_case profile-pi-isolation-raw pi "$id")
+  read_case_record "$rec"
+  extension="$CASE_DIR/show-reg.ts"
+  printf 'export default function () {}\n' > "$extension"
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id" "$PROJ_DIR" 'pi --model provider/model' --pi-extension "$extension")
+  status=$?
+  expect_code 1 "$status" "raw Pi launches must refuse explicit selection"
+  assert_contains "$out" "requires a canonical pi or pi-signed launch" "raw selection refusal lost its reason"
+  assert_absent "$HOME_DIR/state/$id.meta" "raw selection refusal wrote task metadata"
+  [ ! -s "$LAUNCH_LOG" ] || fail "raw selection refusal delivered a launch"
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id" "$PROJ_DIR" 'pi --model provider/model')
+  status=$?
+  expect_code 0 "$status" "generic raw Pi launches must remain supported"
+  assert_contains "$(cat "$LAUNCH_LOG")" 'pi --model provider/model' "generic raw launch changed"
+  assert_not_contains "$(cat "$LAUNCH_LOG")" '--no-extensions' "ordinary raw launch disabled discovery"
+  pass "Pi extension isolation rejects unsupported CLIs, malformed paths, raw selections, and unrelated harnesses"
 }
 
 test_pi_secondmate_extension_isolation_retains_primary_supervision() {
-  local rec id sm extension out status launch
+  local rec id sm extension out status launch harness replacement shape other_home
   id=profile-pi-secondmate-isolation-z8i
   rec=$(make_spawn_case profile-pi-secondmate-isolation codex "$id")
   read_case_record "$rec"
@@ -1121,7 +1139,62 @@ test_pi_secondmate_extension_isolation_retains_primary_supervision() {
     "Pi secondmate isolated launch lost its guard, watcher, supervision branch, or selected extension"
   assert_grep "pi_extension=$extension" "$HOME_DIR/state/$id.meta" \
     "Pi secondmate isolated launch did not persist its selected extension"
-  pass "Pi secondmate discovery isolation preserves all three primary supervision extensions"
+  for harness in pi-signed pi; do
+    printf '%s\n' "$harness" > "$HOME_DIR/config/secondmate-harness"
+    out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" --secondmate)
+    status=$?
+    expect_code 0 "$status" "$harness secondmate recovery must restore selection"$'\n'"$out"
+    launch=$(cat "$LAUNCH_LOG")
+    assert_contains "$launch" '--no-extensions' "secondmate recovery enabled discovery"
+    assert_contains "$launch" "-e '$sm/.pi/extensions/fm-primary-turnend-guard.ts' -e '$sm/.pi/extensions/fm-primary-pi-watch.ts' -e '$sm/.pi/extensions/fm-branch-supervision.ts' -e '$extension'" \
+      "secondmate recovery lost lifecycle or provider selection"
+    assert_grep "pi_extension=$extension" "$HOME_DIR/state/$id.meta" "secondmate recovery dropped selection metadata"
+  done
+
+  cp "$HOME_DIR/state/$id.meta" "$CASE_DIR/valid.meta"
+  other_home="$CASE_DIR/other-secondmate-home"
+  make_seeded_secondmate_home "$other_home" "$id"
+  for shape in foreign-task wrong-kind duplicate-selection different-home missing-file; do
+    cp "$CASE_DIR/valid.meta" "$HOME_DIR/state/$id.meta"
+    case "$shape" in
+      foreign-task) printf 'endpoint_task_id=other-task\n' >> "$HOME_DIR/state/$id.meta" ;;
+      wrong-kind) awk '{sub(/^kind=secondmate$/, "kind=ship"); print}' "$CASE_DIR/valid.meta" > "$HOME_DIR/state/$id.meta" ;;
+      duplicate-selection) printf 'pi_extension=%s\n' "$extension" >> "$HOME_DIR/state/$id.meta" ;;
+      different-home) ;;
+      missing-file) rm "$extension" ;;
+    esac
+    cp "$HOME_DIR/state/$id.meta" "$CASE_DIR/before.meta"
+    if [ "$shape" = different-home ]; then
+      out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$other_home" --secondmate)
+    else
+      out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" --secondmate)
+    fi
+    status=$?
+    expect_code 1 "$status" "$shape persisted selection must refuse before launch"$'\n'"$out"
+    cmp -s "$HOME_DIR/state/$id.meta" "$CASE_DIR/before.meta" || fail "$shape refusal changed metadata"
+    [ ! -s "$LAUNCH_LOG" ] || fail "$shape selection reached launch delivery"
+  done
+  cp "$CASE_DIR/valid.meta" "$HOME_DIR/state/$id.meta"
+  replacement="$CASE_DIR/replacement.ts"
+  printf 'export default function () {}\n' > "$replacement"
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" --secondmate --pi-extension "$replacement")
+  status=$?
+  expect_code 0 "$status" "explicit current selection must override a missing persisted extension"$'\n'"$out"
+  assert_contains "$(cat "$LAUNCH_LOG")" "-e '$replacement'" "current selection did not take precedence"
+  assert_grep "pi_extension=$replacement" "$HOME_DIR/state/$id.meta" "replacement selection did not persist"
+
+  printf '%s\n' codex > "$HOME_DIR/config/secondmate-harness"
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" --secondmate)
+  status=$?
+  expect_code 0 "$status" "switching a recovering secondmate away from Pi must succeed"$'\n'"$out"
+  ! grep -q '^pi_extension=' "$HOME_DIR/state/$id.meta" || fail "non-Pi recovery retained Pi-only selection"
+  assert_not_contains "$(cat "$LAUNCH_LOG")" '-e ' "non-Pi recovery carried Pi extension arguments"
+  printf '%s\n' pi > "$HOME_DIR/config/secondmate-harness"
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" --secondmate)
+  status=$?
+  expect_code 0 "$status" "ordinary Pi secondmate recovery must succeed"$'\n'"$out"
+  assert_not_contains "$(cat "$LAUNCH_LOG")" '--no-extensions' "cleared selection reappeared after switching back"
+  pass "Pi-family secondmate recovery validates and preserves selection, honors overrides, and clears it on non-Pi switches"
 }
 
 test_pi_signed_missing_binary_refuses_before_endpoint_or_metadata() {
