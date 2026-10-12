@@ -193,7 +193,7 @@ family_for_basename() {
     fm-grok-stop-live-e2e.test.sh|fm-harness-liveness-drift-live-e2e.test.sh|\
     fm-muse-signals-live-e2e.test.sh|\
     fm-herdr-version-floor-live-e2e.test.sh|\
-    fm-opencode-primary-live-e2e.test.sh|fm-pi-primary-live-e2e.test.sh|\
+    fm-opencode-primary-live-e2e.test.sh|fm-pi-extension-isolation-live-e2e.test.sh|fm-pi-primary-live-e2e.test.sh|\
     fm-sessionstart-hook-live-e2e.test.sh|fm-sessionstart-instruction-refresh-live-e2e.test.sh|\
     fm-quota-array-dispatch-live-e2e.test.sh|fm-send-secondmate-marker-herdr-e2e.test.sh|\
     fm-herdr-submit-confirm-live-e2e.test.sh)
@@ -435,6 +435,7 @@ tests/fm-opencode-primary-live-e2e.test.sh 22
 tests/fm-operational-input.test.sh 246
 tests/fm-peek-remote.test.sh 848
 tests/fm-pending-reply.test.sh 19488
+tests/fm-pi-extension-isolation-live-e2e.test.sh 30
 tests/fm-pi-primary-live-e2e.test.sh 41
 tests/fm-pi-watch-extension.test.sh 17979
 tests/fm-pr-check-security.test.sh 250417
@@ -998,8 +999,12 @@ families_for_changed_path() {
       printf '%s\n' pure-contract-unit
       printf '%s\n' live-harness-optin
       ;;
-    bin/fm-spawn.sh|bin/fm-send.sh|bin/fm-harness.sh|\
-    bin/fm-peek.sh|bin/fm-composer*)
+    bin/fm-spawn.sh|bin/fm-pi-extension-lib.sh)
+      printf '%s\n' backend-dispatch
+      printf '%s\n' pure-contract-unit
+      printf '%s\n' live-harness-optin
+      ;;
+    bin/fm-send.sh|bin/fm-harness.sh|bin/fm-peek.sh|bin/fm-composer*)
       printf '%s\n' backend-dispatch
       printf '%s\n' pure-contract-unit
       ;;

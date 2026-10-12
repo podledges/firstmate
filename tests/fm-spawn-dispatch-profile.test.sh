@@ -22,7 +22,7 @@ if [ "${1:-}" = --help ]; then
   if [ "${FM_FAKE_PI_VERSION:-0.84.0}" = 0.82.0 ]; then
     printf '%s\n' 'Pi 0.82.0' 'Options: --help'
   else
-    printf '%s\n' "Pi ${FM_FAKE_PI_VERSION:-0.84.0}" 'Options: --help --tui-mode <mode>'
+    printf '%s\n' "Pi ${FM_FAKE_PI_VERSION:-0.84.0}" 'Options: --help --tui-mode <mode> --extension <path> --no-extensions'
   fi
 fi
 exit 0
@@ -625,6 +625,8 @@ test_pi_threads_model_and_max_effort() {
   launch=$(cat "$LAUNCH_LOG")
   assert_contains "$launch" "FM_PI_HARNESS=pi '$FAKEBIN_DIR/pi' --tui-mode regular --model 'openai-codex/gpt-5.6-sol' --thinking 'max' -e" \
     "pi launch did not force the regular TUI while threading the requested model and max thinking level"
+  assert_not_contains "$launch" "--no-extensions" \
+    "ordinary Pi launch unexpectedly disabled extension discovery"
   assert_not_contains "$launch" "FM_FIRSTMATE_PI_LAUNCH_BRIEF=" \
     "pi launch still exports the removed Calm input-reroute binding"
   assert_contains "$launch" "fm-operational-input.sh' encode launch-brief" \
@@ -693,6 +695,146 @@ test_pi_tui_mode_probe_is_safe_for_old_and_new_pi() {
     done
   done
   pass "Pi launch probing omits --tui-mode on older Pi and preserves it on supporting Pi"
+}
+
+test_pi_task_extension_isolates_discovery_for_both_identities() {
+  local harness rec id extension out status launch
+  for harness in pi pi-signed; do
+    id="profile-${harness}-isolated-extension-z8e"
+    rec=$(make_spawn_case "profile-${harness}-isolated-extension" "$harness" "$id")
+    read_case_record "$rec"
+    mkdir -p "$CASE_DIR/selected extension's dir"
+    extension="$CASE_DIR/selected extension's dir/show-reg.ts"
+    printf 'export default function () {}\n' > "$extension"
+
+    out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+      "$id" "$PROJ_DIR" --pi-extension "$extension")
+    status=$?
+    expect_code 0 "$status" "$harness spawn with one selected extension should succeed"
+    launch=$(cat "$LAUNCH_LOG")
+    assert_contains "$launch" "FM_PI_HARNESS=$harness '$FAKEBIN_DIR/$harness' --tui-mode regular --no-extensions -e builtin:mcp -e builtin:llama.cpp -e builtin:codemode -e builtin:tool-search" \
+      "$harness isolated launch did not explicitly restore Pi's built-in extensions"
+    assert_contains "$launch" "-e '$HOME_DIR/state/$id.pi-ext.ts' -e '$CASE_DIR/selected extension'\\''s dir/show-reg.ts'" \
+      "$harness isolated launch did not quote and load the lifecycle extension before the selected provider"
+    assert_grep "pi_extension=$extension" "$HOME_DIR/state/$id.meta" \
+      "$harness isolated launch did not persist the selected extension"
+    assert_present "$HOME_DIR/state/$id.pi-ext.ts" \
+      "$harness isolated launch did not retain Firstmate's worker lifecycle extension"
+  done
+
+  id=profile-pi-isolated-extension-scout-z8e2
+  rec=$(make_spawn_case profile-pi-isolated-extension-scout pi "$id")
+  read_case_record "$rec"
+  extension="$CASE_DIR/show-reg.ts"
+  printf 'export default function () {}\n' > "$extension"
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id" "$PROJ_DIR" --scout --pi-extension "$extension")
+  status=$?
+  expect_code 0 "$status" "Pi scout with one selected extension should succeed"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "--no-extensions" \
+    "Pi scout did not isolate extension discovery"
+  assert_contains "$launch" "-e '$HOME_DIR/state/$id.pi-ext.ts' -e '$extension'" \
+    "Pi scout did not retain its lifecycle extension and selected provider"
+  assert_present "$HOME_DIR/state/$id.pi-ext.ts" \
+    "Pi scout did not retain Firstmate's worker lifecycle extension"
+  pass "Pi and pi-signed ships plus Pi scouts isolate one task extension while retaining lifecycle wiring"
+}
+
+test_pi_task_extension_refuses_unsupported_or_malformed_selection() {
+  local rec id extension out status
+  id=profile-pi-isolation-old-z8f
+  rec=$(make_spawn_case profile-pi-isolation-old pi "$id")
+  read_case_record "$rec"
+  extension="$CASE_DIR/show-reg.ts"
+  printf 'export default function () {}\n' > "$extension"
+
+  out=$(FM_TEST_PI_VERSION=0.82.0 \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+      "$id" "$PROJ_DIR" --pi-extension "$extension")
+  status=$?
+  expect_code 1 "$status" "Pi without discovery-bypass CLI support should refuse"
+  assert_contains "$out" "does not advertise --no-extensions and --extension" \
+    "unsupported Pi refusal did not name the missing CLI contract"
+  [ ! -s "$LAUNCH_LOG" ] || fail "unsupported Pi extension isolation reached launch delivery"
+
+  id=profile-pi-isolation-relative-z8g
+  rec=$(make_spawn_case profile-pi-isolation-relative pi "$id")
+  read_case_record "$rec"
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id" "$PROJ_DIR" --pi-extension relative/show-reg.ts)
+  status=$?
+  expect_code 1 "$status" "a relative Pi extension should refuse"
+  assert_contains "$out" "requires an absolute path" \
+    "relative Pi extension refusal did not explain relaunch stability"
+  assert_absent "$HOME_DIR/state/$id.meta" "relative extension refusal wrote task metadata"
+
+  id=profile-pi-isolation-duplicate-z8g2
+  rec=$(make_spawn_case profile-pi-isolation-duplicate pi "$id")
+  read_case_record "$rec"
+  extension="$CASE_DIR/show-reg.ts"
+  printf 'export default function () {}\n' > "$extension"
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id" "$PROJ_DIR" --pi-extension "$extension" --pi-extension "$extension")
+  status=$?
+  expect_code 1 "$status" "duplicate Pi extension selection should refuse"
+  assert_contains "$out" "may be passed only once" \
+    "duplicate Pi extension refusal did not name the malformed option"
+  assert_absent "$HOME_DIR/state/$id.meta" "duplicate extension refusal wrote task metadata"
+
+  id=profile-pi-isolation-symlink-z8g3
+  rec=$(make_spawn_case profile-pi-isolation-symlink pi "$id")
+  read_case_record "$rec"
+  printf 'export default function () {}\n' > "$CASE_DIR/show-reg-real.ts"
+  ln -s "$CASE_DIR/show-reg-real.ts" "$CASE_DIR/show-reg-link.ts"
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id" "$PROJ_DIR" --pi-extension "$CASE_DIR/show-reg-link.ts")
+  status=$?
+  expect_code 1 "$status" "a symlinked Pi extension should refuse"
+  assert_contains "$out" "readable regular non-symlink file" \
+    "symlinked Pi extension refusal did not name the stable-file contract"
+  assert_absent "$HOME_DIR/state/$id.meta" "symlinked extension refusal wrote task metadata"
+
+  id=profile-nonpi-isolation-z8h
+  rec=$(make_spawn_case profile-nonpi-isolation claude "$id")
+  read_case_record "$rec"
+  extension="$CASE_DIR/show-reg.ts"
+  printf 'export default function () {}\n' > "$extension"
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id" "$PROJ_DIR" --pi-extension "$extension")
+  status=$?
+  expect_code 1 "$status" "a non-Pi worker should refuse Pi extension isolation"
+  assert_contains "$out" "applies only to pi or pi-signed workers" \
+    "non-Pi refusal did not name the supported identities"
+  [ ! -s "$LAUNCH_LOG" ] || fail "non-Pi extension isolation reached launch delivery"
+  pass "Pi extension isolation rejects unsupported CLIs, relative paths, and unrelated harnesses"
+}
+
+test_pi_secondmate_extension_isolation_retains_primary_supervision() {
+  local rec id sm extension out status launch
+  id=profile-pi-secondmate-isolation-z8i
+  rec=$(make_spawn_case profile-pi-secondmate-isolation codex "$id")
+  read_case_record "$rec"
+  printf '%s\n' pi > "$HOME_DIR/config/secondmate-harness"
+  sm="$CASE_DIR/secondmate-home"
+  make_seeded_secondmate_home "$sm" "$id"
+  sm=$(cd "$sm" && pwd -P)
+  mkdir -p "$CASE_DIR/selected"
+  extension="$CASE_DIR/selected/show-reg.ts"
+  printf 'export default function () {}\n' > "$extension"
+
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id" "$sm" --secondmate --pi-extension "$extension")
+  status=$?
+  expect_code 0 "$status" "Pi secondmate extension isolation should succeed"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "--no-extensions -e builtin:mcp -e builtin:llama.cpp -e builtin:codemode -e builtin:tool-search" \
+    "Pi secondmate isolated launch did not restore built-ins"
+  assert_contains "$launch" "-e '$sm/.pi/extensions/fm-primary-turnend-guard.ts' -e '$sm/.pi/extensions/fm-primary-pi-watch.ts' -e '$extension'" \
+    "Pi secondmate isolated launch lost its turn-end guard, watcher, or selected extension"
+  assert_grep "pi_extension=$extension" "$HOME_DIR/state/$id.meta" \
+    "Pi secondmate isolated launch did not persist its selected extension"
+  pass "Pi secondmate discovery isolation preserves both primary supervision extensions"
 }
 
 test_pi_signed_missing_binary_refuses_before_endpoint_or_metadata() {
@@ -850,6 +992,9 @@ test_opencode_threads_model_and_ignores_effort_axis
 test_pi_threads_model_and_max_effort
 test_pi_tui_mode_probe_is_safe_for_old_and_new_pi
 test_pi_signed_threads_shared_pi_profile_and_preserves_identity
+test_pi_task_extension_isolates_discovery_for_both_identities
+test_pi_task_extension_refuses_unsupported_or_malformed_selection
+test_pi_secondmate_extension_isolation_retains_primary_supervision
 test_pi_signed_missing_binary_refuses_before_endpoint_or_metadata
 test_pi_signed_persistent_secondmate_uses_pi_extensions_and_identity
 test_batch_forwards_shared_profile_flags

@@ -6,6 +6,38 @@ This record contains reusable version-scoped evidence for active runtime guarant
 The backend guides own current setup, safety boundaries, and limitations.
 Exact task chronology, branch names, temporary homes, local paths, process ids, thread ids, and delivery transcripts remain in private reports or PR evidence.
 
+## Pi task-scoped extension isolation
+
+Pi and pi-signed 1.0.2 were verified on 2026-10-07 with fixture-owned agent and project directories and the installed show-reg provider.
+The real RPC startup guard reproduced both duplicate tool-name failures under ordinary discovery, then proved that an explicit discovery bypass loaded exactly one provider for `show_register` and `show_register_setup` while the explicit Firstmate lifecycle extension reached `session_start`.
+The same guard compared the ordinary successful one-provider discovery path, and both identities registered the same two tools there without a collision.
+
+```sh
+pi --version
+pi-signed --version
+FM_PI_EXTENSION_ISOLATION_LIVE=1 tests/fm-pi-extension-isolation-live-e2e.test.sh
+```
+
+Observed output:
+
+```text
+1.0.2
+1.0.2
+ok - pi 1.0.2: real startup isolates one show-reg provider and retains lifecycle events
+ok - pi-signed 1.0.2: real startup isolates one show-reg provider and retains lifecycle events
+# checked 2 installed Pi-family harness(es)
+```
+
+The portable launch and recovery regressions exercise ordinary discovery unchanged, both Pi identities, explicit built-in restoration, worker lifecycle wiring, secondmate guard and watcher wiring, quoted paths, invalid input, unsupported CLI surfaces, and persisted guarded relaunch intent.
+
+```sh
+tests/fm-spawn-dispatch-profile.test.sh
+tests/fm-control-relaunch.test.sh
+```
+
+These portable tests capture the command delivered through the shared launch interface with a fake tmux endpoint.
+The launch command is composed before backend delivery and is shared by tmux, Herdr, Zellij, Orca, and cmux, but this verification did not start real task endpoints on those five backends and makes no backend-specific runtime claim.
+
 ## Pi local voice compatibility
 
 The Pi local voice preference was reviewed on 2026-08-31 with the portable executable test `tests/fm-podle-voice.test.sh`.
