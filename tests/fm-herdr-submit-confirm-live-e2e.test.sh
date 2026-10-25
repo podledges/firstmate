@@ -10,7 +10,8 @@
 #
 # Run explicitly with FM_HERDR_SUBMIT_CONFIRM_LIVE=1 after a Herdr or Claude
 # upgrade, and before trusting a refreshed docs/verification/runtime-backends.md
-# "Herdr submit confirmation" entry.
+# "Herdr submit confirmation" entry. Set FM_HERDR_CLAUDE_BIN to test a private
+# Claude Code binary without changing the globally installed version.
 # Every Herdr call, including adapter calls, is routed through bin/fm-herdr-lab.sh.
 set -u
 
@@ -27,7 +28,9 @@ fi
 
 command -v herdr >/dev/null 2>&1 || fail "FM_HERDR_SUBMIT_CONFIRM_LIVE=1 but herdr is not installed"
 command -v jq >/dev/null 2>&1 || fail "FM_HERDR_SUBMIT_CONFIRM_LIVE=1 but jq is not installed"
-command -v claude >/dev/null 2>&1 || fail "FM_HERDR_SUBMIT_CONFIRM_LIVE=1 but Claude Code is not installed"
+CLAUDE_BIN=${FM_HERDR_CLAUDE_BIN:-$(command -v claude 2>/dev/null || true)}
+[ -n "$CLAUDE_BIN" ] && [ -x "$CLAUDE_BIN" ] \
+  || fail "FM_HERDR_SUBMIT_CONFIRM_LIVE=1 but Claude Code is not executable (set FM_HERDR_CLAUDE_BIN for a private copy)"
 [ -x "$LAB_HELPER" ] || fail "FM_HERDR_SUBMIT_CONFIRM_LIVE=1 but the Herdr lab helper is not executable at $LAB_HELPER"
 
 # shellcheck source=tests/herdr-test-safety.sh
@@ -80,10 +83,11 @@ WS_JSON=$(lab workspace create --cwd "$ROOT" --label fm-submitlive --no-focus) \
 PANE=$(printf '%s' "$WS_JSON" | jq -er '.result.root_pane.pane_id') \
   || fail "workspace create did not return a pane id"
 TARGET="$SESSION:$PANE"
-VERSION=$(PATH="$ORIGINAL_PATH" claude --version 2>/dev/null | head -1 || printf 'version-unknown')
+VERSION=$(PATH="$ORIGINAL_PATH" "$CLAUDE_BIN" --version 2>/dev/null | head -1 || printf 'version-unknown')
 HERDR_VER=$(PATH="$ORIGINAL_PATH" herdr --version 2>/dev/null | head -1 || printf 'herdr-unknown')
+printf -v CLAUDE_LAUNCH '%q' "$CLAUDE_BIN"
 
-lab pane run "$PANE" "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false claude --dangerously-skip-permissions" >/dev/null \
+lab pane run "$PANE" "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false $CLAUDE_LAUNCH --dangerously-skip-permissions" >/dev/null \
   || fail "could not launch Claude Code ($VERSION) in the isolated Herdr pane"
 
 idle=0
@@ -96,10 +100,43 @@ while [ "$i" -lt 45 ]; do
 done
 [ "$idle" = 1 ] || fail "Claude Code ($VERSION) on $HERDR_VER never registered an idle agent in the lab pane"
 
+composer=unknown
+i=0
+while [ "$i" -lt 20 ]; do
+  composer=$(fm_backend_herdr_composer_state "$TARGET")
+  [ "$composer" = empty ] && break
+  i=$((i + 1))
+  sleep 0.5
+done
+if [ "$composer" != empty ]; then
+  printf '# Claude pane at idle-classification failure:\n' >&2
+  lab pane read "$PANE" --source visible --format ansi 2>/dev/null \
+    | tail -12 | sed 's/^/#   /' >&2 || true
+  fail "Claude Code ($VERSION) on $HERDR_VER: idle composer should classify empty, got '$composer'"
+fi
+
+# A slash opens Claude's real popup below the composer. The full-viewport read
+# must still find the typed slash and refuse injection rather than returning an
+# unreadable state or a false empty verdict.
+fm_backend_herdr_send_literal "$TARGET" / \
+  || fail "Claude Code ($VERSION) on $HERDR_VER: could not type the popup probe"
+sleep 1
+composer=$(fm_backend_herdr_composer_state "$TARGET")
+[ "$composer" = pending ] \
+  || fail "Claude Code ($VERSION) on $HERDR_VER: slash popup should classify pending, got '$composer'"
+fm_backend_herdr_send_key "$TARGET" C-u \
+  || fail "Claude Code ($VERSION) on $HERDR_VER: could not clear the popup probe"
+sleep 0.5
+composer=$(fm_backend_herdr_composer_state "$TARGET")
+[ "$composer" = empty ] \
+  || fail "Claude Code ($VERSION) on $HERDR_VER: cleared popup should return to empty, got '$composer'"
+CHECKED=$((CHECKED + 1))
+pass "live Herdr composer capture: Claude Code ($VERSION) on $HERDR_VER classifies idle, popup-pending, and cleared states"
+
 TOKEN="FMHERDRPONG$$_$RANDOM"
 verdict=$(fm_backend_herdr_send_text_submit "$TARGET" "Reply with exactly $TOKEN and nothing else." 3 0.4 0.4) \
   || fail "send_text_submit failed to run against Claude Code ($VERSION) on $HERDR_VER"
-CHECKED=1
+CHECKED=$((CHECKED + 1))
 [ "$verdict" = empty ] \
   || fail "Claude Code ($VERSION) on $HERDR_VER: a landed idle steer must confirm empty, got '$verdict'"
 

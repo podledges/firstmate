@@ -286,7 +286,7 @@ The CLI matrix was checked directly:
 | Explicit session routing | `herdr <verb> ... --session <name>` | Reached the named session even while another server was running. |
 | Literal send | `herdr pane send-text <pane> <text> --session <name>` | Left text unsubmitted until Enter. |
 | Keys | `herdr pane send-keys <pane> enter|escape|ctrl+c --session <name>` | Enter and Escape worked; Ctrl-C interrupted foreground work. |
-| Capture | `herdr pane read <pane> --source recent --lines N` | Small N could return empty below viewport height; a 200-line request plus local trim was stable. |
+| Capture | `herdr pane read <pane> --source recent --lines N` or `--source visible` | Small N could return empty below viewport height; bounded non-composer reads request 200 lines and trim locally, while composer reads take the complete visible viewport so an overlay below the prompt cannot hide it. |
 | Native state | `herdr agent get <pane>` | Working and done transitions were visible on some harnesses; live Claude Code 2.1.236 on Herdr 0.8.0 kept `agent_status=idle` for an entire landed turn, including a multi-second tool call, so submit confirmation falls through to the shared composer verdict. Native `busy` remains positive activity evidence, while native `idle` cannot close a turn and the adapter's semantic lifecycle decides worker state. |
 | Restart | guarded named-session stop then start | Workspace, tab, pane, and labels persisted; the agent process and registration did not. |
 | Close | `herdr pane close <pane> --session <name>` | The exact one-pane task tab closed; closing a final tab could remove the workspace. |
@@ -312,6 +312,41 @@ Observed 2026-08-19:
 ```text
 ok - live Herdr submit confirm: Claude Code (2.1.236 (Claude Code)) on herdr 0.8.0 reports empty for a landed idle steer
 ```
+
+Refreshed 2026-10-25 against Herdr 0.8.0 and both the installed Claude Code 2.1.304 and Homebrew's then-latest 2.1.308.
+The 2.1.308 binary was downloaded to a private path and its SHA-256 (`9a0bc140f5fb06e6366624d770371ef290e6731d1e84c4def5daf4df946d1b59`) matched Homebrew metadata; the global installation was not upgraded, relinked, or reconfigured.
+Both versions were launched in separate guarded, non-default Herdr labs.
+
+```sh
+FM_HERDR_SUBMIT_CONFIRM_LIVE=1 \
+  HERDR_LAB_HELPER=/path/to/fm-herdr-lab.sh \
+  tests/fm-herdr-submit-confirm-live-e2e.test.sh
+
+FM_HERDR_SUBMIT_CONFIRM_LIVE=1 \
+  FM_HERDR_CLAUDE_BIN=/private/path/to/claude-2.1.308 \
+  HERDR_LAB_HELPER=/path/to/fm-herdr-lab.sh \
+  tests/fm-herdr-submit-confirm-live-e2e.test.sh
+```
+
+Observed output for each version:
+
+```text
+ok - live Herdr composer capture: Claude Code (2.1.304 (Claude Code)) on herdr 0.8.0 classifies idle, popup-pending, and cleared states
+ok - live Herdr submit confirm: Claude Code (2.1.304 (Claude Code)) on herdr 0.8.0 reports empty and renders the requested reply
+ok - live Herdr composer capture: Claude Code (2.1.308 (Claude Code)) on herdr 0.8.0 classifies idle, popup-pending, and cleared states
+ok - live Herdr submit confirm: Claude Code (2.1.308 (Claude Code)) on herdr 0.8.0 reports empty and renders the requested reply
+```
+
+The portable byte fixtures in `tests/fixtures/herdr/` preserve real idle and pending-overlay screens from both versions.
+A separate tall-overlay regression proved the old 20-row recent tail could omit the composer and return `unknown`; the full visible viewport preserves the same shared classifier, including its refusal to inject into pending text or a shell prompt.
+
+### Away-mode wedge alert
+
+A direct macOS `display notification` probe on 2026-10-25 exited successfully but produced no visible banner.
+The unified Notification Center log recorded the notification as `shouldDeliver: true` and then `notificationsAllowed: false` for `com.apple.ScriptEditor2`, proving that `osascript` success alone is not visible-delivery proof on this machine.
+An isolated Herdr notification probe separately returned `{"reason":"disabled","shown":false}`.
+The default macOS alarm therefore keeps the Notification Center attempt and, for a Herdr primary, also fires the independent Herdr UI channel; Firstmate now accepts that channel only when Herdr reports `shown: true`.
+A captain who needs delivery beyond the machine should still configure the documented `command:` phone or pager channel.
 
 ### Prune and respawn
 
