@@ -814,7 +814,7 @@ wedge_alarm_via_osascript() {  # <summary>
 # Post a herdr UI notification - herdr's own surface, separate from the pane and
 # its status-line. Best-effort: logs and returns 1 on failure.
 wedge_alarm_via_herdr() {  # <summary>
-  local summary=$1 rc out
+  local summary=$1 rc out shown=0
   wedge_alarm_os_notifier_override herdr "$summary"
   rc=$?
   case "$rc" in
@@ -823,12 +823,14 @@ wedge_alarm_via_herdr() {  # <summary>
   esac
   command -v herdr >/dev/null 2>&1 || {
     log "wedge alarm: herdr not found; cannot post a herdr notification"; return 1; }
-  out=$(wedge_alarm_run_bounded herdr herdr notification show "firstmate: away-mode escalations WEDGED" \
-    --body "$summary" --sound request 2>/dev/null)
+  out=$(mktemp "${TMPDIR:-/tmp}/fm-wedge-herdr.XXXXXX") || {
+    log "wedge alarm: herdr notification failed (mktemp)"; return 1; }
+  wedge_alarm_run_bounded herdr herdr notification show "firstmate: away-mode escalations WEDGED" \
+    --body "$summary" --sound request >"$out" 2>/dev/null
   rc=$?
-  if [ "$rc" -eq 0 ] && printf '%s' "$out" | jq -e '.result.shown == true' >/dev/null 2>&1; then
-    return 0
-  fi
+  [ "$rc" -eq 0 ] && jq -e '.result.shown == true' "$out" >/dev/null 2>&1 && shown=1
+  rm -f "$out"
+  [ "$shown" -eq 1 ] && return 0
   if [ "$rc" -eq 0 ]; then
     log "wedge alarm: herdr reported that the notification was not shown"
   else
@@ -874,6 +876,21 @@ wedge_alarm_emit() {  # <channel> <summary>
   esac
 }
 
+# Emit one resolved channel unless this alarm already fired it. Reads and
+# appends to the caller's `emitted` array.
+wedge_alarm_emit_once() {  # <resolved-directive> <summary>
+  local directive=$1 summary=$2 seen
+  for seen in "${emitted[@]+"${emitted[@]}"}"; do
+    [ "$seen" = "$directive" ] && return 0
+  done
+  emitted+=("$directive")
+  case "$directive" in
+    command:*) wedge_alarm_emit command "$summary" "${directive#command:}" || true ;;
+    *) wedge_alarm_emit "$directive" "$summary" || true ;;
+  esac
+  return 0
+}
+
 # Fire every configured active-alert channel, best-effort. Always returns 0: a
 # channel failure can never abort inject_wedge_alarm or the daemon loop. Any
 # `off` directive disables the alert, regardless of position; an unresolvable
@@ -881,7 +898,7 @@ wedge_alarm_emit() {  # <channel> <summary>
 # only signal. Every notifier routes through the test-forced recorder seam.
 wedge_alarm_notify() {  # <summary> <marker>
   local summary=$1 marker=$2 ch
-  local -a channels=()
+  local -a channels=() emitted=()
   while IFS= read -r ch; do
     [ -n "$ch" ] || continue
     channels+=("$ch")
@@ -895,15 +912,15 @@ wedge_alarm_notify() {  # <summary> <marker>
         ch=$(wedge_alarm_platform_default)
         case "$ch" in
           '') log "wedge alarm: no OS-level alert channel on $(uname); durable marker $marker is the only signal - set config/wedge-alarm (e.g. a command: directive)" ;;
-          *) wedge_alarm_emit "$ch" "$summary" || true ;;
+          *) wedge_alarm_emit_once "$ch" "$summary" ;;
         esac
         if [ "$(uname)" = Darwin ] && [ "${FM_SUPERVISOR_BACKEND:-}" = herdr ] \
           && command -v herdr >/dev/null 2>&1; then
-          wedge_alarm_emit herdr "$summary" || true
+          wedge_alarm_emit_once herdr "$summary"
         fi
         ;;
-      osascript|herdr) wedge_alarm_emit "$ch" "$summary" || true ;;
-      command:*) wedge_alarm_emit command "$summary" "${ch#command:}" || true ;;
+      osascript|herdr) wedge_alarm_emit_once "$ch" "$summary" ;;
+      command:*) wedge_alarm_emit_once "$ch" "$summary" ;;
       *) log "wedge alarm: unrecognized active-alert channel directive (redacted); marker still written" ;;
     esac
   done

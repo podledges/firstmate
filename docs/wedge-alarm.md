@@ -9,6 +9,7 @@ The durable marker and tmux flash remain as additional signals.
 
 `config/wedge-alarm` is local and gitignored.
 It lists channel directives, one per non-empty, non-comment line, and every listed non-`off` channel fires best-effort.
+Channels fire in configured order, and a channel that several directives resolve to (for example `auto` plus `herdr` on a macOS Herdr primary) fires only once per alarm.
 `FM_WEDGE_ALARM_CHANNEL` overrides the file with one directive for focused testing.
 
 - `off` disables every active alert while retaining the durable marker and tmux flash.
