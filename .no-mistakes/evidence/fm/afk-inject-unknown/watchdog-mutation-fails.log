@@ -1,0 +1,3 @@
+=== round-1 subshell capture (mutation) ===
+not ok - a hung herdr notifier blocked the alarm for 31s
+rc=1

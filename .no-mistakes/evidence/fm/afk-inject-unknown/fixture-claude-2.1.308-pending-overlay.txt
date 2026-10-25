@@ -1,0 +1,24 @@
+=== claude-2.1.308-pending-overlay ===
+
+ ▐▛███▛█   Claude Code v2.1.308
+▝▜██████▀  Opus 5.5 · Claude Team
+ ▝▝   ▝▝   ~/…/firstmate-01f1b5/1/firstmate
+
+
+
+
+
+
+
+  ❯ /fm-afk-fixture-01   Test command 01 (project)
+    /fm-afk-fixture-02   Test command 02 (project)
+    /fm-afk-fixture-03   Test command 03 (project)
+    /fm-afk-fixture-04   Test command 04 (project)
+    /fm-afk-fixture-05   Test command 05 (project)
+─────────────────────────────────────────────────────
+❯ /fm-afk-fixture
+─────────────────────────────────────────────────────
+  0 / 1.0M  [$0.000]  Ꮚ •ﻌ•Ꮚ                   Opu…
+  gpt:?   grk:?   cld:?   fbl:?                [me…
+  calm ✔
+  ⏵⏵ bypass permissions on (shift+tab to cycle)

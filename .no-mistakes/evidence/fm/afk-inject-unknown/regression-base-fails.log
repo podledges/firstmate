@@ -1,0 +1,7 @@
+=== BASE code (e1b4235) with new tests ===
+not ok - a tall overlay below a idle composer must preserve the empty verdict, got 'unknown'
+rc=1
+ok - fm_backend_herdr_composer_state: captured Claude Code 2.1.304 and 2.1.308 idle and pending-overlay composers classify safely in native and C locales
+rc=0
+not ok - Herdr auto alarm omitted its independent UI channel: osascript	away-mode WEDGED 900s
+rc=1

@@ -1,0 +1,24 @@
+=== claude-2.1.308-idle ===
+
+           Claude Code v2.1.308
+           Opus 5.5 · Claude Team
+           ~/…/firstmate-01f1b5/1/firstmate
+
+  Updated to latest. Got 4 features, 22 bugfixes, and
+  12 other changes.
+  code.claude.com/docs/en/changelog for details
+
+
+
+
+
+
+
+
+
+                                 ◐ medium · /effort
+─────────────────────────────────────────────────────
+❯ Try "edit fm-inbox.sh to..."
+─────────────────────────────────────────────────────
+
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · …

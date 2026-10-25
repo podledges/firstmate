@@ -1,0 +1,10 @@
+=== FIXED code (93a37e9) ===
+ok - fm_backend_herdr_composer_state: a tall overlay preserves idle and pending composer verdicts
+ok - fm_backend_herdr_composer_state: captured Claude Code 2.1.304 and 2.1.308 idle and pending-overlay composers classify safely in native and C locales
+rc=0
+ok - auto on a macOS Herdr primary fires both independent alert channels
+ok - herdr notifier requires the server to report shown=true
+ok - a hung herdr notifier stays bounded while its JSON result is captured
+ok - auto plus explicit herdr/osascript directives fire each resolved channel once, in order
+ok - off disables every active alert regardless of directive position (marker and tmux flash are unaffected)
+rc=0
