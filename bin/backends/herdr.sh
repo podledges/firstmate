@@ -3145,10 +3145,12 @@ fm_backend_herdr_capture() {  # <target> <lines>
   printf '%s' "$out" | tail -n "$lines"
 }
 
-# fm_backend_herdr_visible_capture: the visible viewport only. `--source
+# fm_backend_herdr_visible_capture: the complete visible viewport. `--source
 # visible` is herdr's viewport-bounded read, so it needs none of the --lines
 # workaround above - the bound is the pane itself, and asking for a line count
-# is what triggers the empty-read bug.
+# is what triggers the empty-read bug. Composer reads use this instead of a
+# bounded recent tail because a popup below the composer can otherwise push the
+# live prompt outside that tail.
 fm_backend_herdr_visible_capture() {  # <target>
   fm_backend_herdr_target_ready "$1" || return 1
   fm_backend_herdr_cli "$FM_BACKEND_HERDR_SESSION" pane read "$FM_BACKEND_HERDR_PANE" --source visible 2>/dev/null
@@ -3219,10 +3221,10 @@ fm_backend_herdr_focus_state() {  # <target>
 # slash-command popup is the verified shape (2.1.283, ~19 menu rows) - pushes
 # the composer above a tail window, and the bounded read then reports the
 # composer as empty while it actually holds typed text. That blindness broke
-# fm-control exit (the typed /exit was judged unsent and cleared) and would
-# equally defeat this state read's pre-submit concat guard. The composer is
-# by definition inside the viewport, and `--source visible` needs none of the
-# small-N --lines workaround.
+# fm-control exit (the typed /exit was judged unsent and cleared), made idle
+# away-mode composers unreadable, and would equally defeat this state read's
+# pre-submit concat guard. The composer is by definition inside the viewport,
+# and `--source visible` needs none of the small-N --lines workaround.
 fm_backend_herdr_composer_state() {  # <target> -> empty|pending|pending-unproven|unknown
   local target=$1 cap caps verdict identity
   fm_backend_herdr_parse_target "$target" || { printf 'unknown'; return 0; }
