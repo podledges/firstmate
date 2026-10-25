@@ -340,14 +340,6 @@ ok - live Herdr submit confirm: Claude Code (2.1.308 (Claude Code)) on herdr 0.8
 The portable byte fixtures in `tests/fixtures/herdr/` preserve real idle and pending-overlay screens from both versions.
 A separate tall-overlay regression proved the old 20-row recent tail could omit the composer and return `unknown`; the full visible viewport preserves the same shared classifier, including its refusal to inject into pending text or a shell prompt.
 
-### Away-mode wedge alert
-
-A direct macOS `display notification` probe on 2026-10-25 exited successfully but produced no visible banner.
-The unified Notification Center log recorded the notification as `shouldDeliver: true` and then `notificationsAllowed: false` for `com.apple.ScriptEditor2`, proving that `osascript` success alone is not visible-delivery proof on this machine.
-An isolated Herdr notification probe separately returned `{"reason":"disabled","shown":false}`.
-The default macOS alarm therefore keeps the Notification Center attempt and, for a Herdr primary, also fires the independent Herdr UI channel; Firstmate now accepts that channel only when Herdr reports `shown: true`.
-A captain who needs delivery beyond the machine should still configure the documented `command:` phone or pager channel.
-
 ### Prune and respawn
 
 The real label-collision reproduction is owned by:
