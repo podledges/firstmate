@@ -1,0 +1,16 @@
+raw baseline hash:      b9f5e2cb33bb8e7f3002cd9a3908221e
+raw status-drift hash:  08d87f7323da4d6e0b59b2fa574e51dd
+normalized baseline:    699beed47d5f696cb8947415a83b22a2
+normalized drift:       699beed47d5f696cb8947415a83b22a2
+normalized progress:    052dda4b9edbdb2a6a9abff7990bdcfe
+status-only drift: raw=DIFFERENT normalized=SAME
+real 45%→46% progress: normalized=DIFFERENT
+
+normalized pane (dynamic footer values blanked, real progress retained):
+idle prompt, finished
+46% complete
+passed 3 of 10
+editing the watcher
+Ꮚ •ﻔ•Ꮚ   [$N]   Ꮚ •ﻔ•Ꮚ   gpt:N%  grk:N%  N/N
+
+busy check consumed raw capture: YES (gpt:96% signature matched)
