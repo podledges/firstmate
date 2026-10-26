@@ -3,11 +3,12 @@
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 CASE=$(mktemp -d)
+export FM_HOME="$CASE"
 lock_pid=
 trap '[ -z "$lock_pid" ] || kill "$lock_pid" 2>/dev/null || true; rm -rf "$CASE"' EXIT
 mkdir -p "$CASE/bin" "$CASE/state" "$CASE/projects" "$CASE/link-bin"
 chmod 700 "$CASE/state"
-cp "$ROOT/bin/fm-inbox.sh" "$ROOT/bin/fm-wake-lib.sh" "$ROOT/bin/fm_hermes_inbox.py" "$CASE/bin/"
+cp "$ROOT/bin/fm-inbox.sh" "$ROOT/bin/fm-wake-lib.sh" "$ROOT/bin/fm-path-lib.sh" "$ROOT/bin/fm_hermes_inbox.py" "$CASE/bin/"
 chmod +x "$CASE/bin/"*
 ln -s ../bin/fm-inbox.sh "$CASE/link-bin/fm-inbox.sh"
 INBOX="$CASE/link-bin/fm-inbox.sh"
@@ -22,12 +23,12 @@ grep -Fx 'authority=intake-only' "$CASE/state/inbox/$note.note"
 [ "$(find "$CASE/projects" -type f | wc -l)" -eq 0 ]
 mkdir -p "$CASE/legacy-link/bin"
 ln -s ../../bin/fm-inbox.sh "$CASE/legacy-link/bin/fm-inbox.sh"
-cp "$ROOT/bin/fm-wake-lib.sh" "$CASE/legacy-link/bin/"
-"$CASE/legacy-link/bin/fm-inbox.sh" note legacy >/dev/null
+cp "$ROOT/bin/fm-wake-lib.sh" "$ROOT/bin/fm-path-lib.sh" "$CASE/legacy-link/bin/"
+FM_HOME="$CASE/legacy-link" "$CASE/legacy-link/bin/fm-inbox.sh" note legacy >/dev/null
 [ "$(find "$CASE/legacy-link/state/inbox" -name '*.note' -type f | wc -l)" -eq 1 ]
 mkdir -p "$CASE/unsafe-home/bin"
 chmod 700 "$CASE/unsafe-home"
-cp "$ROOT/bin/fm-inbox.sh" "$ROOT/bin/fm-wake-lib.sh" "$ROOT/bin/fm_hermes_inbox.py" "$CASE/unsafe-home/bin/"
+cp "$ROOT/bin/fm-inbox.sh" "$ROOT/bin/fm-wake-lib.sh" "$ROOT/bin/fm-path-lib.sh" "$ROOT/bin/fm_hermes_inbox.py" "$CASE/unsafe-home/bin/"
 chmod +x "$CASE/unsafe-home/bin/"*
 ln -s "$CASE/projects" "$CASE/unsafe-home/state"
 set +e
@@ -39,7 +40,7 @@ python3 -c 'import json,sys; assert json.load(sys.stdin)["error"]["code"] == "un
 [ ! -e "$CASE/projects/inbox" ]
 mkdir -p "$CASE/queue-unsafe/bin" "$CASE/queue-unsafe/state"
 chmod 700 "$CASE/queue-unsafe" "$CASE/queue-unsafe/state"
-cp "$ROOT/bin/fm-inbox.sh" "$ROOT/bin/fm-wake-lib.sh" "$ROOT/bin/fm_hermes_inbox.py" "$CASE/queue-unsafe/bin/"
+cp "$ROOT/bin/fm-inbox.sh" "$ROOT/bin/fm-wake-lib.sh" "$ROOT/bin/fm-path-lib.sh" "$ROOT/bin/fm_hermes_inbox.py" "$CASE/queue-unsafe/bin/"
 chmod +x "$CASE/queue-unsafe/bin/"*
 : >"$CASE/projects/wake-target"
 ln -s "$CASE/projects/wake-target" "$CASE/queue-unsafe/state/.wake-queue"
@@ -54,7 +55,7 @@ unsafe_note=$(python3 -c 'import hashlib; print("hermes-" + hashlib.sha256(b"uns
 [ ! -s "$CASE/projects/wake-target" ]
 mkdir -p "$CASE/marker-unsafe/bin" "$CASE/marker-unsafe/state"
 chmod 700 "$CASE/marker-unsafe" "$CASE/marker-unsafe/state"
-cp "$ROOT/bin/fm-inbox.sh" "$ROOT/bin/fm-wake-lib.sh" "$ROOT/bin/fm_hermes_inbox.py" "$CASE/marker-unsafe/bin/"
+cp "$ROOT/bin/fm-inbox.sh" "$ROOT/bin/fm-wake-lib.sh" "$ROOT/bin/fm-path-lib.sh" "$ROOT/bin/fm_hermes_inbox.py" "$CASE/marker-unsafe/bin/"
 chmod +x "$CASE/marker-unsafe/bin/"*
 : >"$CASE/projects/marker-target"
 ln -s "$CASE/projects/marker-target" "$CASE/marker-unsafe/state/.watcher-down"
