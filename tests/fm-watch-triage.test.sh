@@ -6802,6 +6802,120 @@ test_paused_until_that_passed_is_rechecked_before_the_cadence() {
   pass "a declared wait whose until time has passed is rechecked at once, then held to the cadence"
 }
 
+# Idle footer shape the watcher hashes: bracketed running cost, labeled quota
+# percentages, and a spaced context meter, with real output above it.
+status_bar_pane() {  # <cost> <gpt> <grk> <meter> <progress> <passed> <note>
+  printf '%s\n%s\n%s%% complete\npassed %s of 10\n%s   Ꮚ •ﻔ•Ꮚ   [$%s]   Ꮚ •ﻔ•Ꮚ   gpt:%s%%  grk:%s%%' \
+    "idle prompt, finished" \
+    "$7" \
+    "$5" \
+    "$6" \
+    "$4" \
+    "$1" \
+    "$2" \
+    "$3"
+}
+
+# One stale-path hash sample. A long poll interval keeps the watcher from
+# taking a second sample before it is reaped, so the recorded hash is exactly
+# the capture that was in place at launch.
+watch_one_pane_hash() {  # <state> <fakebin> <capture> <window> <key> <out>
+  local state=$1 fakebin=$2 capture=$3 window=$4 key=$5 out=$6
+  local before_count before_hash after_count after_hash pid i
+  # An intentional stop publishes a downtime marker. The next start would exit
+  # on that recovery before it hashed the capture, so drop only that marker.
+  rm -f "$state/.watcher-down" "$state/.watcher-down.lock"
+  before_count=$(cat "$state/.count-$key" 2>/dev/null || echo MISSING)
+  before_hash=$(cat "$state/.hash-$key" 2>/dev/null || echo MISSING)
+  : > "$out"
+  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture" \
+    FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" \
+    FM_POLL=30 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+    "$WATCH" > "$out" 2>&1 &
+  pid=$!
+  i=0
+  after_count=$before_count
+  after_hash=$before_hash
+  while [ "$i" -lt 200 ]; do
+    after_count=$(cat "$state/.count-$key" 2>/dev/null || echo MISSING)
+    after_hash=$(cat "$state/.hash-$key" 2>/dev/null || echo MISSING)
+    if [ "$after_count" != "$before_count" ] || [ "$after_hash" != "$before_hash" ]; then
+      sleep 0.2
+      after_hash=$(cat "$state/.hash-$key" 2>/dev/null || echo MISSING)
+      reap "$pid"
+      printf '%s\n' "$after_hash"
+      return 0
+    fi
+    if ! kill -0 "$pid" 2>/dev/null; then
+      reap "$pid"
+      printf 'watcher-exited\n' >&2
+      return 1
+    fi
+    sleep 0.1
+    i=$((i + 1))
+  done
+  reap "$pid"
+  printf 'watcher-timeout\n' >&2
+  return 1
+}
+
+# The hash contract, called directly: idle footer drift is the same hash, and
+# real output - a bare percentage, a passed-count, or other progress - is not.
+test_status_bar_drift_hash_ignores_idle_footer() (
+  local state pane baseline drifted bare_pct passed_count progress
+  state="$TMP_ROOT/statusbar-hash-unit/state"
+  mkdir -p "$state"
+  FM_STATE_OVERRIDE="$state"
+  FM_HOME="$TMP_ROOT/statusbar-hash-unit/home"
+  export FM_STATE_OVERRIDE FM_HOME
+  # shellcheck source=/dev/null
+  . "$ROOT/bin/fm-watch.sh"
+  pane_hash() { printf '%s' "$1" | normalize_pane_for_hash | hash_pane; }
+
+  baseline=$(pane_hash "$(status_bar_pane 2.192 55 72 '12k / 200k' 45 3 'editing the watcher')")
+  [ -n "$baseline" ] || fail "baseline pane hash was empty"
+  drifted=$(pane_hash "$(status_bar_pane 9.875 3 1.5 '18.4k / 200k' 45 3 'editing the watcher')")
+  [ "$drifted" = "$baseline" ] || fail "idle status-bar drift changed the pane hash"
+  pane=$(status_bar_pane 2.192 96 40.5 '1.2M/200k' 45 3 'editing the watcher')
+  [ "$(pane_hash "$pane")" = "$baseline" ] || fail "labeled quota and context-meter drift changed the pane hash"
+
+  bare_pct=$(pane_hash "$(status_bar_pane 2.192 55 72 '12k / 200k' 46 3 'editing the watcher')")
+  [ "$bare_pct" != "$baseline" ] || fail "a bare percentage in real output did not change the pane hash"
+  passed_count=$(pane_hash "$(status_bar_pane 2.192 55 72 '12k / 200k' 45 4 'editing the watcher')")
+  [ "$passed_count" != "$baseline" ] || fail "passed 3 of 10 changing to passed 4 of 10 did not change the pane hash"
+  progress=$(pane_hash "$(status_bar_pane 2.192 55 72 '12k / 200k' 45 3 'committed the hash fix')")
+  [ "$progress" != "$baseline" ] || fail "real progress text did not change the pane hash"
+  pass "idle status-bar drift hashes the same while real progress text hashes differently"
+)
+
+# The same contract through the watcher's recorded hash, so a footer refresh
+# cannot reset sameness detection for a finished idle pane.
+test_watcher_records_same_hash_for_status_bar_drift() {
+  local dir state fakebin capture window key out baseline drifted progress
+  dir=$(make_case statusbar-hash); state="$dir/state"; fakebin="$dir/fakebin"
+  capture="$dir/pane.txt"; out="$dir/watch.out"
+  window="test:fm-statusbar"
+  printf 'window=%s\nkind=ship\n' "$window" > "$state/statusbar.meta"
+  key=$(printf '%s' "$window" | tr ':/.' '___')
+
+  status_bar_pane 2.192 55 72 '12k / 200k' 45 3 'editing the watcher' > "$capture"
+  baseline=$(watch_one_pane_hash "$state" "$fakebin" "$capture" "$window" "$key" "$out") \
+    || fail "watcher did not record a baseline pane hash: $(cat "$out")"
+  [ -n "$baseline" ] || fail "watcher recorded an empty baseline pane hash: $(cat "$out")"
+
+  status_bar_pane 9.875 3 4.5 '99.5k / 200k' 45 3 'editing the watcher' > "$capture"
+  drifted=$(watch_one_pane_hash "$state" "$fakebin" "$capture" "$window" "$key" "$out") \
+    || fail "watcher did not record a drifted pane hash: $(cat "$out")"
+  [ "$drifted" = "$baseline" ] || fail "watcher treated idle status-bar drift as a new pane hash: $(cat "$out")"
+
+  status_bar_pane 9.875 3 4.5 '99.5k / 200k' 46 3 'editing the watcher' > "$capture"
+  progress=$(watch_one_pane_hash "$state" "$fakebin" "$capture" "$window" "$key" "$out") \
+    || fail "watcher did not record a progress pane hash: $(cat "$out")"
+  [ "$progress" != "$baseline" ] || fail "watcher ignored a bare percentage in real output when hashing the pane: $(cat "$out")"
+  pass "the watcher records one hash for idle status-bar drift and a new hash for real progress"
+}
+
+
 # CI's stock macOS Bash lane sets FM_TEST_ONLY to run just the bash-3.2
 # churn-deferral regression. The rest of this file is not a 3.2 snapshot suite.
 if [ -n "${FM_TEST_ONLY:-}" ]; then
@@ -6956,3 +7070,5 @@ test_captain_held_rechecked_under_a_quiet_record
 test_paused_until_near_future_is_quiet_before_the_cadence
 test_paused_until_wrong_year_is_bounded_by_the_cadence
 test_paused_until_that_passed_is_rechecked_before_the_cadence
+test_status_bar_drift_hash_ignores_idle_footer
+test_watcher_records_same_hash_for_status_bar_drift
