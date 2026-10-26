@@ -208,6 +208,25 @@ hash_pane() {
   if command -v md5 >/dev/null 2>&1; then md5 -q; else md5sum | cut -d' ' -f1; fi
 }
 
+# normalize_pane_for_hash: blank harness status-bar values that change on their
+# own while a pane is idle - running cost, labeled quota percentages, and the
+# context meter. Only the hash input is normalized; window_is_busy still
+# receives the raw capture.
+# Stale detection needs the pane hash to hold still across polls, and the stale
+# branches then dedup on that hash so one quiet pane surfaces once. A status
+# bar that refreshes cost or quota on its own resets the sameness counter, and
+# when the pane settles again it settles on a different hash, so dedup treats
+# the same finished worker as a new stale wake.
+# A percentage is normalized only when it carries a label prefix such as
+# gpt:96%, so a bare "45% complete" in real output still changes the hash.
+normalize_pane_for_hash() {
+  # shellcheck disable=SC2016 # $N and \$ are sed text, not shell expansions.
+  sed -E \
+    -e 's/\$[0-9][0-9.,]*/$N/g' \
+    -e 's/([A-Za-z][A-Za-z0-9_-]*:)[0-9]+(\.[0-9]+)?%/\1N%/g' \
+    -e 's@[0-9][0-9.,]*[kKmM]? */ *[0-9][0-9.,]*[kKmM]@N/N@g'
+}
+
 # window_is_busy: 0 (busy) iff the task's harness is PROVABLY working, through
 # the semantic busy-state contract (bin/fm-busy-lib.sh). Only an exact busy
 # verdict returns 0: idle, unknown, and dead all return 1, so a converted
@@ -1179,7 +1198,7 @@ EOF
       continue
     fi
     tail40=$(fm_backend_capture "$(window_backend "$w")" "$w" 40 "$(window_label "$w")" 2>/dev/null) || continue
-    h=$(printf '%s' "$tail40" | hash_pane)
+    h=$(printf '%s' "$tail40" | normalize_pane_for_hash | hash_pane)
     hf="$STATE/.hash-$key"
     cf="$STATE/.count-$key"
     sf="$STATE/.stale-$key"
