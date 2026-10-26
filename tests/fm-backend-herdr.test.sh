@@ -3169,6 +3169,63 @@ test_composer_state_pi_separator_requires_safe_native_identity() {
 # confirm a landed injection, so escalate_flush never cleared
 # state/.subsuper-escalations and the same digest was redelivered every cycle.
 
+test_composer_state_keeps_prompt_above_tall_overlay() {
+  local dir log resp fb out i shape expected
+  for shape in idle pending; do
+    expected=empty
+    [ "$shape" = idle ] || expected=pending
+    dir="$TMP_ROOT/composer-tall-overlay-$shape"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+    {
+      printf '\342\224\200\342\224\200\342\224\200\342\224\200\342\224\200\342\224\200\n\342\235\257'
+      [ "$shape" = idle ] || printf ' /fixture-command'
+      printf '\n\342\224\200\342\224\200\342\224\200\342\224\200\342\224\200\342\224\200\n'
+      i=1
+      while [ "$i" -le 24 ]; do
+        printf '  popup suggestion %02d\n' "$i"
+        i=$((i + 1))
+      done
+    } > "$resp/1.out"
+    fb=$(make_herdr_fakebin "$dir")
+    out=$( PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+      bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_composer_state default:w1:p2' "$ROOT" )
+    [ "$out" = "$expected" ] || fail "a tall overlay below a $shape composer must preserve the $expected verdict, got '$out'"
+    assert_contains "$(cat "$log")" "HERDR_SESSION=default"$'\x1f''pane'$'\x1f''read'$'\x1f''w1:p2'$'\x1f''--source'$'\x1f''visible' \
+      "composer capture must read the full visible viewport so a tall overlay cannot hide the prompt"
+  done
+  pass "fm_backend_herdr_composer_state: a tall overlay preserves idle and pending composer verdicts"
+}
+
+test_composer_state_current_claude_fixtures() {
+  local dir log resp fb out version shape expected locale fixture
+  for version in 2.1.304 2.1.308; do
+    for shape in idle pending-overlay; do
+      expected=empty
+      [ "$shape" = idle ] || expected=pending
+      for locale in native C; do
+        dir="$TMP_ROOT/composer-claude-$version-$shape-$locale"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+        fixture="$ROOT/tests/fixtures/herdr/claude-$version-$shape.ansi.b64"
+        if base64 --decode < "$fixture" > "$resp/1.out" 2>/dev/null; then
+          :
+        elif base64 -D < "$fixture" > "$resp/1.out" 2>/dev/null; then
+          :
+        else
+          fail "could not decode captured Claude Code $version $shape fixture"
+        fi
+        fb=$(make_herdr_fakebin "$dir")
+        if [ "$locale" = C ]; then
+          out=$( LC_ALL=C PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+            bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_composer_state default:w1:p2' "$ROOT" )
+        else
+          out=$( PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+            bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_composer_state default:w1:p2' "$ROOT" )
+        fi
+        [ "$out" = "$expected" ] || fail "captured Claude Code $version $shape composer under $locale locale should read $expected, got '$out'"
+      done
+    done
+  done
+  pass "fm_backend_herdr_composer_state: captured Claude Code 2.1.304 and 2.1.308 idle and pending-overlay composers classify safely in native and C locales"
+}
+
 test_composer_state_claude_unbordered_prompt_is_empty() {
   local dir log resp fb out
   dir="$TMP_ROOT/composer-claude-bare-empty"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
@@ -4547,6 +4604,8 @@ test_composer_state_pi_separator_idle_is_empty
 test_composer_state_pi_separator_real_text_is_pending
 test_composer_state_pi_incomplete_separator_below_stale_generic_is_unknown
 test_composer_state_pi_separator_requires_safe_native_identity
+test_composer_state_keeps_prompt_above_tall_overlay
+test_composer_state_current_claude_fixtures
 test_composer_state_claude_unbordered_prompt_is_empty
 test_composer_state_claude_unbordered_prompt_is_pending
 test_composer_state_bare_prompt_below_stale_bordered_banner_wins

@@ -2583,8 +2583,10 @@ fm_backend_herdr_send_key() {  # <target> <key>
 # is smaller than the pane's current viewport height (observed threshold ~23
 # rows for a default-sized pane), instead of clamping to the last N lines - it
 # does not merely ignore the bound, it drops the read entirely. This silently
-# broke exactly the small bounded reads this adapter relies on most (including
-# the composer-state guard/fallback reads around submit and injection). Workaround:
+# broke exactly the small bounded reads this adapter relies on most (the peek
+# and watch tails, the rendered busy-footer read, and the shared inbox
+# pending-line read; the adapter's own composer reads now take the viewport
+# instead, so they need no line count at all). Workaround:
 # always request a generous fetch far above any realistic viewport height, then
 # trim to the caller's requested bound ourselves with `tail`.
 fm_backend_herdr_capture() {  # <target> <lines>
@@ -2597,20 +2599,24 @@ fm_backend_herdr_capture() {  # <target> <lines>
   printf '%s' "$out" | tail -n "$lines"
 }
 
-fm_backend_herdr_capture_ansi() {  # <target> <lines>
+# fm_backend_herdr_visible_capture: the complete visible viewport. Composer
+# reads use this instead of a bounded recent tail because a popup rendered
+# below the composer can otherwise push the live prompt outside that tail.
+fm_backend_herdr_visible_capture() {  # <target>
   fm_backend_herdr_target_ready "$1" || return 1
-  local lines=${2:-200} fetch out
-  case "$lines" in ''|*[!0-9]*) lines=200 ;; esac
-  fetch=$lines
-  case "$fetch" in ''|*[!0-9]*) fetch=200 ;; *) [ "$fetch" -ge 200 ] || fetch=200 ;; esac
-  out=$(fm_backend_herdr_cli "$FM_BACKEND_HERDR_SESSION" pane read "$FM_BACKEND_HERDR_PANE" --source recent --lines "$fetch" --format ansi 2>/dev/null) || return 1
-  printf '%s' "$out" | tail -n "$lines"
+  fm_backend_herdr_cli "$FM_BACKEND_HERDR_SESSION" pane read "$FM_BACKEND_HERDR_PANE" --source visible 2>/dev/null
+}
+
+fm_backend_herdr_visible_capture_ansi() {  # <target>
+  fm_backend_herdr_target_ready "$1" || return 1
+  fm_backend_herdr_cli "$FM_BACKEND_HERDR_SESSION" pane read "$FM_BACKEND_HERDR_PANE" --source visible --format ansi 2>/dev/null
 }
 
 # --- herdr composer capture and capability primitives -----------------------
 #
 # These functions are the ONLY herdr-specific composer knowledge left: the
-# ANSI pane capture (with its small-N workaround), the native `agent get`
+# ANSI viewport capture (`--source visible`, which needs no line count and so
+# no small-N workaround), the native `agent get`
 # identity probe, and the capability descriptor. Every shape - the bordered
 # box, the bare agent-glyph row, opencode's left-bar, and pi's
 # identity-gated separated pair (which this adapter pioneered) - now lives in
@@ -2641,13 +2647,16 @@ fm_backend_herdr_composer_identity() {  # <target> -> "<agent>\t<status>"
 # only when the classifier reports the verdict depends on it (a pi separator
 # pair below every other candidate), preserving this adapter's original
 # consult-only-when-needed behavior.
+# The capture is the full visible viewport, never a bounded tail. An overlay a
+# harness renders between the composer and the pane bottom can otherwise push
+# the composer above the bound and make pending input look unreadable.
 fm_backend_herdr_composer_state() {  # <target> -> empty|pending|pending-unproven|unknown
   local target=$1 cap caps verdict identity
   fm_backend_herdr_parse_target "$target" || { printf 'unknown'; return 0; }
-  if cap=$(fm_backend_herdr_capture_ansi "$target" "$FM_COMPOSER_CAPTURE_LINES" 2>/dev/null); then
-    caps=$(printf 'styled=1\ncursor=0\nidentity=1\nrows=%s' "$FM_COMPOSER_CAPTURE_LINES")
-  elif cap=$(fm_backend_herdr_capture "$target" "$FM_COMPOSER_CAPTURE_LINES"); then
-    caps=$(printf 'styled=0\ncursor=0\nidentity=1\nrows=%s' "$FM_COMPOSER_CAPTURE_LINES")
+  if cap=$(fm_backend_herdr_visible_capture_ansi "$target" 2>/dev/null); then
+    caps=$(printf 'styled=1\ncursor=0\nidentity=1')
+  elif cap=$(fm_backend_herdr_visible_capture "$target"); then
+    caps=$(printf 'styled=0\ncursor=0\nidentity=1')
   else
     printf 'unknown'
     return 0
