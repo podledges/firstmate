@@ -12,7 +12,8 @@ metadata:
 
 ## Scope
 
-Run once per intake, including when one request both adds a project and starts a task.
+Run once in the home that executes the work, including when one request both adds a project and starts a task; verify recommendations against that home's machine, especially when homes run on different hosts.
+When the intake home executes the work, it owns the recommendation, including ordinary main-home tasks and main-home project creation or add intake; when a task is routed to a secondmate, that secondmate owns the recommendation at its own intake and the routing home skips silently without mentioning the skip.
 Routine supervision wakes, continuing an existing task, and ordinary conversation do not trigger this procedure.
 This is advice, not permission to install, enable, integrate, or perform task actions with a package, expand scope, or change dispatch, routing, delivery, or backlog rules.
 Missing discovery evidence or an unanswered recommendation never refuses work or holds up dispatch.
