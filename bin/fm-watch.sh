@@ -108,6 +108,8 @@
 #   check: rejected unauthenticated PR poll retirement receipts: <paths>
 #                          invalid pending retirements were preserved without
 #                          running a check or removing poll artifacts
+#   check: deferred-send  a durable deferred typed message could not be
+#                          completed safely and was quarantined without retyping
 #   heartbeat              fleet-scan backstop found an unsurfaced captain-relevant
 #                          status, unless afk is active
 #   check: inactive-outcome bounded poll-loop reconciliation found a suspicious
@@ -213,6 +215,10 @@ WATCH_HOME_EXISTED=0
 # cheap when no records exist and never scrapes secondmate conversation.
 # shellcheck source=bin/fm-pending-reply-lib.sh
 . "$SCRIPT_DIR/fm-pending-reply-lib.sh"
+# Typed-plane sends deferred by the shared focus/composer guard reuse this
+# existing singleton poll rather than adding another daemon.
+# shellcheck source=bin/fm-send-queue-lib.sh
+. "$SCRIPT_DIR/fm-send-queue-lib.sh"
 # shellcheck source=bin/fm-busy-lib.sh
 . "$SCRIPT_DIR/fm-busy-lib.sh"
 # Steering-inbox loss detection: bin/fm-task-inbox-lib.sh owns the record,
@@ -917,21 +923,20 @@ secondmate_busy_class() {  # <window>
   SECONDMATE_BUSY_CLASS=${verdict%% *}
 }
 
-# 0 iff a child ring is authorized: exact idle, a live agent, and a composer
-# that is not proven pending. Busy, unknown, dead, missing, and pending
-# composer all refuse, so a Kimi or Claude pane without an exact idle
-# verdict is never typed into.
+# 0 iff a child ring is authorized: exact idle, a live agent, and the shared
+# focus/composer guard's exact safe verdict. Busy, focused, unreadable,
+# unknown, dead, missing, and non-empty panes all refuse, so a Kimi or Claude
+# pane without an exact idle and safe input target is never typed into.
 secondmate_idle_ring_safe() {  # <window>
-  local w=$1 backend agent_state cstate
+  local w=$1 backend agent_state safety
   [ -n "$w" ] || return 1
   secondmate_busy_class "$w"
   [ "$SECONDMATE_BUSY_CLASS" = idle ] || return 1
   backend=$(window_backend "$w")
   agent_state=$(fm_backend_agent_state "$backend" "$w" 2>/dev/null || true)
   [ "$agent_state" = alive ] || return 1
-  cstate=$(fm_backend_composer_state "$backend" "$w" "$(window_label "$w")" 2>/dev/null) || cstate=unknown
-  [ "$cstate" != pending ] || return 1
-  return 0
+  safety=$(fm_backend_input_guard_state "$backend" "$w" "$(window_label "$w")" 2>/dev/null) || safety=focus-unknown
+  [ "$safety" = safe ]
 }
 
 # Write one fire-and-forget drain steer and ring the child's doorbell. The
@@ -2771,6 +2776,18 @@ while :; do
   # Liveness beacon for fm-guard.sh: a fresh mtime here means a watcher is
   # alive. Supervision scripts warn when this goes stale with tasks in flight.
   touch "$STATE/.last-watcher-beat"
+
+  # Safe records are delivered through the real fm-send path; focused or
+  # non-empty panes remain queued silently. An ambiguous or failed attempt is
+  # quarantined and surfaced once without automatic retyping.
+  deferred_out=$(fm_send_queue_tick "$FM_HOME" "$STATE" "$SCRIPT_DIR/fm-send.sh" 2>/dev/null || true)
+  if [ -n "$deferred_out" ]; then
+    deferred_note=$(printf '%s' "$deferred_out" | tr '\n\r\t' '   ' | head -c 1000)
+    reason="check: deferred-send: $deferred_note"
+    fm_wake_append check deferred-send "$reason" || exit 1
+    fm_send_queue_ack_failed_reports "$STATE" || exit 1
+    wake "$reason"
+  fi
 
   # Opt-in fleet activity ledger (docs/fleet-ledger.md): pick up newly appended
   # status lines before this cycle can exit on a wake. Off costs one file test.

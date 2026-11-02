@@ -50,6 +50,34 @@ fm_backend_tmux_visible_capture() {  # <target>
   tmux capture-pane -p -t "$1" -S -0
 }
 
+# fm_backend_tmux_focus_state: focused|unfocused|unknown for captain-input
+# safety. A pane is considered focused only when its session has an attached
+# client and both its window and pane are active. This is deliberately
+# conservative for shared sessions: any attached client on the active pane can
+# be the captain, so conversational or lifecycle input must not race it.
+fm_backend_tmux_focus_state() {  # <target>
+  local out attached window_active pane_active
+  out=$(tmux display-message -p -t "$1" "#{session_attached}"$'\t'"#{window_active}"$'\t'"#{pane_active}" 2>/dev/null) \
+    || { printf 'unknown'; return 0; }
+  IFS=$'\t' read -r attached window_active pane_active <<EOF
+$out
+EOF
+  if [ -z "$attached" ] || [ -z "$window_active" ] || [ -z "$pane_active" ]; then
+    printf 'unknown'
+    return 0
+  fi
+  case "$attached:$window_active:$pane_active" in
+    *[!0-9:]*) printf 'unknown' ;;
+    *)
+      if [ "$attached" -gt 0 ] && [ "$window_active" = 1 ] && [ "$pane_active" = 1 ]; then
+        printf 'focused'
+      else
+        printf 'unfocused'
+      fi
+      ;;
+  esac
+}
+
 # fm_backend_tmux_send_key: one named key. Mirrors fm-send.sh's --key path:
 # `tmux display-message -p -t "$T" '#{pane_id}' >/dev/null`, then
 # `tmux send-keys -t "$T" "$2"`.

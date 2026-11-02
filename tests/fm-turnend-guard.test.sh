@@ -108,6 +108,19 @@ test_predicate_source_needs_supervision() {
   pass "fm_supervision_unhealthy: source-only home needs supervision"
 }
 
+test_predicate_deferred_send_needs_supervision() {
+  local state="$TMP_ROOT/pred-deferred-send/state"
+  mkdir -p "$state/send-queue/one.pending" "$state/send-queue/two.sending" "$state/send-queue/old.failed"
+  fm_supervision_unhealthy "$state" 300 || fail "deferred sends with no beacon must keep supervision active"
+  [ "$FM_SUP_IN_FLIGHT" -eq 0 ] || fail "a deferred send must not count as a task"
+  [ "$FM_SUP_DEFERRED_SENDS" -eq 2 ] || fail "expected pending and interrupted sends to count, got $FM_SUP_DEFERRED_SENDS"
+  rm -rf "$state/send-queue/one.pending" "$state/send-queue/two.sending"
+  if fm_supervision_needed "$state" 300; then
+    fail "an already-quarantined send should not keep idle monitoring alive"
+  fi
+  pass "fm_supervision_needed: pending deferred sends keep their existing delivery driver alive"
+}
+
 # Register a custom check the way an operator does, through the real
 # bin/fm-check-register.sh, so these cases bind to the shipped registration
 # artifacts rather than to a hand-written imitation of them.
@@ -2208,6 +2221,7 @@ test_predicate_healthy_fresh_beacon
 test_predicate_queue_pending_flag
 test_predicate_x_mode_needs_supervision
 test_predicate_source_needs_supervision
+test_predicate_deferred_send_needs_supervision
 test_predicate_registered_check_needs_supervision
 test_predicate_registered_check_survives_rebinding_drift
 test_predicate_unregistered_check_needs_nothing

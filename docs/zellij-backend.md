@@ -28,6 +28,9 @@ zellij attach <session-name>
 
 Routine supervision does not require attachment.
 Use `bin/fm-peek.sh <id>` and `FM_HOME=<home> bin/fm-send.sh <id> '<text>'` against the metadata-routed endpoint.
+Before automated terminal input, the target task's one-pane tab must not be the active tab in an attached client and the shared composer verdict must be exactly `empty`.
+Focused, ambiguous, or nonempty panes are untouched.
+An ordinary task steer is already durable in its steering inbox and defers only its doorbell, parser-native or explicit-target text waits in the typed-send queue with status 4, and special keys return status 4 without queuing.
 
 Verify setup by spawning a small task and confirming metadata contains `backend=zellij`, `zellij_session=`, `zellij_tab_id=`, and `zellij_pane_id=`.
 

@@ -1672,6 +1672,32 @@ Real captures verified these active distinctions:
 - Codex 0.154's idle braille starfield rows are composer furniture, with the dated Herdr evidence and refresh command in [Composer classification matrix](#composer-classification-matrix).
 
 `tests/fm-composer-ghost.test.sh`, `tests/fm-composer-lib.test.sh`, and the Herdr composer cases pin the exact captured ANSI bytes.
+
+Herdr focus and composer injection safety was verified on 2026-11-03 against Herdr 0.8.0 protocol 19 in a guarded non-default lab session.
+The live regression read `focused=true` from the exact active pane's `pane list` record, preserved a focused empty composer while an ordinary steer's durable-inbox doorbell was withheld, and proved a parser-native steer left a focused pending draft byte-identical.
+A separate unfocused pending composer was also byte-identical.
+The same focused draft remained byte-identical when `fm-control interrupt`, `fm-control exit`, and `fm-control relaunch` returned status 4, with task metadata, instructions, and lifecycle records unchanged.
+Every adapter-owned Herdr call was forced through a shim that required the exact trailing lab session before delegating to `fm-herdr-lab.sh`.
+
+```sh
+HERDR_LAB_HELPER=/Users/podles/fleet/PodleMac/bin/fm-herdr-lab.sh \
+  tests/fm-send-herdr-safety-e2e.test.sh
+```
+
+Observed output:
+
+```text
+ok - real Herdr: pane list exposes focused=true for the active pane
+ok - real Herdr: focused ordinary steer stays durable while its doorbell defers without input
+ok - real Herdr: focused pending steer is deferred without changing captain text
+ok - real Herdr: unfocused pending composer defers without changing captain text
+ok - real Herdr: focused pending interrupt refuses without terminal or durable-state mutation
+ok - real Herdr: focused pending exit refuses without terminal or durable-state mutation
+ok - real Herdr: focused pending relaunch refuses before note, journal, command, or agent mutation
+all live Herdr input-safety checks passed
+evidence: herdr=0.8.0 protocol=19 default-session-tripwire=armed
+```
+
 The U+2063 operational and routed-request separators were exercised through a real Pi-on-Herdr path; the byte-exact active regression is:
 
 ```sh

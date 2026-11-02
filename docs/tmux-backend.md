@@ -70,6 +70,11 @@ Run the real-harness guard after any harness upgrade and before trusting refresh
 
 ### Composer, busy state, and delivery
 
+Before any automated terminal input, tmux must report that the target session is unattached or that the task's window and pane are not active in any attached client, and the shared composer verdict must be exactly `empty`.
+Focused and nonempty panes are untouched.
+Ordinary task text is already durable in the steering inbox, so its constant doorbell waits for watcher replay without changing the successful send result.
+Parser-native or explicit-target text returns status 4 and waits in the typed-send queue, while special keys and lifecycle control return status 4 without queuing because their meaning is time-sensitive.
+
 Agent liveness and composer safety are separate checks.
 The tmux reader is a thin adapter over the fleet-wide classifier in `bin/fm-composer-lib.sh`: it contributes one styled full-pane capture, the `#{cursor_y}` cursor row, and foreground-process identity probes, and the shape containing the cursor - a complete bordered box (titled bottom borders tolerated), a bare agent-glyph row with its wrapped input, opencode's left bar, or Pi's identity-corroborated separator pair - normally decides the verdict.
 Real text in an identified shape is pending, while only positively proven emptiness reads empty.

@@ -522,6 +522,25 @@ test_create_task_no_restore_when_new_tab_was_already_active() {
 
 # --- capture / send_key / send_literal / current_path / kill -----------------
 
+test_focus_state_uses_active_task_tab() {
+  local dir fb out active
+  for active in true false; do
+    dir="$TMP_ROOT/focus-$active"; mkdir -p "$dir/responses"; : > "$dir/log"
+    zellij_pane_response "$dir" 1 7 3
+    zellij_pane_response "$dir" 2 7 3
+    printf '[{"tab_id":3,"name":"fm-task","active":%s}]\n' "$active" > "$dir/responses/3.out"
+    fb=$(make_zellij_fakebin "$dir")
+    out=$(PATH="$fb:$PATH" FM_ZELLIJ_LOG="$dir/log" FM_ZELLIJ_RESPONSES="$dir/responses" \
+      FM_ZELLIJ_SESSION_LIST=firstmate bash -c '. "$0/bin/backends/zellij.sh"; fm_backend_zellij_focus_state firstmate:7' "$ROOT")
+    if [ "$active" = true ]; then
+      [ "$out" = focused ] || fail "active Zellij task tab should read focused, got '$out'"
+    else
+      [ "$out" = unfocused ] || fail "inactive/detached Zellij task tab should read unfocused, got '$out'"
+    fi
+  done
+  pass "fm_backend_zellij_focus_state: the attached client's active one-pane task tab is the focus equivalent"
+}
+
 test_capture_small_reads_use_viewport_and_trim() {
   local dir fb out
   dir="$TMP_ROOT/capture"; mkdir -p "$dir/responses"
@@ -1219,6 +1238,11 @@ test_scripts_route_explicit_target_through_meta_backend() {
   zellij_pane_response "$dir" 1 7 3
   printf 'captured zellij pane\n' > "$dir/responses/2.out"
   zellij_pane_response "$dir" 3 7 3
+  zellij_pane_response "$dir" 4 7 3
+  printf '[{"tab_id":3,"name":"fm-task","active":false}]\n' > "$dir/responses/5.out"
+  zellij_pane_response "$dir" 6 7 3
+  printf '❯\n' > "$dir/responses/7.out"
+  zellij_pane_response "$dir" 8 7 3
   fb=$(make_zellij_fakebin "$dir")
   cat > "$fb/tmux" <<'SH'
 #!/usr/bin/env bash
@@ -1321,6 +1345,7 @@ test_create_task_refuses_duplicate_label
 test_create_task_creates_and_parses_ids
 test_create_task_restores_previously_active_tab
 test_create_task_no_restore_when_new_tab_was_already_active
+test_focus_state_uses_active_task_tab
 test_capture_small_reads_use_viewport_and_trim
 test_capture_large_reads_use_full_scrollback_and_trim
 test_capture_fails_when_pane_absent
