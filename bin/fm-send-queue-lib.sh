@@ -9,14 +9,20 @@
 #
 # The existing singleton watcher drives fm_send_queue_tick once per ordinary
 # poll. A record is atomically renamed .pending -> .sending before fm-send is
-# invoked. Exit 4 means the pane still fails its focus/composer guard and moves it back to .pending;
-# exit 0 or delivered-unconfirmed exit 3 retires it; every other result moves it
-# to .failed and renders one report until the watcher durably queues its
-# notification and acknowledges the record, so supervision can reconcile
-# without retyping. A .sending record left by process death is delivery-ambiguous and is likewise
+# invoked. Exit 4 means the pane still fails its focus/composer guard, and the
+# supervision-lease refusal exit 6 means the other actor holds the task lease;
+# both are raised before any terminal input and move the record back to
+# .pending; exit 0 or delivered-unconfirmed exit 3 retires it; every other
+# result moves it to .failed and renders one report until the watcher durably
+# queues its notification and acknowledges the record, so supervision can
+# reconcile without retyping. A .sending record left by process death is delivery-ambiguous and is likewise
 # quarantined as .failed rather than automatically retried. Pending, claimed,
 # and failed records gate later messages for the same endpoint, preserving FIFO
-# and preventing unresolved delivery from being overtaken. This bias preserves
+# and preventing unresolved delivery from being overtaken. Nothing retries or
+# clears a .failed record automatically: an operator inspects one with
+# `bin/fm-send-queue.sh show <id>` and, after deciding whether it landed,
+# deliberately retires exactly that record with `bin/fm-send-queue.sh retire
+# <id>`, which unblocks the endpoint's later queued records. This bias preserves
 # the exactly-once typing boundary when a process dies after terminal input but
 # before queue retirement.
 #
@@ -29,6 +35,7 @@
 # payload must reach the terminal is queued here.
 
 FM_SEND_DEFERRED_EXIT=${FM_SEND_DEFERRED_EXIT:-4}
+FM_SEND_LEASE_REFUSE_EXIT=${FM_LEASE_REFUSE_EXIT:-6}
 
 fm_send_queue_root() {  # <state-dir>
   printf '%s/send-queue' "$1"
@@ -66,9 +73,14 @@ fm_send_queue_record_valid() {  # <record-dir>
 }
 
 fm_send_queue_record_remove() {  # <record-dir>
+  fm_send_queue_record_valid "$1" || return 1
+  fm_send_queue_record_retire "$1"
+}
+
+fm_send_queue_record_retire() {  # <record-dir>
   local rec=$1 retired file
-  fm_send_queue_record_valid "$rec" || return 1
-  retired=${rec%.sending}.retired
+  [ -d "$rec" ] && [ ! -L "$rec" ] || return 1
+  retired=${rec%.*}.retired
   [ ! -e "$retired" ] && [ ! -L "$retired" ] || return 1
   for file in "$rec"/*; do
     [ -f "$file" ] && [ ! -L "$file" ] || return 1
@@ -146,6 +158,29 @@ fm_send_queue_has_target() {  # <state> <resolved-target>
   return 1
 }
 
+fm_send_queue_failed_for_target() {  # <state> <resolved-target>
+  local state=$1 target=$2 root rec queued id
+  root=$(fm_send_queue_root "$state")
+  [ -d "$root" ] && [ ! -L "$root" ] || return 1
+  for rec in "$root"/*.failed; do
+    [ -d "$rec" ] && [ ! -L "$rec" ] || continue
+    fm_send_queue_read_var "$rec/resolved-target" queued || continue
+    [ "$queued" = "$target" ] || continue
+    id=${rec##*/}
+    printf '%s' "${id%.failed}"
+    return 0
+  done
+  return 1
+}
+
+fm_send_queue_failed_record() {  # <state> <id>
+  local rec
+  fm_send_queue_safe_atom "$2" || return 1
+  rec="$(fm_send_queue_root "$1")/$2.failed"
+  [ -d "$rec" ] && [ ! -L "$rec" ] || return 1
+  printf '%s' "$rec"
+}
+
 fm_send_queue_mark_reported() {  # <failed-record>
   local rec=$1
   [ -d "$rec" ] && [ ! -L "$rec" ] || return 1
@@ -159,7 +194,8 @@ fm_send_queue_report_failed_once() {  # <failed-record> <reason>
   [ ! -e "$rec/reported" ] && [ ! -L "$rec/reported" ] || return 0
   id=${rec##*/}
   id=${id%.failed}
-  printf 'deferred send %s requires reconciliation: %s\n' "$id" "$reason"
+  printf 'deferred send %s requires reconciliation: %s; later typed sends to its endpoint stay blocked until an operator inspects it with bin/fm-send-queue.sh show %s and deliberately retires it with bin/fm-send-queue.sh retire %s\n' \
+    "$id" "$reason" "$id" "$id"
 }
 
 # A report is acknowledged only after its wake is durable. Until then each tick
@@ -258,12 +294,12 @@ EOF_KEYS
           blocked_targets="${blocked_targets}${target}"$'\n'
         }
         ;;
-      "$FM_SEND_DEFERRED_EXIT")
+      "$FM_SEND_DEFERRED_EXIT"|"$FM_SEND_LEASE_REFUSE_EXIT")
         rm -f -- "$err"
         if ! mv -- "$rec" "$pending"; then
           failed=${rec%.sending}.failed
           mv -- "$rec" "$failed" 2>/dev/null || true
-          fm_send_queue_report_failed_once "$failed" "the pane remained unsafe and the queue claim could not be restored"
+          fm_send_queue_report_failed_once "$failed" "delivery was refused before input and the queue claim could not be restored"
         fi
         blocked_targets="${blocked_targets}${target}"$'\n'
         ;;

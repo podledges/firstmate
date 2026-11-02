@@ -1152,7 +1152,11 @@ else
       exit "$FM_SEND_DEFERRED_EXIT"
     fi
     if deferred_id=$(fm_send_queue_enqueue "$STATE" "$RAW_TARGET" "$T" "$RESOLVE_ANSWER_TEXT" "$RESOLVE_KEYS" "$PENDING_REPLY_CORR"); then
-      echo "fm-send: deferred without typing to $T (safety=$safety); durable queue id=$deferred_id will deliver exactly once after the pane passes its focus guard and its composer is empty" >&2
+      if blocking_id=$(fm_send_queue_failed_for_target "$STATE" "$T"); then
+        echo "fm-send: deferred without typing to $T (safety=$safety); durable queue id=$deferred_id is held behind quarantined deferred send $blocking_id and will not deliver until an operator inspects it with bin/fm-send-queue.sh show $blocking_id and deliberately retires it with bin/fm-send-queue.sh retire $blocking_id" >&2
+      else
+        echo "fm-send: deferred without typing to $T (safety=$safety); durable queue id=$deferred_id will deliver exactly once after the pane passes its focus guard and its composer is empty, unless an earlier deferred send to it is quarantined first" >&2
+      fi
       exit "$FM_SEND_DEFERRED_EXIT"
     fi
     if [ "$PENDING_REPLY_CREATED" = 1 ] && [ -n "$PENDING_REPLY_CORR" ]; then
