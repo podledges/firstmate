@@ -259,6 +259,65 @@ test_interrupted_delivery_is_quarantined_without_retyping() {
   pass "fm-send defer: a crash claim quarantines without retyping and reports until durably acknowledged"
 }
 
+test_lease_refusal_returns_claim_to_pending_without_typing() {
+  local dir rc stub
+  dir=$(new_case lease-refusal)
+  set_focus "$dir" $'1\t1\t1'
+  run_send "$dir" t1 '/waits out a lease' >/dev/null; rc=$?
+  expect_code 4 "$rc" "focused message should queue before lease-refusal test"
+  set_focus "$dir" $'0\t0\t0'
+  stub="$dir/lease-refusing-send"
+  printf '#!/usr/bin/env bash\necho "error: steer (fm-send) refused - task is leased" >&2\nexit 6\n' > "$stub"
+  chmod +x "$stub"
+  out=$(PATH="$dir/fakebin:$PATH" fm_send_queue_tick "$dir/home" "$dir/home/state" "$stub")
+  [ -z "$out" ] || fail "lease refusal was reported as a failed delivery: $out"
+  [ "$(queue_count "$dir" pending)" = 1 ] || fail "lease-refused claim did not return to pending"
+  [ "$(queue_count "$dir" failed)" = 0 ] || fail "lease-refused claim was quarantined"
+  run_tick "$dir" >/dev/null
+  [ "$(literal_count "$dir")" = 1 ] || fail "message did not deliver exactly once after the lease cleared"
+  [ "$(queue_count "$dir" pending)" = 0 ] || fail "delivered record stayed pending"
+  pass "fm-send defer: a no-input lease refusal keeps the record pending and delivers once after release"
+}
+
+test_quarantined_record_blocks_until_operator_retires_it() {
+  local dir rc id out
+  dir=$(new_case retire)
+  set_focus "$dir" $'1\t1\t1'
+  run_send "$dir" t1 '/bound to original endpoint' >/dev/null; rc=$?
+  expect_code 4 "$rc" "focused message should queue before retire test"
+  fm_write_meta "$dir/home/state/t1.meta" "window=sess:fm-other" "kind=ship" "harness=claude"
+  set_focus "$dir" $'0\t0\t0'
+  out=$(run_tick "$dir")
+  id=$(find "$dir/home/state/send-queue" -maxdepth 1 -type d -name '*.failed' -print -quit)
+  id=${id##*/}; id=${id%.failed}
+  [ -n "$id" ] || fail "changed-endpoint record was not quarantined"
+  assert_contains "$out" "bin/fm-send-queue.sh retire $id" "quarantine report did not name the retire path"
+  fm_send_queue_ack_failed_reports "$dir/home/state" || fail "could not acknowledge quarantine report"
+
+  fm_write_meta "$dir/home/state/t1.meta" "window=sess:fm-t1" "kind=ship" "harness=claude"
+  run_send "$dir" t1 '/later message' >/dev/null; rc=$?
+  expect_code 4 "$rc" "send behind a quarantined record should defer"
+  assert_contains "$(cat "$dir/send.err")" "held behind quarantined deferred send $id" \
+    "send behind a quarantined record promised eventual delivery"
+  run_tick "$dir" >/dev/null
+  [ "$(literal_count "$dir")" = 0 ] || fail "later send overtook the quarantined record"
+
+  out=$(FM_HOME="$dir/home" "$ROOT/bin/fm-send-queue.sh" list)
+  assert_contains "$out" "$id" "list did not show the quarantined record"
+  out=$(FM_HOME="$dir/home" "$ROOT/bin/fm-send-queue.sh" show "$id")
+  assert_contains "$out" "/bound to original endpoint" "show did not print the quarantined message"
+  FM_HOME="$dir/home" "$ROOT/bin/fm-send-queue.sh" retire nope >/dev/null 2>&1; rc=$?
+  expect_code 1 "$rc" "retiring an unknown record should fail"
+  FM_HOME="$dir/home" "$ROOT/bin/fm-send-queue.sh" retire "$id" >/dev/null || fail "retire failed"
+  [ "$(queue_count "$dir" failed)" = 0 ] || fail "retired record is still quarantined"
+  [ "$(literal_count "$dir")" = 0 ] || fail "retire typed something"
+
+  run_tick "$dir" >/dev/null
+  [ "$(cat "$dir/fake/literal")" = "/later message" ] \
+    || fail "after retirement only the later message should deliver: $(cat "$dir/fake/literal")"
+  pass "fm-send defer: a quarantined record blocks later sends until an operator retires exactly it, and is never retyped"
+}
+
 test_focused_send_defers_then_delivers_once
 test_per_target_fifo_is_preserved
 test_pending_and_unknown_composers_defer_without_touching_draft
@@ -267,5 +326,7 @@ test_deferred_secondmate_keeps_one_correlation
 test_replay_quarantines_changed_endpoint_without_typing
 test_special_keys_refuse_and_never_queue
 test_interrupted_delivery_is_quarantined_without_retyping
+test_lease_refusal_returns_claim_to_pending_without_typing
+test_quarantined_record_blocks_until_operator_retires_it
 
 echo "all fm-send defer tests passed"
