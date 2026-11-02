@@ -543,6 +543,15 @@ fm_backend_cmux_composer_capture() {  # <target> [expected-label]
   fm_backend_cmux_capture "$1" "$FM_COMPOSER_CAPTURE_LINES" "${2:-}"
 }
 
+# cmux 0.64's verified CLI exposes selected surfaces inside a workspace but no
+# fact that identifies which workspace or surface the captain's client is
+# focused on. The shared safety guard treats this explicit unsupported verdict
+# as a documented focus no-op while still requiring an affirmatively empty
+# composer before any input.
+fm_backend_cmux_focus_state() {  # <target> [expected-label]
+  printf 'unsupported'
+}
+
 # fm_backend_cmux_composer_caps: static capability facts, not logic (see the
 # capability model in bin/fm-composer-lib.sh).
 fm_backend_cmux_composer_caps() {

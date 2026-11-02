@@ -1423,7 +1423,7 @@ window_for_task() {  # <task-key> [state]
 #     line, or a previous injection's unsent text), defer entirely - injecting
 #     would merge with the human's text.
 inject_msg() {  # <message> [state]
-  local msg=$1 state target backend retries sleep_s verdict composer encoded bytes errf err='' body
+  local msg=$1 state target backend retries sleep_s verdict safety encoded bytes errf err='' body
   state="${2:-$(_state_root)}"
   # (1) Presence-gate: inject ONLY when afk is active. When afk is off, the
   # daemon self-handles and stays quiet; firstmate drives the normal always-on
@@ -1455,18 +1455,18 @@ inject_msg() {  # <message> [state]
     log "inject $INJECT_LAST_FAILURE"
     return 1
   fi
-  #   b) Composer-guard: inject ONLY into a confirmed-empty GENUINE agent
-  #      composer. The shared classifier (fm_backend_composer_state ->
-  #      fm_composer_classify_content, bin/fm-composer-lib.sh) reports 'pending'
-  #      for real unsubmitted text (a human's half-typed line, or a swallowed
-  #      prior injection) and 'unknown' for a bare dead-shell prompt (the agent
-  #      exited to its login shell) or an unreadable pane. Neither is a safe
-  #      target - typing the escalation into a shell could execute it - so defer
-  #      on anything that is not affirmatively 'empty'. A deferred escalation
-  #      stays buffered for the next cycle or the catch-up flush.
-  composer=$(fm_backend_composer_state "$backend" "$target" 2>/dev/null)
-  if [ "$composer" != empty ]; then
-    INJECT_LAST_FAILURE="deferred: supervisor composer not confirmed-empty (state=${composer:-unknown}: pending input, dead-shell prompt, or unreadable pane)"
+  #   b) Shared input guard: never inject into the captain's focused pane, and
+  #      proceed only on a confirmed-empty genuine agent composer. The same
+  #      fm_backend_input_guard_state owner protects steers and lifecycle
+  #      control, so the primary composer cannot drift to a weaker rule than
+  #      worker panes. A pending draft, dead-shell prompt, unreadable supported
+  #      focus signal, or unknown composer defers. A backend without a focus
+  #      signal uses the documented focus no-op but must still prove its
+  #      composer empty. The escalation stays buffered for the next cycle or
+  #      catch-up flush.
+  safety=$(fm_backend_input_guard_state "$backend" "$target" 2>/dev/null)
+  if [ "$safety" != safe ]; then
+    INJECT_LAST_FAILURE="deferred: supervisor pane is not safe for input (state=${safety:-composer-unknown})"
     log "inject $INJECT_LAST_FAILURE"
     return 1
   fi

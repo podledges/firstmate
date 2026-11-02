@@ -232,6 +232,14 @@ fm_backend_orca_composer_capture() {  # <terminal-id> [expected-label]
   fm_backend_orca_capture "$1" "$FM_COMPOSER_CAPTURE_LINES"
 }
 
+# Orca's verified terminal API exposes read, send, interrupt, and close but no
+# client-focus or selected-terminal fact. The shared safety guard treats this
+# explicit unsupported verdict as a documented focus no-op while still
+# requiring an affirmatively empty composer before any input.
+fm_backend_orca_focus_state() {  # <terminal-id> [expected-label]
+  printf 'unsupported'
+}
+
 # fm_backend_orca_composer_caps: static capability facts, not logic (see the
 # capability model in bin/fm-composer-lib.sh). Orca's `terminal read` returns
 # plain text; whether it can emit ANSI is unverified (orca is not installed

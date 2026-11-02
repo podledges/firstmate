@@ -1088,6 +1088,17 @@ test_list_live_filters_by_title_prefix() {
 
 # --- fm-spawn.sh: --secondmate refuses backend=cmux --------------------------
 
+test_focus_state_is_a_documented_noop() {
+  local out
+  out=$(fm_backend_focus_state cmux cmux:ws:surface)
+  [ "$out" = unsupported ] || fail "cmux focus state must be explicitly unsupported, got '$out'"
+  out=$(fm_backend_input_guard_state cmux cmux:ws:surface)
+  [ "$out" = composer-unknown ] || fail "cmux unsupported focus should continue to its composer guard, got '$out'"
+  out=$(bash -c '. "$0/bin/fm-backend.sh"; fm_backend_source cmux; fm_backend_cmux_composer_state() { printf empty; }; fm_backend_input_guard_state cmux cmux:ws:surface' "$ROOT")
+  [ "$out" = safe ] || fail "cmux focus no-op plus an empty composer should permit input, got '$out'"
+  pass "fm_backend_cmux_focus_state: unsupported focus is a documented no-op and composer safety remains mandatory"
+}
+
 test_secondmate_spawn_refuses_cmux_backend() {
   local dir state data config projects out status
   dir="$TMP_ROOT/secondmate-refuse"; state="$dir/state"; data="$dir/data"; config="$dir/config"; projects="$dir/projects"
@@ -1152,6 +1163,7 @@ test_composer_state_real_text_is_pending
 test_composer_state_popup_placeholder_fill_is_pending
 test_composer_state_unknown_on_capture_failure
 test_composer_state_unknown_when_no_composer_row_found
+test_focus_state_is_a_documented_noop
 test_send_text_submit_detects_landed_send
 test_send_text_submit_detects_swallowed_enter
 test_send_text_submit_popup_autocomplete_requires_second_enter

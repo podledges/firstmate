@@ -24,6 +24,9 @@ No manual repository registration is required.
 
 Open the Orca app to watch a task's terminal.
 Routine supervision uses the recorded endpoint through `bin/fm-peek.sh <id>` and `FM_HOME=<home> bin/fm-send.sh <id> '<text>'`.
+The verified Orca terminal surface does not expose whether a person is focused in the target terminal, so focus detection is a documented no-op rather than a guessed verdict.
+The shared composer classifier still has to prove `empty` before any terminal input.
+An ordinary task steer is already durable in its steering inbox and defers only its doorbell, parser-native or explicit-target text waits in the typed-send queue with status 4, and special keys return status 4 without queuing.
 Enter and Ctrl-C are supported; Escape is not.
 
 ## Task shape and metadata

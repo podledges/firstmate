@@ -3957,6 +3957,32 @@ test_composer_state_unknown_on_capture_failure() {
   pass "fm_backend_herdr_composer_state: reports unknown when the pane cannot be captured"
 }
 
+test_focus_state_uses_exact_pane_focused_field() {
+  local dir log resp fb out
+
+  dir="$TMP_ROOT/focus-state-true"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  printf '{"result":{"panes":[{"pane_id":"w1:p1","focused":false},{"pane_id":"w1:p2","focused":true}]}}\n' > "$resp/1.out"
+  fb=$(make_herdr_fakebin "$dir")
+  out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_focus_state default:w1:p2' "$ROOT")
+  [ "$out" = focused ] || fail "exact Herdr focused=true pane should read focused, got '$out'"
+
+  dir="$TMP_ROOT/focus-state-false"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  printf '{"result":{"panes":[{"pane_id":"w1:p2","focused":false}]}}\n' > "$resp/1.out"
+  fb=$(make_herdr_fakebin "$dir")
+  out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_focus_state default:w1:p2' "$ROOT")
+  [ "$out" = unfocused ] || fail "exact Herdr focused=false pane should read unfocused, got '$out'"
+
+  dir="$TMP_ROOT/focus-state-ambiguous"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  printf '{"result":{"panes":[{"pane_id":"w1:p2"},{"pane_id":"w1:p2","focused":false}]}}\n' > "$resp/1.out"
+  fb=$(make_herdr_fakebin "$dir")
+  out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_focus_state default:w1:p2' "$ROOT")
+  [ "$out" = unknown ] || fail "ambiguous Herdr focus response should read unknown, got '$out'"
+  pass "fm_backend_herdr_focus_state: exact per-pane focused booleans gate input and ambiguity fails safe"
+}
+
 test_composer_state_unknown_when_no_composer_row_found() {
   local dir log resp fb out glyph idx=1
   dir="$TMP_ROOT/composer-no-row"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
@@ -5306,6 +5332,8 @@ test_scripts_route_explicit_target_through_meta_backend() {
   fm_write_meta "$state/herdr-stale.meta" "window=default:w1:p2" "backend=herdr"
   touch "$state/.last-watcher-beat"
   printf 'captured herdr pane\n' > "$resp/1.out"
+  printf '{"result":{"panes":[{"pane_id":"w1:p2","focused":false}]}}\n' > "$resp/2.out"
+  printf '❯\n' > "$resp/3.out"
   fb=$(make_herdr_fakebin "$dir")
   cat > "$fb/tmux" <<'SH'
 #!/usr/bin/env bash
@@ -6002,6 +6030,7 @@ test_composer_state_real_text_is_pending
 test_composer_state_grok_oversized_title_preserves_safe_verdicts
 test_composer_state_popup_placeholder_fill_is_pending
 test_composer_state_unknown_on_capture_failure
+test_focus_state_uses_exact_pane_focused_field
 test_composer_state_unknown_when_no_composer_row_found
 test_composer_state_pi_parked_prompt_is_not_empty
 test_composer_state_pi_separator_idle_is_empty

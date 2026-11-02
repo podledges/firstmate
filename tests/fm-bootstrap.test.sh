@@ -857,6 +857,7 @@ make_routine_bootstrap_fixture() {
 case "${1:-}" in
   display-message)
     case "$*" in
+      *'#{session_attached}'*) printf '0\t0\t0\n' ;;
       *'#{cursor_y}'*) printf '%s\n' 0 ;;
       *) printf '%s\n' codex ;;
     esac

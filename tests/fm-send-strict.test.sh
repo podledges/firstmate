@@ -46,6 +46,7 @@ case "${1:-}" in
     while [ $# -gt 0 ]; do
       case "$1" in
         -t) target=$2; shift 2 ;;
+        *session_attached*) printf '0\t0\t0\n'; exit 0 ;;
         *cursor_y*) cursor=1; shift ;;
         *) shift ;;
       esac
@@ -71,8 +72,10 @@ SH
 set -u
 printf '%s\n' "$*" >> "$FM_HERDR_LOG"
 case "${1:-} ${2:-}" in
-  "status --json") printf '{"client":{"version":"0.7.5","protocol":16},"server":{"running":true}}\n' ;;
+  "status --json") printf '{"client":{"version":"0.8.0","protocol":19},"server":{"running":true}}\n' ;;
   "pane get") printf '{"result":{"pane":{"pane_id":"%s"}}}\n' "${3:-}" ;;
+  "pane list") printf '{"result":{"panes":[{"pane_id":"w1:p2","focused":false}]}}\n' ;;
+  "pane read") printf '╭────╮\n│    │\n╰────╯\n' ;;
   "pane send-keys") : ;;
 esac
 SH

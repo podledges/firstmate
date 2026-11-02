@@ -95,12 +95,19 @@ case "${1:-}" in
   display-message)
     for a in "$@"; do
       case "$a" in
+        *session_attached*)
+          if [ "${FM_FAKE_TMUX_FOCUSED:-0}" = 1 ]; then printf '1\t1\t1\n'; else printf '0\t0\t0\n'; fi
+          exit 0 ;;
+        *session_name*pane_id*) printf 'sess\t@1\t%%1\n'; exit 0 ;;
         *cursor_y*) printf '1\n'; exit 0 ;;
         *pane_current_command*) [ -z "${FM_FAKE_TMUX_AGENT:-}" ] || { printf '%s\n' "$FM_FAKE_TMUX_AGENT"; exit 0; } ;;
         *pane_tty*) [ -z "${FM_FAKE_TMUX_AGENT:-}" ] || { printf '\n'; exit 0; } ;;
       esac
     done
     printf 'fakepane\n'; exit 0 ;;
+  list-clients)
+    [ "${FM_FAKE_TMUX_FOCUSED:-0}" = 1 ] && printf 'sess\t@1\t%%1\n'
+    exit 0 ;;
   capture-pane)
     if [ -n "${FM_FAKE_TMUX_CAPTURE:-}" ] && [ -f "$FM_FAKE_TMUX_CAPTURE" ]; then
       cat "$FM_FAKE_TMUX_CAPTURE"
@@ -261,8 +268,8 @@ test_doorbell_rejects_terminal_controls() {
 
 # fm_task_inbox_ring against a backend whose agent classifies dead or missing:
 # nothing is typed and the distinct return code lets callers route to recovery.
-# An unreadable endpoint still rings, so a blind classifier never starves a
-# live worker.
+# An unreadable agent classification still rings when focus and composer state
+# are affirmatively safe, so a blind process classifier never starves a worker.
 test_ring_skips_dead_agent() {
   local dir state rec log rc
   dir="$TMP_ROOT/ring-dead"
@@ -289,6 +296,12 @@ test_ring_skips_dead_agent() {
   [ "$rc" = 0 ] || fail "a live agent should still be rung, got $rc"
   grep -qF 'Firstmate instruction waiting' "$log" || fail "a live agent did not receive the doorbell"
   : > "$log"
+  rc=0
+  PATH="$dir/fakebin:$PATH" FM_SEND_LOG="$log" FM_FAKE_TMUX_AGENT=claude FM_FAKE_TMUX_FOCUSED=1 \
+    inbox_lib "$state" fm_task_inbox_ring tmux sess:fm-t1 "$rec" fm-t1 || rc=$?
+  [ "$rc" = 1 ] || fail "a focused live agent should defer its doorbell, got $rc"
+  [ ! -s "$log" ] || fail "a focused pane received input:"$'\n'"$(cat "$log")"
+  [ -f "$rec" ] || fail "deferring a focused doorbell removed the durable record"
   rc=0
   PATH="$dir/fakebin:$PATH" FM_SEND_LOG="$log" \
     inbox_lib "$state" fm_task_inbox_ring tmux sess:fm-t1 "$rec" fm-t1 || rc=$?
@@ -330,8 +343,17 @@ case "${1:-}" in
     fi
     exit 0 ;;
   display-message)
-    case "$*" in *cursor_y*) printf '2\n'; exit 0 ;; esac
+    case "$*" in
+      *session_attached*)
+        if [ "${FM_FAKE_TMUX_FOCUSED:-0}" = 1 ]; then printf '1\t1\t1\n'; else printf '0\t0\t0\n'; fi
+        exit 0 ;;
+      *session_name*pane_id*) printf 'sess\t@1\t%%1\n'; exit 0 ;;
+      *cursor_y*) printf '2\n'; exit 0 ;;
+    esac
     printf 'fakepane\n'; exit 0 ;;
+  list-clients)
+    [ "${FM_FAKE_TMUX_FOCUSED:-0}" = 1 ] && printf 'sess\t@1\t%%1\n'
+    exit 0 ;;
   capture-pane)
     rule=$(printf '─%.0s' $(seq 64))
     printf '● done\n%s\n' "$rule"
@@ -349,11 +371,10 @@ SH
   chmod +x "$1/fakebin/tmux"
 }
 
-# The stuck-doorbell deadlock: a doorbell whose Enter never landed sits in the
-# composer, and a ring that skipped every pending composer blocked all later
-# rings. Our own exact doorbell is submitted instead; any other pending text
-# still skips untouched; and a lost Enter after typing gets one retry.
-test_ring_submits_its_own_stuck_doorbell() {
+# The stuck-doorbell deadlock: a doorbell whose Enter never landed may be
+# submitted only when the pane is unfocused and it is exactly our own constant
+# line. Focus always wins, and every other pending draft stays untouched.
+test_ring_submits_only_unfocused_own_doorbell() {
   local dir state rec doorbell log composer drops rc other
   dir="$TMP_ROOT/ring-stuck"
   state="$dir/state"
@@ -368,8 +389,14 @@ test_ring_submits_its_own_stuck_doorbell() {
   }
 
   : > "$log"; printf '%s' "$doorbell" > "$composer"
+  rc=0; FM_FAKE_TMUX_FOCUSED=1 ring || rc=$?
+  [ "$rc" = 1 ] || fail "a focused pane should refuse even its own stuck doorbell, got rc $rc"
+  [ ! -s "$log" ] || fail "a focused pane submitted the stuck doorbell"
+  [ "$(cat "$composer")" = "$doorbell" ] || fail "focused refusal changed the stuck doorbell"
+
+  : > "$log"
   rc=0; ring || rc=$?
-  [ "$rc" = 0 ] || fail "a composer holding our own stuck doorbell should be submitted, got rc $rc"
+  [ "$rc" = 0 ] || fail "an unfocused composer holding our own stuck doorbell should be submitted, got rc $rc"
   [ "$(cat "$log")" = "SUBMIT: $doorbell" ] \
     || fail "the stuck doorbell should be submitted exactly once, not retyped:"$'\n'"$(cat "$log")"
   [ ! -s "$composer" ] || fail "the stuck doorbell was left in the composer"
@@ -395,7 +422,7 @@ test_ring_submits_its_own_stuck_doorbell() {
   [ "$(cat "$log")" = "SUBMIT: $doorbell" ] \
     || fail "the retry Enter should submit the doorbell once:"$'\n'"$(cat "$log")"
   [ ! -s "$composer" ] || fail "a lost Enter left the doorbell unsubmitted"
-  pass "inbox: the ring submits its own stuck doorbell, skips other pending text, and retries a lost Enter once on both paths"
+  pass "inbox: focus blocks every ring; only an unfocused exact stuck doorbell may be submitted"
 }
 
 test_idempotent_write_dedups_exact_body() {
@@ -1185,7 +1212,7 @@ test_write_is_durable_and_exact
 test_doorbell_is_a_shell_noop
 test_doorbell_rejects_terminal_controls
 test_ring_skips_dead_agent
-test_ring_submits_its_own_stuck_doorbell
+test_ring_submits_only_unfocused_own_doorbell
 test_idempotent_write_dedups_exact_body
 test_idempotent_write_follows_concurrent_ack
 test_handled_mv_dedups_by_sequence

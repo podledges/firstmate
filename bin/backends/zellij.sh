@@ -386,6 +386,25 @@ fm_backend_zellij_target_ready() {  # <target> [expected-label]
   fm_backend_zellij_pane_exists "$FM_BACKEND_ZELLIJ_SESSION" "$FM_BACKEND_ZELLIJ_PANE"
 }
 
+# fm_backend_zellij_focus_state: focused|unfocused|unknown from the active-tab
+# fact exposed by `list-tabs --json`. Firstmate task tabs own one terminal pane,
+# so an attached client's active task tab is the best available pane-focus
+# equivalent. A detached session reports no active tab and is unfocused.
+fm_backend_zellij_focus_state() {  # <target> [expected-label]
+  local target=$1 expected_label=${2:-} tab_id tabs count active
+  fm_backend_zellij_target_ready "$target" "$expected_label" \
+    || { printf 'unknown'; return 0; }
+  tab_id=$(fm_backend_zellij_tab_for_pane "$FM_BACKEND_ZELLIJ_SESSION" "$FM_BACKEND_ZELLIJ_PANE" 2>/dev/null)
+  [ -n "$tab_id" ] || { printf 'unknown'; return 0; }
+  tabs=$(fm_backend_zellij_cli "$FM_BACKEND_ZELLIJ_SESSION" action list-tabs --json 2>/dev/null) \
+    || { printf 'unknown'; return 0; }
+  count=$(printf '%s' "$tabs" | jq -r --argjson tab "$tab_id" '[.[]? | select(.tab_id == $tab)] | length' 2>/dev/null) \
+    || { printf 'unknown'; return 0; }
+  [ "$count" = 1 ] || { printf 'unknown'; return 0; }
+  active=$(printf '%s' "$tabs" | jq -r --argjson tab "$tab_id" '.[]? | select(.tab_id == $tab) | .active' 2>/dev/null)
+  case "$active" in true) printf 'focused' ;; false) printf 'unfocused' ;; *) printf 'unknown' ;; esac
+}
+
 # fm_backend_zellij_current_path: the live pane's cwd, or empty on any error.
 # Mirrors tmux's pane_current_path poll used for worktree-path discovery after
 # `treehouse get`.

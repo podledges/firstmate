@@ -113,6 +113,17 @@
 # A remotely placed secondmate is refused by name: its agent runs on another
 # host, so no postcondition this plane verifies could be read for it here.
 #
+# Input-safety boundary: every action that could type, submit, interrupt, or
+# clear input first uses fm-backend.sh's shared focus/composer guard. A focused
+# pane, unreadable supported focus signal, or composer that is not affirmatively
+# empty returns exit 4 without touching the agent or its work. A backend with no
+# focus primitive uses the documented no-op but retains the composer check.
+# Lifecycle actions are refused rather than deferred because replaying an
+# interrupt, exit, or relaunch after the operator's context has changed is not
+# semantically safe. Pure Escape and Ctrl+C interrupts are covered because they
+# can cancel the captain's foreground action or discard a draft just as surely
+# as typed text.
+#
 # Fail-closed boundaries:
 #   - An unverified harness, or a harness whose control mechanics are unknown,
 #     is refused rather than guessed at.
@@ -434,6 +445,33 @@ require_state_verified_backend() {  # <verb>
   die "task $ID runs on the $BACKEND backend, which has no recovery-grade agent-state classifier, so '$1' cannot prove the agent actually stopped; refusing rather than reporting an unproven transition as done"
 }
 
+require_input_safe() {  # <verb>
+  local verb=$1 safety dialog
+  : > "$FM_COMPOSER_DIALOG_SINK" \
+    || die "task $ID's dialog check could not be recorded"
+  safety=$(fm_backend_input_guard_state "$BACKEND" "$T" "$LABEL")
+  if [ -s "$FM_COMPOSER_DIALOG_SINK" ]; then
+    dialog=$(cat "$FM_COMPOSER_DIALOG_SINK")
+    refuse_blocking_prompt "$dialog"
+  fi
+  [ "$safety" = safe ] && return 0
+  echo "fm-control: $verb refused without input for task $ID (safety=$safety); lifecycle actions are not deferred because replaying one later could stop or interrupt the wrong operator context" >&2
+  return 4
+}
+
+# require_interrupt_backend_capability: the single preflight for the interrupt
+# and any required composer-clear key. It runs before pane-input safety because
+# an incapable backend can refuse without reading or touching the endpoint.
+require_interrupt_backend_capability() {
+  local key clear
+  key=$(fm_control_interrupt_key "$HARNESS")
+  clear=$(fm_control_interrupt_clear_key "$HARNESS")
+  fm_control_backend_supports_key "$BACKEND" "$key" \
+    || die "harness $HARNESS interrupts with $key, which the $BACKEND backend cannot deliver; refusing to send a different key"
+  [ -z "$clear" ] || fm_control_backend_supports_key "$BACKEND" "$clear" \
+    || die "harness $HARNESS needs $clear to clear its composer after an interrupt, which the $BACKEND backend cannot deliver; refusing to leave the cancelled prompt where the next submitted line would concatenate onto it"
+}
+
 # refuse_blocking_prompt: the screen is a dialog a confirming Enter would
 # answer. Name it and stop. Do not type Escape or an option: both dismiss
 # or choose.
@@ -494,10 +532,7 @@ send_interrupt_keys() {
   arm=$(fm_control_interrupt_arm_signal "$HARNESS")
   hazard=$(fm_control_interrupt_hazard_signal "$HARNESS")
   gap=$(fm_control_interrupt_press_gap "$HARNESS")
-  fm_control_backend_supports_key "$BACKEND" "$key" \
-    || die "harness $HARNESS interrupts with $key, which the $BACKEND backend cannot deliver; refusing to send a different key"
-  [ -z "$clear" ] || fm_control_backend_supports_key "$BACKEND" "$clear" \
-    || die "harness $HARNESS needs $clear to clear its composer after an interrupt, which the $BACKEND backend cannot deliver; refusing to leave the cancelled prompt where the next submitted line would concatenate onto it"
+  require_interrupt_backend_capability
   [ -z "$arm$hazard" ] || fm_backend_visible_capture_supported "$BACKEND" \
     || die "harness $HARNESS must see its screen between interrupt presses, because a repeated $key on an idle agent opens its revert picker, and the $BACKEND backend has no verified viewport read; refusing to press blind"
   INTERRUPT_ARMED=yes
@@ -594,6 +629,8 @@ verify_interrupt_running() {
 
 do_interrupt() {
   local proof cancel
+  require_interrupt_backend_capability
+  require_input_safe interrupt || return $?
   cancel=$(deliver_interrupt) || return $?
   proof=$(verify_interrupt_running) || return $?
   printf '%s cancel=%s' "$proof" "$cancel"
@@ -664,7 +701,7 @@ retire_busy_incarnation() {
 # do_exit: stop the running agent, preserving endpoint and worktree. Prints
 # `already-stopped`, `endpoint-gone`, or `stopped`.
 do_exit() {
-  local state cmd hazard verdict composer_state cancel absence interrupt_result=not-needed dialog
+  local state cmd hazard verdict cancel absence interrupt_result=not-needed dialog
   require_state_verified_backend exit
   state=$(agent_state)
   case "$state" in
@@ -709,6 +746,7 @@ do_exit() {
       ;;
     *) die "task $ID's endpoint reads '$state' rather than a positively classified state; refusing to send a lifecycle command into an unattributed endpoint" ;;
   esac
+  require_input_safe exit || return $?
   # A busy agent is interrupted first before the exit command is submitted.
   case "$(busy_verdict)" in
     busy*)
@@ -731,25 +769,9 @@ do_exit() {
   if [ -n "$hazard" ] && rendered_matches "$hazard"; then
     die "task $ID shows the $HARNESS revert picker, where typed text becomes a search and Enter reverts file changes; refusing to type the $cmd exit command. Close it with $(fm_control_interrupt_key "$HARNESS"), never Enter, then retry '$VERB'"
   fi
-  : > "$FM_COMPOSER_DIALOG_SINK" \
-    || die "task $ID's dialog check could not be recorded"
-  composer_state=$(fm_backend_composer_state "$BACKEND" "$T" "$LABEL" 2>/dev/null) \
-    || composer_state=unknown
-  # The classify that filled the sink ran in a subshell, so read the file
-  # rather than a function that subshell sourced.
-  if [ -s "${FM_COMPOSER_DIALOG_SINK:-}" ]; then
-    dialog=$(cat "$FM_COMPOSER_DIALOG_SINK")
-    refuse_blocking_prompt "$dialog"
-  fi
-  case "$composer_state" in
-    empty) ;;
-    pending)
-      die "task $ID's composer visibly holds pending text; refusing to type the $cmd exit command because it would concatenate onto that text. Clear or submit the pending text, then retry '$VERB'"
-      ;;
-    *)
-      die "task $ID's composer state is '$composer_state', not proven empty; refusing to type the $cmd exit command because it could concatenate onto existing text. Clear the composer, then retry '$VERB'"
-      ;;
-  esac
+  # An interrupt can redraw or restore a composer, so prove safety again
+  # immediately before typing the exit command.
+  require_input_safe exit || return $?
   # The submit verdict is NOT the postcondition here: a successful exit command
   # destroys the composer the verdict is read from, so a post-exit read can
   # legitimately report anything. Only a hard transport failure aborts; the
@@ -1124,16 +1146,35 @@ record_note() {
 }
 
 do_relaunch() {
-  local exit_result state note_line
+  local exit_result state note_line endpoint_missing=0 absence
   local -a spawn_args
 
   require_state_verified_backend relaunch
   resolve_relaunch_profile
 
-  if [ "$BACKEND" = tmux ] && [ "$(agent_state)" = missing ]; then
-    [ "$KIND" = ship ] || die "missing tmux recovery is supported only for ordinary ship tasks"
-    state=$(fm_control_endpoint_absence_verdict tmux "$T" "$META")
-    [ "${state%%$'\t'*}" = gone ] || die "cannot recover missing tmux endpoint: ${state#*$'\t'}"
+  state=$(agent_state)
+  case "$state" in
+    alive|dead) ;;
+    missing)
+      absence=$(fm_control_endpoint_absence_verdict "$BACKEND" "$T" "$META")
+      case "${absence%%$'\t'*}" in
+        gone)
+          endpoint_missing=1
+          [ "$BACKEND" != tmux ] || [ "$KIND" = ship ] \
+            || die "missing tmux recovery is supported only for ordinary ship tasks"
+          ;;
+        alive|dead) ;;
+        *) die "cannot recover missing $BACKEND endpoint: ${absence#*$'\t'}" ;;
+      esac
+      ;;
+    *) die "task $ID's endpoint reads '$state' rather than a positively classified state; refusing to relaunch into an unattributed endpoint" ;;
+  esac
+
+  # Refuse before checkpoint, note, journal, or agent mutation. A confirmed
+  # missing endpoint is recreated detached and has no existing captain input to
+  # protect; every live or agent-free endpoint must pass the shared guard.
+  if [ "$endpoint_missing" -ne 1 ]; then
+    require_input_safe relaunch || return $?
   fi
 
   case "$KIND" in

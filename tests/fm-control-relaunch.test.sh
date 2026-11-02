@@ -119,6 +119,7 @@ case "${1:-}" in
   display-message)
     for a in "$@"; do
       case "$a" in
+        *session_attached*) printf '0\t0\t0\n'; exit 0 ;;
         *cursor_y*) printf '1\n'; exit 0 ;;
         *pane_current_command*) cat "$D/command"; printf '\n'; exit 0 ;;
         *pane_current_path*)
@@ -285,6 +286,7 @@ run_control() {  # <case-dir> <args...>
     FM_FAKE_TRACE_EXPORTED="${FM_FAKE_TRACE_EXPORTED:-}" \
     FM_FAKE_EXIT_GAP_READY="${FM_FAKE_EXIT_GAP_READY:-}" \
     FM_FAKE_EXIT_GAP_RELEASE="${FM_FAKE_EXIT_GAP_RELEASE:-}" \
+    FM_FAKE_CWD_RACE_READY="${FM_FAKE_CWD_RACE_READY:-}" \
     "$CONTROL" "$@" 2>&1
 }
 
@@ -435,9 +437,9 @@ test_relaunch_refuses_before_exit_when_the_composer_holds_pending_text() {
 
   out=$(run_control "$dir" rl43 relaunch --note "preserve the pending draft"); rc=$?
 
-  expect_code 1 "$rc" "a relaunch must refuse before typing an exit command into pending composer text"
-  assert_contains "$out" "composer visibly holds pending text" \
-    "the refusal should name the pending composer text"
+  expect_code 4 "$rc" "a relaunch must use the unsafe-input status before typing an exit command into pending composer text"
+  assert_contains "$out" "safety=composer-pending" \
+    "the refusal should name the pending composer verdict"
   [ "$(cat "$dir/fake/command")" = claude ] \
     || fail "a pending composer refusal must leave the old agent running"
   assert_no_grep "/exit" "$dir/fake/literal" \
@@ -453,11 +455,9 @@ test_relaunch_refuses_before_exit_when_the_composer_state_is_unproven() {
   out=$(FM_FAKE_COMPOSER_READ_FAIL=1 \
     run_control "$dir" rl44 relaunch --note "preserve on an unreadable composer"); rc=$?
 
-  expect_code 1 "$rc" "a relaunch must refuse before typing an exit command when the composer state cannot be proven empty"
-  assert_contains "$out" "not proven empty" \
-    "the refusal should name the unproven composer state, not claim pending text"
-  assert_not_contains "$out" "visibly holds pending text" \
-    "an unreadable composer is not the same claim as observed pending text"
+  expect_code 4 "$rc" "a relaunch must use the unsafe-input status when the composer cannot be proven empty"
+  assert_contains "$out" "safety=composer-unknown" \
+    "the refusal should name the unproven composer state"
   [ "$(cat "$dir/fake/command")" = claude ] \
     || fail "an unproven composer refusal must leave the old agent running"
   assert_no_grep "/exit" "$dir/fake/literal" \
@@ -544,7 +544,7 @@ test_relaunch_serializes_concurrent_durable_metadata_publication() {
     FM_FAKE_TRACE_RELEASE="$launch_release" \
     run_control "$dir" rl28 relaunch --note "continue after publication" > "$dir/control.out" &
   control_pid=$!
-  while [ ! -e "$prepare" ] && [ "$i" -lt 500 ]; do
+  while [ ! -e "$prepare" ] && [ "$i" -lt 2000 ]; do
     "$FM_REAL_SLEEP" 0.01
     i=$((i + 1))
   done
@@ -1579,14 +1579,14 @@ test_prepublication_failure_keeps_concurrent_durable_metadata() {
     run_control "$dir" rl30 relaunch --harness codex --note "preserve concurrent metadata" \
       > "$dir/control.out" &
   control_pid=$!
-  while [ ! -e "$dir/cwd-race-ready" ] && [ "$i" -lt 200 ]; do
+  while [ ! -e "$dir/cwd-race-ready" ] && [ "$i" -lt 1000 ]; do
     "$FM_REAL_SLEEP" 0.01
     i=$((i + 1))
   done
   [ -e "$dir/cwd-race-ready" ] || {
     kill "$control_pid" 2>/dev/null || true
     wait "$control_pid" 2>/dev/null || true
-    fail "relaunch did not reach its pre-publication endpoint check"
+    fail "relaunch did not reach its pre-publication endpoint check: $(cat "$dir/control.out" 2>/dev/null)"
   }
   link_out=$(env PATH="$dir/fakebin:$PATH" FM_HOME="$dir/home" FM_ROOT_OVERRIDE="$ROOT" \
     "$X_LINK" rl30 request-30 --carry-count 2 --carry-ts 1700000000 \

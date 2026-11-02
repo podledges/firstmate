@@ -369,6 +369,10 @@ test_scenario_a() {
 
   fm_backend_herdr_send_key "$SUPERVISOR_TARGET" Enter
   sleep 0.5
+  # The new shared guard also requires the supervisor pane to be unfocused.
+  # Shift focus to the independent scratch task before expecting delivery.
+  fm_backend_herdr_cli "$SESSION" tab focus "$_FAKE_TAB_ID" >/dev/null 2>&1 \
+    || fail "Scenario A: could not move focus away from the supervisor pane"
 
   sleep 8
 

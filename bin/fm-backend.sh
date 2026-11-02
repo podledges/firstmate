@@ -914,6 +914,50 @@ fm_backend_busy_state() {  # <backend> <target>
   esac
 }
 
+# fm_backend_focus_state: focused|unfocused|unknown|unsupported for the exact
+# target. `unsupported` is an explicit adapter capability verdict, not a probe
+# failure. tmux, Herdr, and Zellij expose a usable attached-client or active-pane
+# equivalent; cmux and Orca currently do not. Callers fail safe on `unknown`
+# from a supported probe. `unsupported` is the documented no-op focus case:
+# those backends still require an affirmatively empty composer, but cannot add
+# a focus refusal until their control surfaces expose a trustworthy signal.
+fm_backend_focus_state() {  # <backend> <target> [expected-label]
+  local backend=$1
+  shift
+  fm_backend_source "$backend" || { printf 'unknown'; return 0; }
+  case "$backend" in
+    tmux) fm_backend_tmux_focus_state "$@" ;;
+    herdr) fm_backend_herdr_focus_state "$@" ;;
+    zellij) fm_backend_zellij_focus_state "$@" ;;
+    orca) fm_backend_orca_focus_state "$@" ;;
+    cmux) fm_backend_cmux_focus_state "$@" ;;
+    *) printf 'unknown' ;;
+  esac
+}
+
+# fm_backend_input_guard_state is the shared pre-input decision used by
+# fm-send, fm-control, and the away-mode primary-composer injector. It prints
+# exactly `safe`, `focused`, `focus-unknown`, or `composer-<verdict>`.
+# Supported focus probes must return exact `unfocused`; unknown supported
+# evidence is unsafe. Explicitly unsupported focus is the documented no-op for
+# cmux and Orca, while their shared composer check remains mandatory.
+fm_backend_input_guard_state() {  # <backend> <target> [expected-label]
+  local backend=$1 target=$2 expected_label=${3:-} focus composer
+  focus=$(fm_backend_focus_state "$backend" "$target" "$expected_label" 2>/dev/null)
+  case "$focus" in
+    focused) printf 'focused'; return 0 ;;
+    unknown|'') printf 'focus-unknown'; return 0 ;;
+    unsupported|unfocused) ;;
+    *) printf 'focus-unknown'; return 0 ;;
+  esac
+  composer=$(fm_backend_composer_state "$backend" "$target" "$expected_label" 2>/dev/null)
+  case "$composer" in
+    empty) printf 'safe' ;;
+    pending|pending-unproven|unknown) printf 'composer-%s' "$composer" ;;
+    *) printf 'composer-unknown' ;;
+  esac
+}
+
 # fm_backend_composer_state: classify the composer/input area of <target> as
 # empty|pending|pending-unproven|unknown for callers that need a pre-submit
 # input guard, a submit acknowledgement, or a launch-readiness check. It is
