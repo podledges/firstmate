@@ -809,12 +809,13 @@ install_secondmate_alive_tmux() {  # <fakebin>
 set -u
 case "${1:-}" in
   list-windows) printf '%s\n' 'fm-mate' ;;
-  capture-pane) exit 0 ;;
+  capture-pane) printf '╭────╮\n│    │\n╰────╯\n' ;;
   display-message)
     case "$*" in
+      *session_attached*) printf '0\t0\t0\n' ;;
       *pane_current_command*) printf 'claude\n' ;;
       *pane_tty*) exit 1 ;;
-      *cursor_y*) printf '0\n' ;;
+      *cursor_y*) printf '1\n' ;;
       *) printf '0\n' ;;
     esac
     ;;
