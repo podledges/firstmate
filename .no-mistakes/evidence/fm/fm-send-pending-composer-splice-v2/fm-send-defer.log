@@ -8,4 +8,7 @@ ok - fm-send defer: special keys refuse focused panes and are never replayed lat
 ok - fm-send defer: a crash claim quarantines without retyping and reports until durably acknowledged
 ok - fm-send defer: a no-input lease refusal keeps the record pending and delivers once after release
 ok - fm-send defer: a quarantined record blocks later sends until an operator retires exactly it, and is never retyped
+ok - fm-send defer: an unconfirmed replay is quarantined, reported once with diagnostics, and never retried
+ok - fm-send defer: a malformed quarantined record keeps blocking its endpoint on every tick
+ok - fm-send defer: a no-input deferral resets an attempt that reconciliation aged to delivery_unknown
 all fm-send defer tests passed
