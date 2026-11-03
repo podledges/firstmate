@@ -935,7 +935,7 @@ secondmate_idle_ring_safe() {  # <window>
   backend=$(window_backend "$w")
   agent_state=$(fm_backend_agent_state "$backend" "$w" 2>/dev/null || true)
   [ "$agent_state" = alive ] || return 1
-  safety=$(fm_backend_input_guard_state "$backend" "$w" "$(window_label "$w")" 2>/dev/null) || safety=focus-unknown
+  safety=$(fm_backend_input_guard_state "$backend" "$w" "$(window_label "$w")" 2>/dev/null) || safety='focus-unknown'
   [ "$safety" = safe ]
 }
 

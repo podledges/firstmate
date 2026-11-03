@@ -38,8 +38,10 @@ TMP_ROOT=$(fm_test_tmproot fm-send-agy-confirm)
 
 # A fake tmux that models agy's late busy render, plus a fake sleep that
 # records every requested duration (one per line) into FM_SLEEP_LOG instead of
-# sleeping. The styled capture (-e) always shows agy's idle bare-`>` composer
-# (verdict `unknown`); the plain capture - the one fm_pane_busy_state polls -
+# sleeping. Before any input the styled capture (-e) shows an unfocused,
+# affirmatively empty composer so the shared input guard permits the send;
+# after typing it shows agy's idle bare-`>` composer (verdict `unknown`), so
+# only the busy footer can confirm the submit. The plain capture - the one fm_pane_busy_state polls -
 # shows the idle screen until its BUSY_AT-th call and the verified `esc to
 # cancel` busy row from then on. The BUSY_AT threshold is read from the
 # per-case dir so cases are independent.
@@ -50,12 +52,16 @@ make_stubs() {  # <dir> <busy-at> -> echoes fakebin dir
 #!/usr/bin/env bash
 set -u
 cnt_file="$dir/plain.count"
+typed_file="$dir/typed"
 case "\${1:-}" in
-  send-keys) exit 0 ;;
+  send-keys) : > "\$typed_file"; exit 0 ;;
   display-message)
     for a in "\$@"; do
       case "\$a" in
-        *cursor_y*) printf '0\n'; exit 0 ;;
+        *session_attached*) printf '0\t0\t0\n'; exit 0 ;;
+        *cursor_y*)
+          if [ -e "\$typed_file" ]; then printf '0\n'; else printf '1\n'; fi
+          exit 0 ;;
         *pane_tty*) printf '\n'; exit 0 ;;
       esac
     done
@@ -64,7 +70,11 @@ case "\${1:-}" in
     styled=0
     for a in "\$@"; do [ "\$a" = -e ] && styled=1; done
     if [ "\$styled" = 1 ]; then
-      printf '> \n? for shortcuts\n'
+      if [ -e "\$typed_file" ]; then
+        printf '> \n? for shortcuts\n'
+      else
+        printf '╭────╮\n│    │\n╰────╯\n'
+      fi
       exit 0
     fi
     n=\$(( \$(cat "\$cnt_file" 2>/dev/null || echo 0) + 1 ))
