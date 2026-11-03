@@ -1,0 +1,67 @@
+### 1. Captain is focused on task pane t1 (tmux attached+active pane)
+
+$ fm-send.sh t1 '/FIRSTMATE STEER'
+exit=4
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the requested message WILL still be sent or durably deferred.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+fm-send: deferred without typing to sess:fm-t1 (safety=focused); durable queue id=00000000001793663882-899055-0000065314-dc9ab36b7cb0edeb will deliver exactly once after the pane passes its focus guard and its composer is empty, unless an earlier deferred send to it is quarantined first
+pane literal input so far: []
+
+### 2. Captain unfocuses but has a draft in the composer
+
+$ (watcher tick)
+pane literal input: []  pending records: 1
+
+### 3. Composer empty, pane unfocused -> exactly-once delivery
+
+$ (watcher tick)
+pane literal input: [/FIRSTMATE STEER]  keys: [Enter ] pending: 0
+
+$ (watcher tick again)
+literal lines typed total: 1
+
+### 4. Special key to focused pane is refused, never queued
+
+$ fm-send.sh t1 --key Escape
+exit=4
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+fm-send: key 'Escape' refused without input to sess:fm-t1 (safety=focused); delayed special keys are never queued
+pending: 0
+
+### 5. Endpoint changes before replay -> quarantined, operator retires it
+queued exit=4
+
+$ (watcher tick)
+deferred send 00000000001793663890-773273-0000066599-0dc05a817abd21b5 requires reconciliation: fm-send exited 1: WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode. error: deferred send target changed from sess:fm-t1 to sess:fm-other; nothing was typed ; later typed sends to its endpoint stay blocked until an operator inspects it with bin/fm-send-queue.sh show 00000000001793663890-773273-0000066599-0dc05a817abd21b5 and deliberately retires it with bin/fm-send-queue.sh retire 00000000001793663890-773273-0000066599-0dc05a817abd21b5
+
+$ fm-send.sh t1 '/later message'
+exit=4
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+fm-send: deferred without typing to sess:fm-t1 (safety=prior-deferred-message); durable queue id=00000000001793663892-566757-0000067491-77b67e686ff50c42 is held behind quarantined deferred send 00000000001793663890-773273-0000066599-0dc05a817abd21b5 and will not deliver until an operator inspects it with bin/fm-send-queue.sh show 00000000001793663890-773273-0000066599-0dc05a817abd21b5 and deliberately retires it with bin/fm-send-queue.sh retire 00000000001793663890-773273-0000066599-0dc05a817abd21b5
+
+$ fm-send-queue.sh list
+00000000001793663890-773273-0000066599-0dc05a817abd21b5	sess:fm-t1	1793663890
+
+$ fm-send-queue.sh show 00000000001793663890-773273-0000066599-0dc05a817abd21b5
+id: 00000000001793663890-773273-0000066599-0dc05a817abd21b5
+target: t1
+resolved-target: sess:fm-t1
+created-epoch: 1793663890
+pending-reply-corr: 
+resolve-keys: 
+fm-send-stderr:
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+error: deferred send target changed from sess:fm-t1 to sess:fm-other; nothing was typed
+message:
+/bound to original endpoint
+
+$ fm-send-queue.sh retire 00000000001793663890-773273-0000066599-0dc05a817abd21b5
+retired quarantined deferred send 00000000001793663890-773273-0000066599-0dc05a817abd21b5 without typing; later queued sends to its endpoint are eligible on the next watcher tick
+
+$ (watcher tick)
+pane literal input after retire: [/later message]

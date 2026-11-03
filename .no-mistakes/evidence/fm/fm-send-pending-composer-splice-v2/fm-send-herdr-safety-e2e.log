@@ -1,0 +1,9 @@
+ok - real Herdr: pane list exposes focused=true for the active pane
+ok - real Herdr: focused ordinary steer stays durable while its doorbell defers without input
+ok - real Herdr: focused pending steer is deferred without changing captain text
+ok - real Herdr: unfocused pending composer defers without changing captain text
+ok - real Herdr: focused pending interrupt refuses without terminal or durable-state mutation
+ok - real Herdr: focused pending exit refuses without terminal or durable-state mutation
+ok - real Herdr: focused pending relaunch refuses before note, journal, command, or agent mutation
+all live Herdr input-safety checks passed
+evidence: herdr=0.8.0 protocol=19 default-session-tripwire=armed

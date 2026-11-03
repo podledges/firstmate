@@ -1,0 +1,32 @@
+== 1. Captain focuses the pane and is typing a draft ==
+
+$ fm-send.sh t1 'first conversational message'
+exit=0
+fm-send: doorbell not typed because the agent in sess:fm-t1 has exited; the steer is durably recorded at /private/var/folders/9s/1t9c5yt550x7f5rh_59wmp800000gn/T/fm-send-defer.R7cJlm/transcript-22822/home/state/t1.inbox/001.msg for recovery (stuck-crewmate-recovery), and the watcher will not re-ring a dead pane
+inbox: 001.msg handled    pane literal input: []
+
+$ fm-send.sh t1 '/compact first parser-native'
+exit=4
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+fm-send: deferred without typing to sess:fm-t1 (safety=focused); durable queue id=00000000001793664706-508066-0000057430-0b77b168d5f2118e will deliver exactly once after the pane passes its focus guard and its composer is empty, unless an earlier deferred send to it is quarantined first
+
+$ fm-send.sh t1 '/review second parser-native'
+exit=4
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+fm-send: deferred without typing to sess:fm-t1 (safety=prior-deferred-message); durable queue id=00000000001793664707-511071-0000058455-b0f414d604e3b6fa will deliver exactly once after the pane passes its focus guard and its composer is empty, unless an earlier deferred send to it is quarantined first
+
+$ fm-send.sh t1 --key Escape   (special key)
+exit=4
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+fm-send: key 'Escape' refused without input to sess:fm-t1 (safety=focused); delayed special keys are never queued
+pane literal input so far: []   keys: []
+queue: 00000000001793664706-508066-0000057430-0b77b168d5f2118e.pending 00000000001793664707-511071-0000058455-b0f414d604e3b6fa.pending 
+
+== 2. Watcher tick while still focused ==
+pane literal input: []
+
+== 3. Captain leaves, composer empties; watcher tick ==
+pane literal input (FIFO, once each):
+/compact first parser-native
+/review second parser-native
+after another tick, literal lines: 2

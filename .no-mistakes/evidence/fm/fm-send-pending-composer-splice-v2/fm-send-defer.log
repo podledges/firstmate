@@ -1,0 +1,11 @@
+ok - fm-send defer: a focused pane is untouched, then receives the durable message exactly once when safe
+ok - fm-send defer: same-target messages retain FIFO order through replay
+ok - fm-send defer: pending and unknown composers remain untouched until affirmatively empty
+ok - fm-send defer: --resolve-key stays open while queued and closes at actual delivery
+ok - fm-send defer: a marked secondmate request keeps one correlation through actual delivery
+ok - fm-send defer: replay refuses a changed resolved endpoint instead of typing into a replacement context
+ok - fm-send defer: special keys refuse focused panes and are never replayed later
+ok - fm-send defer: a crash claim quarantines without retyping and reports until durably acknowledged
+ok - fm-send defer: a no-input lease refusal keeps the record pending and delivers once after release
+ok - fm-send defer: a quarantined record blocks later sends until an operator retires exactly it, and is never retyped
+all fm-send defer tests passed
