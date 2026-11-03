@@ -2692,6 +2692,61 @@ SH
   pass "bounded acquire hands ownership to the waiting caller after contention"
 }
 
+# Under churn the holder that defeated the final non-blocking try can release
+# before anything re-reads the lock path. That is still ordinary deadline
+# contention against the observed live holder, never an unsafe-lock failure.
+test_bounded_lock_timeout_keeps_holder_observed_by_final_try() {
+  local dir state lock holder_pid i rc result
+  dir=$(make_case bounded-lock-timeout-churn)
+  state="$dir/state"
+  lock="$state/.fixture.lock"
+
+  FM_STATE_OVERRIDE="$state" bash -c '
+    . "$1"
+    fm_lock_acquire_wait "$2" || exit 10
+    printf "ready\n" > "$3"
+    while [ ! -e "$4" ]; do sleep 0.05; done
+    fm_lock_release "$2"
+  ' _ "$ROOT/bin/fm-wake-lib.sh" "$lock" "$dir/holder.ready" "$dir/release-holder" &
+  holder_pid=$!
+  i=0
+  while [ "$i" -lt 100 ] && [ ! -s "$dir/holder.ready" ]; do
+    sleep 0.05
+    i=$((i + 1))
+  done
+  [ -s "$dir/holder.ready" ] \
+    || { kill "$holder_pid" 2>/dev/null || true; fail "churn fixture holder never acquired its lock"; }
+
+  rc=0
+  result=$(FM_STATE_OVERRIDE="$state" bash -c '
+    . "$1"
+    eval "_fixture_real_$(declare -f fm_lock_try_acquire)"
+    tries=0
+    fm_lock_try_acquire() {
+      local rc=0
+      tries=$((tries + 1))
+      _fixture_real_fm_lock_try_acquire "$1" || rc=$?
+      if [ "$rc" -ne 0 ] && [ "$tries" -eq 2 ]; then
+        mv "$1" "$1.parked" || exit 20
+      fi
+      return "$rc"
+    }
+    rc=0
+    fm_lock_acquire_wait_bounded "$2" 1 || rc=$?
+    printf "%s %s %s\n" "$rc" "${FM_LOCK_HELD_PID:-none}" "$tries"
+  ' _ "$ROOT/bin/fm-wake-lib.sh" "$lock" 2>"$dir/waiter.err") || rc=$?
+
+  [ -e "$lock.parked" ] || [ -L "$lock.parked" ] \
+    || { kill "$holder_pid" 2>/dev/null || true; fail "churn fixture never released the path after the final try: $(cat "$dir/waiter.err")"; }
+  mv "$lock.parked" "$lock"
+  : > "$dir/release-holder"
+  wait "$holder_pid" || fail "churn fixture holder did not release cleanly"
+  [ "$rc" -eq 0 ] || fail "churn fixture waiter exited $rc: $(cat "$dir/waiter.err")"
+  [ "$result" = "124 $holder_pid 2" ] \
+    || fail "bounded timeout lost the live holder observed by its final try (rc holder tries: $result)"
+  pass "bounded timeout reports the live holder observed by its final try under churn"
+}
+
 # A live-but-stuck presentation lock must not strand the executable drain. The
 # presentation remains retriable on the next pass, while the separate queue
 # mutation lock keeps its blocking all-or-nothing acknowledgement contract.
@@ -3531,6 +3586,7 @@ SH
 test_self_held_lock_reclaims_instead_of_deadlocking
 test_subshell_lock_ownership_without_bashpid
 test_bounded_lock_handoff_after_contention
+test_bounded_lock_timeout_keeps_holder_observed_by_final_try
 test_live_presentation_holder_is_deadlined_without_weakening_ack
 test_malformed_presentation_lock_reports_acquire_failure
 test_secondmate_foreign_queue_stall_tracks_progress_and_alerts_once

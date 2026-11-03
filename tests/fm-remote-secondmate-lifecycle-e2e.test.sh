@@ -967,8 +967,9 @@ FM_FAKE_SSH_MODE=inherit-block remote_env "$ROOT/bin/fm-spawn.sh" ios --secondma
   > "$TMP_ROOT/spawn-concurrent.out" 2>&1 &
 spawn_concurrent=$!
 spawn_inherit_deadline=$((SECONDS + FM_TEST_STUB_MAX_BLOCK_SECONDS))
-# Earlier inherited files traverse the worker before captain-shared.md. Wait by
-# elapsed time so scheduler-delayed 20ms samples do not shorten the fixture bound.
+# Earlier inherited files traverse the worker before captain-shared.md. The
+# prior 30-second budget was insufficient on slower portable runners, so wait
+# against the shared 120-second wall-clock fixture bound instead.
 while [ ! -f "$TMP_ROOT/inherit.entered" ]; do
   kill -0 "$spawn_concurrent" 2>/dev/null || fail "remote spawn exited before its blocked inheritance write"
   [ "$SECONDS" -lt "$spawn_inherit_deadline" ] || fail "remote spawn never reached its blocked inheritance write"
@@ -1079,8 +1080,9 @@ config_first=$!
 inherit_deadline=$((SECONDS + FM_TEST_STUB_MAX_BLOCK_SECONDS))
 while [ ! -f "$TMP_ROOT/inherit.entered" ]; do
   kill -0 "$config_first" 2>/dev/null || fail "first inheritance transaction exited before its blocked write"
-  # Match the earlier spawn/inheritance wait without counting delayed samples
-  # as though every requested 20ms sleep completed on schedule.
+  # Match the earlier spawn/inheritance wait: the shared 120-second wall-clock
+  # fixture bound replaces the prior 30-second budget, which slower portable
+  # runners exceeded before reaching this write.
   [ "$SECONDS" -lt "$inherit_deadline" ] || fail "first inheritance transaction never reached its blocked write"
   sleep 0.02
 done
