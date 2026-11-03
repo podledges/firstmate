@@ -49,7 +49,19 @@ An interrupt is not complete until the composer is empty.
 muse is the one verified adapter that restores the cancelled prompt back into its composer as real text, so its interrupt key is followed by a Ctrl+U clear; without it the next submitted line - including this plane's own exit command - would concatenate onto the restored prompt and submit both as one line.
 The clear is refused before anything is sent when the recorded backend cannot deliver it.
 
-`exit` reads the composer's state before typing the exit command and requires the exact `empty` verdict; a `pending` verdict refuses by naming the pending text, and any other verdict (`unknown`, `pending-unproven`, or an unreadable read) refuses as not proven empty, matching the fail-safe contract every other consumer that can overwrite composer input follows.
+## Input safety precondition
+
+Lifecycle input is not exempt from terminal safety.
+Before `interrupt`, `exit`, or the stop phase of `relaunch` sends any key, command, Escape, or Ctrl+C, the control plane requires every supported focus probe to prove the task pane is not focused by a person and the shared classifier to report its composer exactly `empty`.
+Focused, pending, unreadable, and unknown states return the distinct refusal status 4 without sending input or changing task records, instructions, relaunch journals, or agent state.
+Orca and cmux expose no trustworthy focus signal, so focus is a documented no-op there while the empty-composer precondition remains mandatory.
+A stopped or proven-missing endpoint can still take its idempotent or recovery path when it receives no terminal input.
+
+Control actions are deliberately refused rather than queued.
+A delayed interrupt, exit, or relaunch could apply to a different future turn or shell context, so an operator must retry it after the pane is unfocused and the composer is empty.
+Conversational parser-native or explicit-target text uses a different rule: `fm-send.sh` durably defers it for watcher-driven replay because its intended meaning remains valid once the same endpoint becomes safe.
+Ordinary task text is already durable in the steering inbox and defers only its constant doorbell.
+
 `exit` also refuses, naming the dialog as `blocked on a prompt`, when the screen shows a recognised dialog that a further Enter would answer, whether the dialog was open before the exit command was typed or the submitting Enter opened it; it sends no Escape and chooses no option, so closing the dialog is left to the operator.
 A stopped agent whose pane still shows the dialog text is not refused.
 [`fm_composer_blocking_dialog`](../bin/fm-composer-lib.sh) owns the recognised set, which today is only Claude's background-task exit picker; [its verification record](verification/runtime-backends.md#claude-background-task-exit-picker) lists the dialogs that are not covered.
@@ -177,7 +189,8 @@ The worktree and the task's records are unaffected either way.
   zellij, orca, and cmux are refused rather than reported as successful blind.
 - An ambiguous or unreadable endpoint state refuses.
   Only a positively classified state acts.
-- `exit`'s composer-empty check, above, is itself a fail-closed boundary that `relaunch` inherits by stopping the old agent through `exit`.
+- Every lifecycle-input path uses the same focus and composer precondition, including the internal `exit` performed by `relaunch`.
+  The precondition is checked before relaunch writes its note or journal, so an unsafe pane leaves durable and live state untouched.
 - `fm-spawn --relaunch` independently refuses unless the endpoint is positively agent-free - either a `dead` endpoint that survives, or an endpoint proven gone under the [backend-specific reclaim contract](#reclaiming-a-task-whose-endpoint-is-gone) - so a replacement can never join a live agent.
   An `alive`, `ambiguous`, or `unreadable` verdict refuses, as does any unproven absence.
   It also requires the shell to be in the recorded worktree: every backend but Orca (which owns its own task worktree with no current-path probe) gets one explicit `cd` to the recorded path, then a pre-launch path read that refuses before any harness starts unless it confirms the endpoint is sitting in the recorded copy.
@@ -199,7 +212,7 @@ The empirical basis for each adapter's value is the `harness-adapters` skill's v
 
 ## Verification
 
-- `tests/fm-control.test.sh` - the adapter contract for its verified-harness lane (adapters outside the lane pin their control mechanics in their own harness suites), the backend capability matrix, exact-id scoping, the closed verb list, the busy, idle, dead, and idempotent lifecycle cases, and marker non-regression, all against a stubbed session provider.
+- `tests/fm-control.test.sh` - the adapter contract for its verified-harness lane (adapters outside the lane pin their control mechanics in their own harness suites), the backend capability matrix, exact-id scoping, the closed verb list, focused and pending-composer refusal for all three verbs, the busy, idle, dead, and idempotent lifecycle cases, and marker non-regression, all against a stubbed session provider.
 - `tests/fm-control-relaunch.test.sh` - the relaunch transaction: identity preservation, harness switching, the progress note, checkpoint refusals, rollback after a failed launch, and the endpoint-absence proof both verbs share - the Herdr reclaim of a destroyed endpoint, and legacy tmux records refusing an unprovable absence.
 - `tests/fm-control-tmux-identity.test.sh` - real isolated tmux servers with a native harness stand-in: wrong-server, renamed-window, name-reuse, legacy/partial/duplicate and replaced-server refusals, a running pane surviving `join-pane` destruction of its recorded window with both recovery guards refusing duplication, plus successful original-server ship recreation preserving unfinished work.
 - `tests/fm-control-herdr-smoke.test.sh` - the second state-verified backend against the real herdr binary, on an isolated throwaway lab session.

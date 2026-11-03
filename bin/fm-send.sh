@@ -14,6 +14,12 @@
 # Special keys instead of text: fm-send.sh <target> --key Enter
 # Key support is backend-specific: tmux/herdr support Escape, Enter, and C-c;
 # Orca currently supports Enter and C-c only, and rejects Escape.
+# Before any terminal text or special key is typed, the shared backend guard
+# requires a supported focus probe to report unfocused and the composer to
+# classify exactly `empty`. Focus is a documented no-op only on backends with
+# no trustworthy signal; focused, unreadable, pending, unproven, and unknown
+# states are never touched. Special keys return 4 and are not replayed because
+# a delayed key changes meaning.
 #
 # Two data planes:
 #
@@ -49,11 +55,11 @@
 # "was the message acted on" is, and that is answered asynchronously for an
 # ordinary record by the worker's acknowledgement move into handled/.
 # bin/fm-task-inbox-lib.sh owns the record format, doorbell line, and retry and
-# escalation policy for ordinary and fire-and-forget records.
-# The composer pre-check before the ring is ADVISORY only: when
-# the composer visibly holds pending text the ring is skipped with a notice and
-# the watcher re-rings an ordinary record later; no composer verdict is
-# delivery proof on this plane, and a failed ring never fails the send.
+# escalation policy for ordinary and fire-and-forget records. Its doorbell is
+# deferred without terminal input unless the same shared guard permits it; the
+# existing watcher re-rings after the pane becomes safe. The payload record is
+# already durable delivery, so a deferred or failed doorbell never changes this
+# plane's exit 0 into a resend-inviting error.
 #
 # TYPED - the LOCAL text that must reach the terminal itself: a harness-native
 # invocation (a leading "/", or a leading "$" to a codex target) must reach
@@ -64,12 +70,15 @@
 # text through the target backend's verified submit core: typed ONCE, then
 # Enter retried (never retyped) until the backend confirms a submit or reports
 # an inconclusive send. Typed-plane exit contract: 0 = submit confirmed;
-# 3 = the text was typed into the live endpoint and
-# Enter was sent, but the submit read-back stayed unconfirmed (verify the pane
-# before any resend, and never re-type blindly; a marked request's
-# pending-reply expectation stays armed because this outcome is not a proven
-# failure); any other nonzero = the send failed and nothing may be assumed
-# delivered. Submission dispatches through the target's recorded backend; the
+# 3 = the text was typed into the live endpoint and Enter was sent, but the
+# submit read-back stayed unconfirmed (verify the pane before any resend, and
+# never re-type blindly; a marked request's pending-reply expectation stays
+# armed because this outcome is not a proven failure); 4 = no input was sent
+# and the text is durable under state/send-queue/ for watcher replay after the
+# exact endpoint becomes unfocused and empty; any other nonzero = the send
+# failed and nothing may be assumed delivered. The queue's claim/retirement
+# contract in bin/fm-send-queue-lib.sh preserves FIFO and quarantines a crash-
+# ambiguous attempt instead of retyping it. Submission dispatches through the target's recorded backend; the
 # tmux adapter shares its composer/submit core with the away-mode daemon via
 # bin/fm-tmux-lib.sh. Tune with FM_SEND_RETRIES (default 3; agy typed targets
 # default to 20 for agy's late busy render) / FM_SEND_SLEEP (0.4). Slash
@@ -111,8 +120,11 @@
 # the commit and marker are BOTH lost the send still remains successful with a
 # reply-tracking-degraded warning naming the expectation an operator must
 # inspect (it can no longer reconcile or escalate on its own). Only a
-# failed enqueue discards the expectation. On the typed plane an unconfirmed submit (exit 3) keeps
-# it armed rather than dropping it, and only a proven send failure discards it.
+# failed enqueue discards the expectation. On the typed plane an unconfirmed
+# submit (exit 3) keeps it armed rather than dropping it. A pre-input deferral
+# (exit 4) resets its attempted-delivery marker but retains the same
+# expectation and correlation in the typed-send queue; replay confirms delivery
+# only after terminal input. Only a proven send failure discards it.
 # Set FM_PENDING_REPLY_EXISTING_CORR=<id> when re-sending a recovery request
 # for an already-open expectation so a second record is not created. Direct
 # unmarked captain input never creates one. A marked secondmate instruction
@@ -254,10 +266,12 @@ fi
 . "$SCRIPT_DIR/fm-wake-lib.sh"
 # shellcheck source=bin/fm-task-inbox-lib.sh
 . "$SCRIPT_DIR/fm-task-inbox-lib.sh"
+# shellcheck source=bin/fm-send-queue-lib.sh
+. "$SCRIPT_DIR/fm-send-queue-lib.sh"
 # shellcheck source=bin/fm-timeout-lib.sh
 . "$SCRIPT_DIR/fm-timeout-lib.sh"
 
-FM_GUARD_CONTINUE_LINE='This is a supervision warning only; the requested message WILL still be sent.' "$SCRIPT_DIR/fm-guard.sh" || true
+FM_GUARD_CONTINUE_LINE='This is a supervision warning only; the requested message WILL still be sent or durably deferred.' "$SCRIPT_DIR/fm-guard.sh" || true
 
 fm_send_id_from_meta() { # <meta-file>
   local base
@@ -441,6 +455,10 @@ fm_send_resolve_target() { # <raw-target>
 RAW_TARGET=$1
 fm_send_resolve_target "$RAW_TARGET" || exit 1
 T=$RESOLVED_TARGET
+if [ -n "${FM_SEND_DEFERRED_TARGET:-}" ] && [ "$T" != "$FM_SEND_DEFERRED_TARGET" ]; then
+  echo "error: deferred send target changed from $FM_SEND_DEFERRED_TARGET to $T; nothing was typed" >&2
+  exit 1
+fi
 shift
 
 # Supervision lease guard: a steer is overlap territory between the two Pi
@@ -777,14 +795,27 @@ if [ "${1:-}" = "--key" ]; then
       exit 1
       ;;
     esac
-    if ! fm_run_timed "$FM_SEND_REMOTE_BUDGET" "$SCRIPT_DIR/fm-on.sh" "$TARGET_REMOTE_ID" \
-      fm-remote-secondmate-control.sh key "$TARGET_REMOTE_ID" "$key" </dev/null; then
+    key_rc=0
+    fm_run_timed "$FM_SEND_REMOTE_BUDGET" "$SCRIPT_DIR/fm-on.sh" "$TARGET_REMOTE_ID" \
+      fm-remote-secondmate-control.sh key "$TARGET_REMOTE_ID" "$key" </dev/null || key_rc=$?
+    if [ "$key_rc" -eq "$FM_SEND_DEFERRED_EXIT" ]; then
+      echo "fm-send: key '$key' refused for remote secondmate $TARGET_REMOTE_ID because its pane is focused or its composer is not empty; delayed special keys are never queued" >&2
+      exit "$FM_SEND_DEFERRED_EXIT"
+    fi
+    if [ "$key_rc" -ne 0 ]; then
       echo "error: key '$key' not sent to remote secondmate $TARGET_REMOTE_ID; completion may be unknown" >&2
       exit 1
     fi
-  elif ! fm_backend_send_key "$TARGET_BACKEND" "$T" "$key" "$EXPECTED_LABEL"; then
-    echo "error: key '$key' not sent to $T ($TARGET_BACKEND send failed; tried $RESOLUTION_TRIED)" >&2
-    exit 1
+  else
+    safety=$(fm_backend_input_guard_state "$TARGET_BACKEND" "$T" "$EXPECTED_LABEL")
+    if [ "$safety" != safe ]; then
+      echo "fm-send: key '$key' refused without input to $T (safety=$safety); delayed special keys are never queued" >&2
+      exit "$FM_SEND_DEFERRED_EXIT"
+    fi
+    if ! fm_backend_send_key "$TARGET_BACKEND" "$T" "$key" "$EXPECTED_LABEL"; then
+      echo "error: key '$key' not sent to $T ($TARGET_BACKEND send failed; tried $RESOLUTION_TRIED)" >&2
+      exit 1
+    fi
   fi
   fm_send_clear_after_interrupt "$semantic_key" || exit 1
   fm_send_record_interrupt "$semantic_key" || exit 1
@@ -1096,12 +1127,46 @@ else
       esac
     fi
     case "$ring_rc" in
-    1) echo "fm-send: doorbell skipped (composer visibly holds pending text); the steer is durably recorded at $INBOX_RECORD and $ring_retry" >&2 ;;
+    1) echo "fm-send: doorbell deferred without input because the pane is focused or its composer is not affirmatively empty; the steer is durably recorded at $INBOX_RECORD and $ring_retry" >&2 ;;
     2) echo "fm-send: doorbell did not reach $T; the steer is durably recorded at $INBOX_RECORD and $ring_retry" >&2 ;;
     3) echo "fm-send: doorbell not typed because the agent in $T has exited; the steer is durably recorded at $INBOX_RECORD for recovery (stuck-crewmate-recovery), and the watcher will not re-ring a dead pane" >&2 ;;
     esac
     exit 0
   fi
+
+  # The typed plane is the only text path that still places payload bytes in a
+  # terminal. Preserve per-target FIFO once one such message is deferred, and
+  # require the shared focus/composer guard immediately before any typing. The
+  # task inbox plane above is already durably delivered and defers only its
+  # constant doorbell through fm_task_inbox_ring's watcher-owned retry ladder.
+  safety=safe
+  if [ -z "${FM_SEND_DEFERRED_RECORD:-}" ] && fm_send_queue_has_target "$STATE" "$T"; then
+    safety=prior-deferred-message
+  else
+    safety=$(fm_backend_input_guard_state "$TARGET_BACKEND" "$T" "$EXPECTED_LABEL")
+  fi
+  if [ "$safety" != safe ]; then
+    [ -z "$PENDING_REPLY_CORR" ] ||
+      fm_pending_reply_reset_known_undelivered "$STATE" "$PENDING_REPLY_CORR" || true
+    if [ -n "${FM_SEND_DEFERRED_RECORD:-}" ] || [ "${FM_SEND_NO_DEFER_QUEUE:-0}" = 1 ]; then
+      echo "fm-send: deferred without typing to $T (safety=$safety); the owning queue will retry only after the pane passes its focus guard and its composer is empty" >&2
+      exit "$FM_SEND_DEFERRED_EXIT"
+    fi
+    if deferred_id=$(fm_send_queue_enqueue "$STATE" "$RAW_TARGET" "$T" "$RESOLVE_ANSWER_TEXT" "$RESOLVE_KEYS" "$PENDING_REPLY_CORR"); then
+      if blocking_id=$(fm_send_queue_failed_for_target "$STATE" "$T"); then
+        echo "fm-send: deferred without typing to $T (safety=$safety); durable queue id=$deferred_id is held behind quarantined deferred send $blocking_id and will not deliver until an operator inspects it with bin/fm-send-queue.sh show $blocking_id and deliberately retires it with bin/fm-send-queue.sh retire $blocking_id" >&2
+      else
+        echo "fm-send: deferred without typing to $T (safety=$safety); durable queue id=$deferred_id will deliver exactly once after the pane passes its focus guard and its composer is empty, unless an earlier deferred send to it is quarantined first" >&2
+      fi
+      exit "$FM_SEND_DEFERRED_EXIT"
+    fi
+    if [ "$PENDING_REPLY_CREATED" = 1 ] && [ -n "$PENDING_REPLY_CORR" ]; then
+      fm_pending_reply_discard_undelivered "$STATE" "$PENDING_REPLY_CORR" || true
+    fi
+    echo "error: pane $T is unsafe for input (safety=$safety), and the message could not be durably queued; nothing was typed" >&2
+    exit 1
+  fi
+
   # Slash commands open a completion popup in some TUIs (verified on codex);
   # submitting too fast selects nothing, so give the popup time to settle before
   # the (retried) Enter. Codex opens the same kind of popup for a `$<skill>`

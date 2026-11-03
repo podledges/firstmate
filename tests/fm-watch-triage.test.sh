@@ -5719,6 +5719,8 @@ test_captain_held_lavish_poll_suppresses_only_while_healthy() {
   key=$(printf '%s' "$window" | tr ':/.' '___')
   mkdir -p "$(dirname "$artifact")"
   printf '<!doctype html><title>isolated review</title>\n' > "$artifact"
+  artifact=$(perl -MCwd=realpath -e '$p=realpath($ARGV[0]); defined($p) or exit 1; print $p' "$artifact") \
+    || fail "could not canonicalize the Lavish artifact fixture"
   printf 'foreground review poll\n' > "$capture"
   printf 'window=%s\nkind=scout\nharness=pi\n' "$window" > "$state/review-scout.meta"
   record_pi_busy "$state" review-scout

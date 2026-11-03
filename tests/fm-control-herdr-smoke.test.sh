@@ -10,8 +10,9 @@
 # comes from herdr's own agent registry.
 #
 # No real harness is launched. herdr's `pane report-agent` is the same registry
-# the adapter reads, and a symlink named like a harness is the same process
-# identity the adapter proves through `pane process-info`, so registering an
+# the adapter reads, and a redraw-capable native stand-in symlinked under a
+# harness name is the same process identity the adapter proves through
+# `pane process-info`, so registering an
 # agent over a real agent-named process, over a plain shell, and not at all
 # exercises exactly the classification the control plane gates on - including
 # the registration Herdr keeps after the agent process is gone (issue #4115).
@@ -33,17 +34,6 @@ command -v jq >/dev/null 2>&1 || { echo "skip: jq not found (required by the her
 # shellcheck source=tests/herdr-test-safety.sh
 . "$ROOT/tests/herdr-test-safety.sh"
 herdr_forget_inherited_pane
-
-# The agent-named process below is a symlink to fm_agent_standin's stand-in;
-# decide it before any lab session exists so an impossible case skips cleanly.
-STANDIN_DIR=$(fm_test_tmproot fm-control-herdr-standin) || {
-  printf 'not ok - %s\n' "could not create the stand-in directory" >&2
-  exit 1
-}
-STANDIN_BIN=$(fm_agent_standin "$STANDIN_DIR") || {
-  echo "skip: no long-running stand-in binary survives a rename (multicall coreutils, no C compiler)"
-  exit 0
-}
 
 SESSION="fm-lab-control-smoke-$$"
 export HERDR_SESSION="$SESSION"
@@ -242,12 +232,40 @@ pass "real herdr: interrupt refuses when herdr's own agent registry reports no a
 # A registration alone no longer proves an agent (issue #4115): the adapter
 # verifies the pane's processes through the real `pane process-info` view. So
 # the registered agent is backed by a real agent-named foreground process - a
-# symlink named `claude` to the fm_agent_standin stand-in decided above, the same
-# construction tests/fm-tmux-agent-liveness.test.sh uses (the symlink name is
-# what the kernel records as argv[0]; tests/lib.sh owns why it is never a copy).
+# symlink named `claude` to a native redraw-capable stand-in (the symlink name
+# is what the kernel records as argv[0]).
 AGENT_BIN="$SCRATCH/agentbin"
 mkdir -p "$AGENT_BIN"
-ln -s "$STANDIN_BIN" "$AGENT_BIN/claude"
+CC_BIN=$(command -v cc 2>/dev/null || command -v gcc 2>/dev/null || true)
+[ -n "$CC_BIN" ] || { echo "skip: no C compiler for the redraw-capable empty-composer stand-in"; exit 0; }
+cat > "$SCRATCH/composer-standin.c" <<'EOF_COMPOSER'
+#include <signal.h>
+#include <termios.h>
+#include <unistd.h>
+static struct termios saved;
+static void finish(int sig) { (void)sig; tcsetattr(0, TCSANOW, &saved); _exit(0); }
+int main(void) {
+  struct termios raw;
+  char byte;
+  if (tcgetattr(0, &saved) != 0) return 1;
+  raw = saved;
+  raw.c_lflag &= (tcflag_t)~(ICANON | ECHO);
+  raw.c_cc[VMIN] = 1;
+  raw.c_cc[VTIME] = 0;
+  if (tcsetattr(0, TCSANOW, &raw) != 0) return 1;
+  signal(SIGTERM, finish);
+  signal(SIGINT, finish);
+  write(1, "❯ ", sizeof("❯ ") - 1);
+  while (read(0, &byte, 1) == 1) {
+    write(1, "\r\033[2K❯ ", sizeof("\r\033[2K❯ ") - 1);
+  }
+  finish(0);
+  return 0;
+}
+EOF_COMPOSER
+"$CC_BIN" -o "$SCRATCH/composer-standin" "$SCRATCH/composer-standin.c" 2>/dev/null \
+  || { echo "skip: could not build the redraw-capable empty-composer stand-in"; exit 0; }
+ln -s "$SCRATCH/composer-standin" "$AGENT_BIN/claude"
 printf -v AGENT_Q '%q' "$AGENT_BIN/claude"
 
 wait_process_state() {  # <expected> <tries>
@@ -271,6 +289,27 @@ start_agent_process
 herdr pane report-agent "$PANE_ID" --source fm-control-smoke --agent fm-control-smoke-agent \
   --state idle --session "$SESSION" >/dev/null 2>&1 \
   || fail "could not register a live agent on the task pane"
+
+# Lifecycle input is allowed only on an unfocused, affirmatively empty pane.
+# The stand-in above redraws a bare Claude-like composer after every byte, and
+# an independent anchor tab owns focus while this smoke exercises delivery.
+ANCHOR_IDS=$(fm_backend_herdr_create_task "$CONTAINER" "fm-hsmoke-anchor" "$WT") \
+  || fail "could not create the focus anchor"
+read -r ANCHOR_TAB_ID _ANCHOR_PANE_ID <<EOF
+$ANCHOR_IDS
+EOF
+fm_backend_herdr_cli "$SESSION" tab focus "$ANCHOR_TAB_ID" >/dev/null 2>&1 \
+  || fail "could not focus the independent anchor tab"
+COMPOSER_STATE=unknown
+for _ in $(seq 1 50); do
+  COMPOSER_STATE=$(fm_backend_herdr_composer_state "$SESSION:$PANE_ID")
+  [ "$COMPOSER_STATE" != empty ] || break
+  sleep 0.1
+done
+[ "$COMPOSER_STATE" = empty ] \
+  || fail "redraw-capable composer never settled empty (state=$COMPOSER_STATE)"
+[ "$(fm_backend_herdr_focus_state "$SESSION:$PANE_ID")" = unfocused ] \
+  || fail "task pane did not remain unfocused behind its anchor"
 
 STATE=$(fm_backend_agent_state herdr "$SESSION:$PANE_ID")
 [ "$STATE" = alive ] || fail "herdr should classify a registered agent with a live process as alive, got '$STATE'"
@@ -341,11 +380,17 @@ awk -F= '$1 == "harness" {$0="harness=claude"} {print}' "$HOME_DIR/state/hsmoke.
 mv "$HOME_DIR/state/hsmoke.meta.tmp" "$HOME_DIR/state/hsmoke.meta"
 pass "real herdr: a stale registration no longer blocks relaunch, and the endpoint and local copy survive"
 
-# Last: the foreground process is the sleeping stand-in, so the pane never draws any
-# recognized composer chrome. exit's composer-empty guard (bin/fm-control.sh)
-# therefore refuses before ever typing the exit command, rather than typing it
-# into a live agent that ignores it and reporting a stop that did not happen.
-start_agent_process
+# Last: switch to a sleeping agent-named stand-in that draws no recognized
+# composer chrome. The shared input guard therefore refuses before typing the
+# exit command into a live agent that ignores it.
+SLEEP_STANDIN=$(fm_agent_standin "$SCRATCH/sleep-standin") \
+  || { echo "skip: no sleeping agent stand-in survives a harness-name symlink"; exit 0; }
+rm -f "$AGENT_BIN/claude"
+ln -s "$SLEEP_STANDIN" "$AGENT_BIN/claude"
+fm_backend_herdr_send_text_line "$SESSION:$PANE_ID" "$AGENT_Q 900" \
+  || fail "could not start the unproven-composer agent process"
+wait_process_state agent 50 \
+  || fail "the unproven-composer stand-in did not become the foreground agent"
 herdr pane report-agent "$PANE_ID" --source fm-control-smoke --agent fm-control-smoke-agent \
   --state idle --session "$SESSION" >/dev/null 2>&1 \
   || fail "could not re-register the live agent on the task pane"
@@ -353,8 +398,8 @@ if OUT=$(run_control hsmoke exit 2>&1); then
   fail "exit should fail closed when the agent's composer is not proven empty: $OUT"
 fi
 case "$OUT" in
-  *"composer visibly holds pending text; refusing to type the /exit exit command"*|*"not proven empty; refusing to type the /exit exit command"*) : ;;
-  *) fail "the exit failure should refuse to type the /exit command for an unproven or pending composer, got: $OUT" ;;
+  *"exit refused without input"*"safety=composer-"*) : ;;
+  *) fail "the exit failure should name the unsafe composer without typing /exit, got: $OUT" ;;
 esac
 [ "$(fm_backend_agent_state herdr "$SESSION:$PANE_ID")" = alive ] \
   || fail "the exit refusal did not preserve the fake foreground agent"

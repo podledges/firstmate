@@ -39,6 +39,8 @@ set -u
 . "$ROOT/bin/fm-marker-lib.sh"
 # shellcheck source=bin/fm-task-inbox-lib.sh
 . "$ROOT/bin/fm-task-inbox-lib.sh"
+# shellcheck source=bin/fm-send-queue-lib.sh
+. "$ROOT/bin/fm-send-queue-lib.sh"
 
 SEND="$ROOT/bin/fm-send.sh"
 DRAIN="$ROOT/bin/fm-wake-drain.sh"
@@ -49,8 +51,8 @@ TMP_ROOT=$(cd "$TMP_ROOT" && pwd)
 # Stub tmux for the local typed-plane legs: logs literal typed text to
 # FM_SEND_LOG. The default composer reads empty (clean submit);
 # FM_FAKE_TMUX_PENDING=1 keeps a proven pending composer with no busy footer,
-# so the real submit core exhausts its Enter budget and reports the pending
-# verdict. The ssh stub counts invocations, logs the wire line, and either
+# so the shared pre-input guard defers without typing. The ssh stub counts
+# invocations, logs the wire line, and either
 # fails with FM_FAKE_SSH_RC (emitting FM_FAKE_SSH_STDERR as the remote
 # stderr), or decodes the entrypoint argv and executes the REAL host-local
 # command against the decoded remote home - with FM_FAKE_SSH_AMBIGUOUS=1
@@ -78,7 +80,12 @@ case "${1:-}" in
     fi
     exit 0 ;;
   display-message)
-    for a in "$@"; do case "$a" in *cursor_y*) printf '1\n'; exit 0 ;; esac; done
+    for a in "$@"; do
+      case "$a" in
+        *session_attached*) printf '0\t0\t0\n'; exit 0 ;;
+        *cursor_y*) printf '1\n'; exit 0 ;;
+      esac
+    done
     printf 'fakepane\n'; exit 0 ;;
   capture-pane)
     if [ "${FM_FAKE_TMUX_PENDING:-0}" = 1 ]; then
@@ -722,13 +729,24 @@ test_local_secondmate_pending_keeps_expectation_armed() {
   env PATH="$fb:$PATH" FM_FAKE_TMUX_PENDING=1 \
     FM_ROOT_OVERRIDE="$home" FM_HOME="$home" FM_SEND_LOG="$log" FM_SEND_SETTLE=0 \
     "$SEND" lsm "/audit the ledger" >/dev/null 2>&1 || rc=$?
-  expect_code 3 "$rc" "an unconfirmed local secondmate submit must exit delivered-unconfirmed"
+  expect_code 4 "$rc" "a pending local secondmate submit must defer before input"
   rec=$(pending_record "$home")
   [ -n "$rec" ] \
     || fail "the pending-reply expectation must survive an unconfirmed local secondmate send"
   [ "$(fm_pending_reply_get "$rec" phase)" = awaiting_report ] \
-    || fail "the surviving expectation must stay armed, got $(fm_pending_reply_get "$rec" phase)"
-  # Armed means resolvable: the mate's correlated report still closes it.
+    || fail "the deferred expectation changed phase unexpectedly: $(fm_pending_reply_get "$rec" phase)"
+  [ -z "$(fm_pending_reply_get "$rec" delivered_epoch)" ] \
+    || fail "the deferred expectation was marked delivered before terminal input"
+  [ ! -e "$home/state/pending-replies/.delivery-confirmed-$(fm_pending_reply_get "$rec" corr_id)" ] \
+    || fail "the deferred expectation retained a delivery-attempt marker"
+  PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$home" FM_SEND_LOG="$log" FM_SEND_SETTLE=0 \
+    fm_send_queue_tick "$home" "$home/state" "$SEND" >/dev/null \
+    || fail "the deferred local secondmate send did not replay after the composer became safe"
+  [ "$(fm_pending_reply_get "$rec" phase)" = awaiting_report ] \
+    || fail "actual replay must arm the expectation, got $(fm_pending_reply_get "$rec" phase)"
+  [ -n "$(fm_pending_reply_get "$rec" delivered_epoch)" ] \
+    || fail "actual replay did not record terminal delivery"
+  # Once actually delivered, the mate's correlated report still closes it.
   corr=$(fm_pending_reply_get "$rec" corr_id)
   printf 'done [corr=%s]: ledger clean\n' "$corr" > "$home/state/lsm.status"
   fm_pending_reply_try_resolve "$home/state" "$corr" \
@@ -736,28 +754,27 @@ test_local_secondmate_pending_keeps_expectation_armed() {
   pass "fm-send local: an unconfirmed secondmate send keeps its reply expectation armed"
 }
 
-test_local_pending_reports_delivered_unconfirmed() {
+test_local_pending_defers_without_input() {
   local dir fb log home rc err
   dir="$TMP_ROOT/local-pending"; mkdir -p "$dir"
   fb=$(make_stubs "$dir"); log="$dir/send.log"
   home=$(setup_home local-pending)
 
-  # An explicit backend target is the typed plane, so the exit-3 ladder still
-  # governs it.
+  # An explicit backend target is the typed plane, but its pre-input guard
+  # defers before the older post-submit exit-3 ladder can apply.
   : > "$log"
   rc=0
   env PATH="$fb:$PATH" FM_FAKE_TMUX_PENDING=1 \
     FM_ROOT_OVERRIDE="$home" FM_HOME="$home" FM_SEND_LOG="$log" FM_SEND_SETTLE=0 \
     "$SEND" sess:win "steer text" >"$dir/out" 2>"$dir/err" || rc=$?
   err=$(cat "$dir/err")
-  expect_code 3 "$rc" "an unconfirmed local submit must exit with the delivered-unconfirmed status"
-  assert_contains "$err" "submission is unconfirmed" \
-    "the unconfirmed local submit must be described honestly"
-  assert_not_contains "$err" "not submitted" \
-    "an unconfirmed local submit must not claim the text was not submitted"
-  assert_not_contains "$err" "error:" \
-    "an unconfirmed local submit must not carry an error-styled report"
-  pass "fm-send local: an unconfirmed submit exits 3 with an honest non-error report"
+  expect_code 4 "$rc" "a pending local submit must return the distinct deferred status"
+  assert_contains "$err" "safety=composer-pending" \
+    "the deferred local submit must name the pending composer"
+  [ ! -s "$log" ] || fail "a deferred local submit typed into pending text: $(cat "$log")"
+  find "$home/state/send-queue" -maxdepth 1 -type d -name '*.pending' | grep -q . \
+    || fail "the deferred local submit was not queued durably"
+  pass "fm-send local: a pending typed-plane submit defers durably without input"
 }
 
 test_local_pending_does_not_close_resolve_key() {
@@ -768,21 +785,21 @@ test_local_pending_does_not_close_resolve_key() {
   fm_write_meta "$home/state/t2.meta" "window=sess:fm-t2" "kind=ship"
   printf 'blocked [key=creds]: need the deploy token\n' > "$home/state/t2.status"
 
-  # A harness-native slash answer keeps the typed plane, so the unconfirmed
-  # ladder still governs it; a plain-text answer would close at enqueue instead.
+  # A harness-native slash answer keeps the typed plane, so pending input
+  # defers it before delivery; a plain-text answer would close at enqueue instead.
   : > "$log"
   rc=0
   env PATH="$fb:$PATH" FM_FAKE_TMUX_PENDING=1 \
     FM_ROOT_OVERRIDE="$home" FM_HOME="$home" FM_SEND_LOG="$log" FM_SEND_SETTLE=0 \
     "$SEND" t2 --resolve-key creds "/vault fetch deploy-token" >/dev/null 2>&1 || rc=$?
-  expect_code 3 "$rc" "an unconfirmed local answer must exit with the delivered-unconfirmed status"
+  expect_code 4 "$rc" "a pending local answer must exit with the deferred status"
   if grep -F 'resolved' "$home/state/t2.status" >/dev/null; then
     fail "an unconfirmed local answer must not close the decision: $(cat "$home/state/t2.status")"
   fi
   out=$(drain_out "$home")
   printf '%s' "$out" | grep -F '[key=creds]' >/dev/null \
     || fail "the blocker must stay open after an unconfirmed local answer: $out"
-  pass "fm-send local: an unconfirmed submit still never closes a --resolve-key decision"
+  pass "fm-send local: a deferred submit never closes a --resolve-key decision before delivery"
 }
 
 test_remote_steer_lands_in_remote_inbox
@@ -798,7 +815,7 @@ test_remote_real_failure_still_fails
 test_remote_exit3_no_longer_delivered
 test_remote_transport_loss_preserves_expectation
 test_remote_send_budget_bounds_busy_lane
-test_local_pending_reports_delivered_unconfirmed
+test_local_pending_defers_without_input
 test_local_pending_does_not_close_resolve_key
 test_local_secondmate_pending_keeps_expectation_armed
 

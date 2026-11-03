@@ -538,7 +538,7 @@ Explicit named-session routing and unrelated launch environment remain intact.
 ### Sending text and keys
 
 Literal text and Enter are separate operations on `fm-send.sh`'s typed plane.
-Ordinary local text steers instead use the durable steering inbox and send only its best-effort constant doorbell through this adapter.
+Ordinary local text steers instead use the durable steering inbox and send only its constant doorbell through this adapter when the shared input guard permits it.
 Spawn-time fixed commands may use Herdr's atomic run primitive.
 Enter, Escape, and Ctrl-C are supported.
 
@@ -623,6 +623,13 @@ It never accepts a native `idle` as evidence that a worker has stopped; the task
 A human-blocked permission dialog has no busy banner and still surfaces.
 
 ## Composer and injection safety
+
+Herdr terminal input is permitted only when an exact `pane list` record says the target pane's `focused` field is false and the shared composer classifier says `empty`.
+Missing, duplicate, malformed, focused, or composer-nonempty evidence is unsafe.
+An ordinary task steer is already durable in its steering inbox and defers only its doorbell until watcher replay is safe.
+Parser-native or explicit-target text returns status 4 and waits in the durable typed-send queue.
+Special keys and `fm-control` lifecycle actions return status 4 without typing and are never replayed later.
+This keeps captain drafts intact even when the target pane is a task pane the captain has brought forward.
 
 Herdr has no direct cursor-row primitive.
 The adapter is a thin capture.
@@ -855,6 +862,7 @@ tests/fm-backend-herdr-agent-exit-shell-e2e.test.sh
 tests/fm-herdr-pi-stale-registration-live-e2e.test.sh
 tests/fm-backend-herdr-eventwait-smoke.test.sh
 tests/fm-control-herdr-smoke.test.sh
+tests/fm-send-herdr-safety-e2e.test.sh
 tests/fm-herdr-session-cleanup.test.sh
 tests/fm-herdr-session-cleanup-e2e.test.sh
 tests/fm-herdr-attached-viewer-live-e2e.test.sh

@@ -3186,6 +3186,26 @@ fm_backend_herdr_composer_identity() {  # <target> -> "<agent>\t<status>"
   fm_backend_herdr_agent_identity_raw "$FM_BACKEND_HERDR_SESSION" "$FM_BACKEND_HERDR_PANE"
 }
 
+# fm_backend_herdr_focus_state: focused|unfocused|unknown from Herdr's native
+# per-pane focus fact. Herdr 0.8.0 exposes `focused` in `pane list`; require one
+# exact pane match and one JSON boolean so an absent or drifted field can never
+# be mistaken for permission to type.
+fm_backend_herdr_focus_state() {  # <target>
+  local out verdict
+  fm_backend_herdr_parse_target "$1" || { printf 'unknown'; return 0; }
+  out=$(fm_backend_herdr_cli "$FM_BACKEND_HERDR_SESSION" pane list 2>/dev/null) \
+    || { printf 'unknown'; return 0; }
+  verdict=$(printf '%s' "$out" | jq -r --arg pane "$FM_BACKEND_HERDR_PANE" '
+    [.result.panes[]? | select(.pane_id == $pane)]
+    | if length != 1 then "unknown"
+      elif .[0].focused == true then "focused"
+      elif .[0].focused == false then "unfocused"
+      else "unknown"
+      end
+  ' 2>/dev/null) || verdict=unknown
+  case "$verdict" in focused|unfocused) printf '%s' "$verdict" ;; *) printf 'unknown' ;; esac
+}
+
 # fm_backend_herdr_composer_state: thin adapter - capture plus capabilities
 # in, shared verdict out. The ANSI capture is preferred (styled=1 lets the
 # shared classifier strip ghost/placeholder text); when it fails on an older

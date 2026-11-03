@@ -176,7 +176,10 @@ case "${1:-}" in
     _print=0
     # Return cursor_y when the format asks for it (pane_input_pending).
     for _a in "$@"; do
-      case "$_a" in *cursor_y*) printf '%s\n' "${FM_FAKE_TMUX_CURSOR_Y:-0}"; exit 0 ;; esac
+      case "$_a" in
+        *session_attached*) printf '0\t0\t0\n'; exit 0 ;;
+        *cursor_y*) printf '%s\n' "${FM_FAKE_TMUX_CURSOR_Y:-0}"; exit 0 ;;
+      esac
       [ "$_a" = "-p" ] && _print=1
     done
     [ "$_print" = 1 ] && printf 'fakepane\n'
@@ -266,7 +269,12 @@ write_composer() {
 case "${1:-}" in
   display-message)
     print=0
-    for a in "$@"; do case "$a" in *cursor_y*) printf '1\n'; exit 0 ;; esac; done
+    for a in "$@"; do
+      case "$a" in
+        *session_attached*) printf '0\t0\t0\n'; exit 0 ;;
+        *cursor_y*) printf '1\n'; exit 0 ;;
+      esac
+    done
     for a in "$@"; do [ "$a" = "-p" ] && print=1; done
     [ "$print" = 1 ] && printf 'fakepane\n'
     exit 0 ;;

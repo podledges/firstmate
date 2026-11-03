@@ -101,7 +101,7 @@ devin_screen() {  # <running|armed|cancelled|idle|picker>
       else
         printf '⢀⡄ Running tools · 6s (esc twice to interrupt)\n'
       fi
-      composer='❭ Guide Devin while it works'
+      composer=$'❭ \e[38;2;124;124;124mGuide Devin while it works\e[0m'
       ;;
     cancelled) printf ' ✗ Canceled due to user interrupt\n ✱ Canceled. What should Devin do?\n' ;;
     idle) printf ' done\n' ;;
@@ -161,6 +161,9 @@ case "${1:-}" in
   display-message)
     for a in "$@"; do
       case "$a" in
+        *session_attached*)
+          if [ "${FM_FAKE_FOCUSED:-0}" = 1 ]; then printf '1\t1\t1\n'; else printf '0\t0\t0\n'; fi
+          exit 0 ;;
         *cursor_y*)
           # A modelled Devin screen parks the cursor on its composer row.
           if [ -f "$D/devin" ]; then
@@ -261,6 +264,7 @@ run_control() {
     FM_FAKE_MUSE_DISAPPEAR_BEFORE_ACK="${FM_FAKE_MUSE_DISAPPEAR_BEFORE_ACK:-}" \
     FM_FAKE_INTERRUPT_STOPS_AGENT="${FM_FAKE_INTERRUPT_STOPS_AGENT:-}" \
     FM_FAKE_DEVIN_PICKER_STUCK="${FM_FAKE_DEVIN_PICKER_STUCK:-}" \
+    FM_FAKE_FOCUSED="${FM_FAKE_FOCUSED:-0}" \
     "$CONTROL" "$@" 2>&1
 }
 
@@ -411,7 +415,7 @@ test_devin_stuck_picker_refuses_and_exit_types_nothing() {
   add_task "$dir" t1 devin
   devin_as "$dir" picker
   out=$(FM_FAKE_DEVIN_PICKER_STUCK=1 run_control "$dir" t1 exit); rc=$?
-  expect_code 1 "$rc" "exit must refuse while the revert picker is open"$'\n'"$out"
+  expect_code 4 "$rc" "exit must refuse with the unsafe-input status while the revert picker is open"$'\n'"$out"
   [ -z "$(literals "$dir")" ] || fail "exit typed into the revert picker: $(literals "$dir")"
   ! grep -qx Enter "$dir/fake/keys" || fail "exit pressed Enter in the revert picker"
   pass "fm-control Devin: an open revert picker refuses every typed command"
@@ -1172,6 +1176,38 @@ EOF
   pass "fm-control-lib: only a runtime's own recorded session has a relaunch resume form"
 }
 
+test_focus_and_composer_preconditions_refuse_every_control_verb() {
+  local unsafe verb dir out rc focused meta_before brief_before
+  for unsafe in focused pending; do
+    for verb in interrupt exit relaunch; do
+      dir=$(new_case "unsafe-$unsafe-$verb")
+      add_task "$dir" t1 claude
+      alive_as "$dir" claude
+      focused=0
+      if [ "$unsafe" = focused ]; then
+        focused=1
+      else
+        printf '╭──────────────╮\n│ captain draft │\n╰──────────────╯\n' > "$dir/fake/pane"
+      fi
+      meta_before=$(cat "$dir/home/state/t1.meta")
+      brief_before=$(cat "$dir/home/data/t1/brief.md")
+      if [ "$verb" = relaunch ]; then
+        out=$(FM_FAKE_FOCUSED="$focused" run_control "$dir" t1 relaunch --note unsafe-retry); rc=$?
+      else
+        out=$(FM_FAKE_FOCUSED="$focused" run_control "$dir" t1 "$verb"); rc=$?
+      fi
+      expect_code 4 "$rc" "$verb should use the distinct unsafe-input refusal for a $unsafe pane"$'\n'"$out"
+      [ ! -s "$dir/fake/literal" ] || fail "$verb typed text into a $unsafe pane: $(cat "$dir/fake/literal")"
+      [ ! -s "$dir/fake/keys" ] || fail "$verb sent keys into a $unsafe pane: $(cat "$dir/fake/keys")"
+      [ "$(cat "$dir/home/state/t1.meta")" = "$meta_before" ] || fail "$verb changed metadata after a $unsafe refusal"
+      [ "$(cat "$dir/home/data/t1/brief.md")" = "$brief_before" ] || fail "$verb changed the brief after a $unsafe refusal"
+      [ ! -e "$dir/home/state/t1.control-relaunch" ] || fail "$verb published a relaunch journal after a $unsafe refusal"
+    done
+  done
+  pass "fm-control: focused and pending-composer panes refuse every lifecycle verb before terminal or durable-state mutation"
+}
+
+test_focus_and_composer_preconditions_refuse_every_control_verb
 test_exit_types_each_harness_verified_command
 test_interrupt_sends_each_harness_verified_key
 test_devin_interrupt_invalidates_busy

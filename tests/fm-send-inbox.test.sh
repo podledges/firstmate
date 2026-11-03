@@ -3,7 +3,8 @@
 #
 # An ordinary text steer to a task recorded in this home no longer types its
 # payload: fm-send appends a durable sequenced record to state/<id>.inbox/ and
-# rings one constant self-describing doorbell line, best-effort. These tests
+# rings one constant self-describing doorbell line only when focus and composer
+# state are safe. These tests
 # drive the real fm-send executable over a stubbed tmux and pin:
 #   1. The payload is durably recorded and never typed; only the doorbell
 #      crosses the terminal, and the send exits 0 at enqueue.
@@ -11,8 +12,8 @@
 #   2. Multi-line steers are legal and round-trip byte-exact.
 #   3. A re-send enqueues a NEW sequence and still never retypes a payload,
 #      so the terminal can never truncate, garble, or duplicate a steer.
-#   4. The composer pre-check is advisory: visibly pending text skips the ring
-#      with a notice, and the steer is still durably sent (exit 0).
+#   4. Focus and composer checks guard the doorbell: a focused pane or pending
+#      text skips the ring with a notice while the steer stays sent (exit 0).
 #   5. A failed doorbell is still a sent steer (exit 0, record durable): the
 #      watcher's re-ring ladder owns delivery from the record on. A
 #      fire-and-forget record whose ring did not land is owed one retry ring.
@@ -68,8 +69,19 @@ case "${1:-}" in
     fi
     exit 0 ;;
   display-message)
-    for a in "$@"; do case "$a" in *cursor_y*) printf '1\n'; exit 0 ;; esac; done
+    for a in "$@"; do
+      case "$a" in
+        *session_attached*)
+          if [ "${FM_FAKE_TMUX_FOCUSED:-0}" = 1 ]; then printf '1\t1\t1\n'; else printf '0\t0\t0\n'; fi
+          exit 0 ;;
+        *session_name*pane_id*) printf 'sess\t@1\t%%1\n'; exit 0 ;;
+        *cursor_y*) printf '1\n'; exit 0 ;;
+      esac
+    done
     printf 'fakepane\n'; exit 0 ;;
+  list-clients)
+    [ "${FM_FAKE_TMUX_FOCUSED:-0}" = 1 ] && printf 'sess\t@1\t%%1\n'
+    exit 0 ;;
   capture-pane)
     if [ "${FM_FAKE_TMUX_COMPOSER:-}" = pending ]; then
       printf '╭──────────────╮\n│ leftover txt │\n╰──────────────╯\n'
@@ -215,7 +227,7 @@ test_resend_enqueues_new_sequence() {
   pass "fm-send inbox: a re-send is a new durable record, never a retyped payload"
 }
 
-test_pending_composer_skips_ring_advisorily() {
+test_pending_composer_defers_ring_safely() {
   local dir err rc
   dir=$(setup_case pendingskip)
   err="$dir/send.err"
@@ -227,6 +239,20 @@ test_pending_composer_skips_ring_advisorily() {
   assert_contains "$(cat "$err")" "watcher will re-ring" \
     "the skip notice should point at the re-ring"
   pass "fm-send inbox: a visibly pending composer skips the ring, and the steer stays durably sent"
+}
+
+test_focused_pane_defers_ring_safely() {
+  local dir err rc
+  dir=$(setup_case focusedskip)
+  err="$dir/send.err"
+  run_send "$dir" "$err" FM_FAKE_TMUX_FOCUSED=1 -- t1 "steer while captain is focused"
+  rc=$?
+  expect_code 0 "$rc" "a focused-pane ring skip is still a sent steer"
+  [ -f "$dir/home/state/t1.inbox/001.msg" ] || fail "the focused-pane steer was not recorded"
+  [ ! -s "$dir/send.log" ] || fail "a focused pane should receive no doorbell:"$'\n'"$(cat "$dir/send.log")"
+  assert_contains "$(cat "$err")" "watcher will re-ring" \
+    "the focused-pane notice should point at the re-ring"
+  pass "fm-send inbox: a focused pane is untouched while the durable steer waits for a safe doorbell"
 }
 
 test_failed_ring_is_still_sent() {
@@ -510,7 +536,8 @@ test_text_steer_rides_inbox
 test_deep_home_doorbell_stays_short
 test_multiline_steer_is_legal
 test_resend_enqueues_new_sequence
-test_pending_composer_skips_ring_advisorily
+test_pending_composer_defers_ring_safely
+test_focused_pane_defers_ring_safely
 test_failed_ring_is_still_sent
 test_fire_and_forget_unlanded_ring_owes_one_retry
 test_fire_and_forget_retry_stays_off_without_the_flag

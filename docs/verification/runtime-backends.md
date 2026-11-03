@@ -907,8 +907,9 @@ ok - muse (Muse Code 0.2.1 (0.2.1-R1215.1)): the doorbell reached a real worker,
 ```
 
 All six installed harnesses honored the doorbell contract with real model turns: each listed the inbox named by the doorbell, read its record, executed the instruction inside it, and acknowledged with the atomic `mv`.
-Two findings from the run shaped the shipped behavior: an OpenCode vendor update modal swallowed the first doorbell and the single re-ring recovered it, which is exactly the watcher ladder's job; and grok 1.0.5's idle composer never classifies `empty` (a classifier drift owned by the [Composer classification matrix](#composer-classification-matrix) guard, whose refresh for grok 1.0.5 is still owed), which motivated the ring's advisory pre-check not to skip on ambiguity - a doorbell into an ambiguous composer is a recoverable constant line, while skipping on ambiguity would starve steering for any harness the classifier cannot positively identify.
-The current pending-composer ring contract is owned by `bin/fm-task-inbox-lib.sh`.
+Two findings from the run shaped the shipped behavior: an OpenCode vendor update modal swallowed the first doorbell and the single re-ring recovered it, which is exactly the watcher ladder's job; and grok 1.0.5's idle composer never classifies `empty` (a classifier drift owned by the [Composer classification matrix](#composer-classification-matrix) guard, whose refresh for grok 1.0.5 is still owed), which at the time motivated an advisory pre-check that rang into ambiguous composers.
+That advisory exception no longer exists: the ring now passes the shared focus and composer input guard and types only into an exactly `empty` composer, so a harness whose idle screen never classifies `empty` gets no ring and its unacknowledged steer escalates instead, and this guard reports such a harness as `not ok` until its classifier drift is fixed.
+The current ring contract is owned by `bin/fm-task-inbox-lib.sh`.
 Kimi was not installed on the verification machine; its receive path is the same one-line-plus-shell contract, and the portable ladder and enqueue regressions in `tests/fm-task-inbox.test.sh` and `tests/fm-send-inbox.test.sh` cover every harness-independent half.
 This guard is the refresh command after any harness upgrade; it spends a small number of real tokens per installed harness, reports an absent harness explicitly, and refuses a run that verified nothing.
 
@@ -1672,6 +1673,32 @@ Real captures verified these active distinctions:
 - Codex 0.154's idle braille starfield rows are composer furniture, with the dated Herdr evidence and refresh command in [Composer classification matrix](#composer-classification-matrix).
 
 `tests/fm-composer-ghost.test.sh`, `tests/fm-composer-lib.test.sh`, and the Herdr composer cases pin the exact captured ANSI bytes.
+
+Herdr focus and composer injection safety was verified on 2026-11-03 against Herdr 0.8.0 protocol 19 in a guarded non-default lab session.
+The live regression read `focused=true` from the exact active pane's `pane list` record, preserved a focused empty composer while an ordinary steer's durable-inbox doorbell was withheld, and proved a parser-native steer left a focused pending draft byte-identical.
+A separate unfocused pending composer was also byte-identical.
+The same focused draft remained byte-identical when `fm-control interrupt`, `fm-control exit`, and `fm-control relaunch` returned status 4, with task metadata, instructions, and lifecycle records unchanged.
+Every adapter-owned Herdr call was forced through a shim that required the exact trailing lab session before delegating to `fm-herdr-lab.sh`.
+
+```sh
+HERDR_LAB_HELPER=/Users/podles/fleet/PodleMac/bin/fm-herdr-lab.sh \
+  tests/fm-send-herdr-safety-e2e.test.sh
+```
+
+Observed output:
+
+```text
+ok - real Herdr: pane list exposes focused=true for the active pane
+ok - real Herdr: focused ordinary steer stays durable while its doorbell defers without input
+ok - real Herdr: focused pending steer is deferred without changing captain text
+ok - real Herdr: unfocused pending composer defers without changing captain text
+ok - real Herdr: focused pending interrupt refuses without terminal or durable-state mutation
+ok - real Herdr: focused pending exit refuses without terminal or durable-state mutation
+ok - real Herdr: focused pending relaunch refuses before note, journal, command, or agent mutation
+all live Herdr input-safety checks passed
+evidence: herdr=0.8.0 protocol=19 default-session-tripwire=armed
+```
+
 The U+2063 operational and routed-request separators were exercised through a real Pi-on-Herdr path; the byte-exact active regression is:
 
 ```sh

@@ -44,6 +44,9 @@ A spawn stops with an actionable setup message when the app, minimum version, `j
 The adapter may launch the app with `open -a cmux` only when the socket is down; it does not relaunch the app for access-denied or authentication errors.
 
 Routine supervision uses `bin/fm-peek.sh <id>` and `FM_HOME=<home> bin/fm-send.sh <id> '<text>'` without bringing the cmux window forward.
+The verified cmux control surface does not expose whether a workspace surface is focused by a person, so focus detection is a documented no-op rather than a guessed verdict.
+The shared composer classifier still has to prove `empty` before any terminal input.
+An ordinary task steer is already durable in its steering inbox and defers only its doorbell, parser-native or explicit-target text waits in the typed-send queue with status 4, and special keys return status 4 without queuing.
 Task workspace and surface creation use `focus=false`.
 
 Verify setup by spawning a small task and confirming metadata contains `backend=cmux`, `cmux_workspace_id=`, and `cmux_surface_id=`.

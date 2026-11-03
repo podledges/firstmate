@@ -35,6 +35,7 @@ When `FM_HOME` is unset, it also behaves as the old whole-root override.
 
 `bin/fm-send.sh` requires `FM_HOME` to be set before resolving a target.
 Unlike most scripts, it does not use the general fallback, because a steer must not silently resolve against the wrong home.
+Its header owns the focus/composer precondition, status-4 typed-text deferral, exact-endpoint and no-retype boundaries, special-key refusal, `--resolve-key` timing, and pending-reply correlation semantics.
 These variables override individual operational directories for tests and specialized harness setup:
 
 | Variable | Directory selected |
@@ -90,6 +91,8 @@ Each effective `FM_HOME` contains private operational directories.
 - One-shot Bearings reconcile requests under `state/reconcile-notify/`.
 - Private secondmate config-reread generations with their retry and quarantine state.
 - Per-task steering-inbox records under `state/<id>.inbox/` (`bin/fm-task-inbox-lib.sh`).
+- Parser-native and explicit-target text deferred from unsafe panes under `state/send-queue/` (`bin/fm-send-queue-lib.sh`).
+  A quarantined `.failed` record is never retried and blocks later sends to its endpoint until an operator inspects it with `bin/fm-send-queue.sh show <id>` and retires it with `bin/fm-send-queue.sh retire <id>`.
 - Parent-owned secondmate pending-reply records under `state/pending-replies/` (`bin/fm-pending-reply-lib.sh`).
 
 `config/` holds local gitignored operating choices, including explicit extension bindings under `config/extensions.d/`.

@@ -698,6 +698,7 @@ make_launch_capturing_tmux() {
 #!/usr/bin/env bash
 set -u
 case "$*" in
+  *"#{session_attached}"*) printf '0\t0\t0\n'; exit 0 ;;
   *"#{pane_current_path}"*) printf '%s\n' "${FM_FAKE_PANE_PATH:-}"; exit 0 ;;
 esac
 case "${1:-}" in
@@ -760,7 +761,7 @@ spawn_secondmate_capture() {
 }
 
 test_secondmate_codex_and_grok_use_their_own_private_homes() {
-  local w sm launchlog out status launch
+  local w sm sm_real launchlog out status launch
 
   w="$TMP_ROOT/spawn-codex-private-home"
   sm="$w/sm"
@@ -768,11 +769,12 @@ test_secondmate_codex_and_grok_use_their_own_private_homes() {
   mkdir -p "$w/home/config"
   printf 'codex\n' > "$w/home/config/secondmate-harness"
   make_seeded_home "$sm" sm-codex
+  sm_real=$(cd "$sm" && pwd -P)
   out=$(CODEX_HOME="$w/personal-codex" spawn_secondmate_capture \
     "$w" sm-codex "$sm" "$launchlog" 2>&1); status=$?
   expect_code 0 "$status" "codex secondmate spawn should succeed"$'\n'"$out"
   launch=$(cat "$launchlog")
-  assert_contains "$launch" "CODEX_HOME='$sm/data/agent-homes/codex'" \
+  assert_contains "$launch" "CODEX_HOME='$sm_real/data/agent-homes/codex'" \
     "codex secondmate did not use roots beneath its own Firstmate home"
   assert_not_contains "$launch" "$w/personal-codex" \
     "codex secondmate inherited the ambient personal home"
@@ -783,11 +785,12 @@ test_secondmate_codex_and_grok_use_their_own_private_homes() {
   mkdir -p "$w/home/config"
   printf 'grok\n' > "$w/home/config/secondmate-harness"
   make_seeded_home "$sm" sm-grok
+  sm_real=$(cd "$sm" && pwd -P)
   out=$(GROK_HOME="$w/personal-grok" spawn_secondmate_capture \
     "$w" sm-grok "$sm" "$launchlog" 2>&1); status=$?
   expect_code 0 "$status" "grok secondmate spawn should succeed"$'\n'"$out"
   launch=$(cat "$launchlog")
-  assert_contains "$launch" "GROK_HOME='$sm/data/agent-homes/grok'" \
+  assert_contains "$launch" "GROK_HOME='$sm_real/data/agent-homes/grok'" \
     "grok secondmate did not use roots beneath its own Firstmate home"
   assert_not_contains "$launch" "$w/personal-grok" \
     "grok secondmate inherited the ambient personal home"
@@ -1179,6 +1182,7 @@ if [ -n "${FM_FAKE_TMUX_LOG:-}" ]; then
   printf '%s\n' "$*" >> "$FM_FAKE_TMUX_LOG"
 fi
 case "$*" in
+  *display-message*'#{session_attached}'*) printf '0\t0\t0\n'; exit 0 ;;
   list-windows*)
     sed -n 's/^window=[^:]*://p' "${FM_HOME:?}"/state/*.meta
     exit 0
@@ -2672,6 +2676,7 @@ SH
   cat > "$fakebin/tmux" <<SH
 #!/usr/bin/env bash
 case "\$*" in
+  *display-message*'#{session_attached}'*) printf '0\t0\t0\n' ;;
   *display-message*'#{pane_current_command}'*) printf '%s' zsh ;;
   *display-message*'#{pane_id}'*) printf '%s' '%1' ;;
   *display-message*'#{cursor_y}'*) printf '%s' 0 ;;

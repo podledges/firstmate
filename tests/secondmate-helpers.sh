@@ -72,6 +72,7 @@ EOF
     ;;
   display-message)
     case "$*" in
+      *'#{session_attached}'*) printf '0\t0\t0\n' ;;
       *'#{cursor_y}'*) printf '0\n' ;;
       *) printf 'firstmate\n' ;;
     esac
