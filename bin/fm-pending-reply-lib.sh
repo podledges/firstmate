@@ -423,19 +423,6 @@ fm_pending_reply_prepare_delivery() {  # <state-dir> <corr_id>
   fm_pending_reply_write_delivery_confirmation "$state" "$corr" attempted "$now"
 }
 
-# Cancel only the pre-delivery `attempted` marker after a transport positively
-# reports that its pane safety guard typed nothing. The expectation and its
-# correlation stay intact for the deferred retry; confirmed or malformed
-# markers are never removed through this path.
-fm_pending_reply_cancel_delivery_attempt() {  # <state-dir> <corr_id>
-  local state=$1 corr=$2 marker entry
-  [ -n "$corr" ] || return 0
-  marker=$(fm_pending_reply_delivery_confirmation_path "$state" "$corr")
-  [ -f "$marker" ] || return 0
-  entry=$(cat "$marker" 2>/dev/null || true)
-  case "$entry" in attempted=*) rm -f "$marker" ;; *) return 1 ;; esac
-}
-
 fm_pending_reply_confirm_delivery() {  # <state-dir> <corr_id>
   local state=$1 corr=$2 lock rc=0
   local STATE FM_WAKE_QUEUE FM_WAKE_QUEUE_LOCK

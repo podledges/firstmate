@@ -12,11 +12,13 @@
 # invoked. Exit 4 means the pane still fails its focus/composer guard, and the
 # supervision-lease refusal exit 6 means the other actor holds the task lease;
 # both are raised before any terminal input and move the record back to
-# .pending; exit 0 or delivered-unconfirmed exit 3 retires it; every other
-# result moves it to .failed and renders one report until the watcher durably
-# queues its notification and acknowledges the record, so supervision can
-# reconcile without retyping. A .sending record left by process death is delivery-ambiguous and is likewise
-# quarantined as .failed rather than automatically retried. Pending, claimed,
+# .pending; exit 0 retires it; every other result, including the
+# delivered-but-unconfirmed exit 3 whose text may still sit unsubmitted in the
+# composer, moves it to .failed with fm-send's stderr retained and renders one
+# report until the watcher durably queues its notification and acknowledges the
+# record, so supervision can reconcile without retyping. A .sending record left
+# by process death is delivery-ambiguous and is likewise quarantined as .failed
+# rather than automatically retried. Pending, claimed,
 # and failed records gate later messages for the same endpoint, preserving FIFO
 # and preventing unresolved delivery from being overtaken. Nothing retries or
 # clears a .failed record automatically: an operator inspects one with
@@ -213,7 +215,7 @@ fm_send_queue_ack_failed_reports() {  # <state>
 }
 
 fm_send_queue_tick() {  # <home> <state> <fm-send-executable>
-  local home=$1 state=$2 send=$3 root rec pending failed raw target message keys corr key rc err id
+  local home=$1 state=$2 send=$3 root rec pending failed raw target message keys corr key rc err
   local blocked_targets='' reported_records=''
   local -a args
   root=$(fm_send_queue_root "$state")
@@ -234,8 +236,7 @@ fm_send_queue_tick() {  # <home> <state> <fm-send-executable>
     [ -d "$rec" ] && [ ! -L "$rec" ] || continue
     fm_send_queue_target_list_has "$reported_records" "$rec" \
       || fm_send_queue_report_failed_once "$rec" "a prior delivery attempt failed and was not retyped"
-    if fm_send_queue_record_valid "$rec" \
-      && fm_send_queue_read_var "$rec/resolved-target" target; then
+    if fm_send_queue_read_var "$rec/resolved-target" target; then
       blocked_targets="${blocked_targets}${target}"$'\n'
     fi
   done
@@ -286,7 +287,7 @@ EOF_KEYS
       FM_PENDING_REPLY_EXISTING_CORR="$corr" FM_SEND_DEFERRED_TARGET="$target" \
       "$send" "${args[@]}" >/dev/null 2>"$err" || rc=$?
     case "$rc" in
-      0|3)
+      0)
         fm_send_queue_record_remove "$rec" || {
           failed=${rec%.sending}.failed
           mv -- "$rec" "$failed" 2>/dev/null || true
@@ -303,10 +304,15 @@ EOF_KEYS
         fi
         blocked_targets="${blocked_targets}${target}"$'\n'
         ;;
+      3)
+        failed=${rec%.sending}.failed
+        mv -- "$rec" "$failed" 2>/dev/null || true
+        fm_send_queue_report_failed_once "$failed" "delivery is ambiguous because the text was typed and submitted but the submit was not confirmed, so it may still sit unsubmitted in the composer; verify the pane and do not resend: $(tr '\n\r\t' '   ' < "$failed/stderr" 2>/dev/null | head -c 300)"
+        blocked_targets="${blocked_targets}${target}"$'\n'
+        ;;
       *)
         failed=${rec%.sending}.failed
         mv -- "$rec" "$failed" 2>/dev/null || true
-        id=${failed##*/}; id=${id%.failed}
         fm_send_queue_report_failed_once "$failed" "fm-send exited $rc: $(tr '\n\r\t' '   ' < "$failed/stderr" 2>/dev/null | head -c 300)"
         blocked_targets="${blocked_targets}${target}"$'\n'
         ;;
