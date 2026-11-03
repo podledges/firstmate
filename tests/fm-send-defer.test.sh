@@ -376,6 +376,7 @@ test_deferral_resets_attempt_aged_by_reconciliation() {
   dir=$(new_case aged-attempt)
   fm_write_meta "$dir/home/state/t1.meta" "window=sess:fm-t1" "kind=secondmate" "harness=claude"
   set_focus "$dir" $'1\t1\t1'
+  # shellcheck disable=SC2016 # the single-quoted script expands in the generated hook
   printf '#!/usr/bin/env bash\nfor r in "%s"/*; do [ -f "$r" ] && sed -i.bak "s/^phase=.*/phase=delivery_unknown/" "$r" && rm -f "$r.bak"; done\n' \
     "$dir/home/state/pending-replies" > "$dir/fake/on-guard"
   chmod +x "$dir/fake/on-guard"
