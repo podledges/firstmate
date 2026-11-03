@@ -1353,7 +1353,10 @@ fm_lock_acquire_wait_bounded() {
     return 0
   fi
   if [ "$rc" -eq 124 ]; then
-    owner_pid=$(cat "$lockdir/pid" 2>/dev/null || true)
+    # The final try already observed the holder while deciding that acquisition
+    # failed. Re-reading a lock under churn can land between one release and the
+    # next acquisition, misclassifying ordinary contention as an unsafe lock.
+    owner_pid=${FM_LOCK_HELD_PID:-}
     case "$owner_pid" in
       ''|*[!0-9]*|0) ;;
       *)
