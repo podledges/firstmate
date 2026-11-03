@@ -122,7 +122,7 @@
 # inspect (it can no longer reconcile or escalate on its own). Only a
 # failed enqueue discards the expectation. On the typed plane an unconfirmed
 # submit (exit 3) keeps it armed rather than dropping it. A pre-input deferral
-# (exit 4) cancels its attempted-delivery marker but retains the same
+# (exit 4) resets its attempted-delivery marker but retains the same
 # expectation and correlation in the typed-send queue; replay confirms delivery
 # only after terminal input. Only a proven send failure discards it.
 # Set FM_PENDING_REPLY_EXISTING_CORR=<id> when re-sending a recovery request
@@ -1146,7 +1146,8 @@ else
     safety=$(fm_backend_input_guard_state "$TARGET_BACKEND" "$T" "$EXPECTED_LABEL")
   fi
   if [ "$safety" != safe ]; then
-    fm_pending_reply_cancel_delivery_attempt "$STATE" "$PENDING_REPLY_CORR" || true
+    [ -z "$PENDING_REPLY_CORR" ] ||
+      fm_pending_reply_reset_known_undelivered "$STATE" "$PENDING_REPLY_CORR" || true
     if [ -n "${FM_SEND_DEFERRED_RECORD:-}" ] || [ "${FM_SEND_NO_DEFER_QUEUE:-0}" = 1 ]; then
       echo "fm-send: deferred without typing to $T (safety=$safety); the owning queue will retry only after the pane passes its focus guard and its composer is empty" >&2
       exit "$FM_SEND_DEFERRED_EXIT"

@@ -43,7 +43,9 @@ case "${1:-}" in
   display-message)
     for arg in "$@"; do
       case "$arg" in
-        *session_attached*) cat "$D/focus"; printf '\n'; exit 0 ;;
+        *session_attached*)
+          [ ! -x "$D/on-guard" ] || "$D/on-guard"
+          cat "$D/focus"; printf '\n'; exit 0 ;;
         *session_name*pane_id*) printf 'sess\t@1\t%%1\n'; exit 0 ;;
         *cursor_y*) printf '1\n'; exit 0 ;;
       esac
@@ -318,6 +320,81 @@ test_quarantined_record_blocks_until_operator_retires_it() {
   pass "fm-send defer: a quarantined record blocks later sends until an operator retires exactly it, and is never retyped"
 }
 
+test_unconfirmed_replay_is_quarantined_and_reported_once() {
+  local dir rc stub calls out id
+  dir=$(new_case unconfirmed)
+  set_focus "$dir" $'1\t1\t1'
+  run_send "$dir" t1 '/maybe unsubmitted' >/dev/null; rc=$?
+  expect_code 4 "$rc" "focused message should queue before unconfirmed-replay test"
+  run_send "$dir" t1 '/queued behind it' >/dev/null; rc=$?
+  expect_code 4 "$rc" "second message should queue behind the first"
+  set_focus "$dir" $'0\t0\t0'
+  calls="$dir/stub-calls"
+  stub="$dir/unconfirmed-send"
+  printf '#!/usr/bin/env bash\necho x >> "%s"\necho "warning: submit to %%1 unconfirmed; check the pane" >&2\nexit 3\n' "$calls" > "$stub"
+  chmod +x "$stub"
+  out=$(PATH="$dir/fakebin:$PATH" fm_send_queue_tick "$dir/home" "$dir/home/state" "$stub")
+  [ "$(wc -l < "$calls" | tr -d ' ')" = 1 ] || fail "unconfirmed replay was not attempted exactly once"
+  [ "$(queue_count "$dir" failed)" = 1 ] || fail "unconfirmed replay was retired instead of quarantined"
+  [ "$(queue_count "$dir" pending)" = 1 ] || fail "later record did not stay pending behind the ambiguous one"
+  assert_contains "$out" "submit was not confirmed" "unconfirmed replay was not reported as delivery-ambiguous"
+  assert_contains "$out" "submit to %1 unconfirmed" "unconfirmed replay report dropped fm-send diagnostics"
+  id=$(find "$dir/home/state/send-queue" -maxdepth 1 -type d -name '*.failed' -print -quit)
+  id=${id##*/}; id=${id%.failed}
+  assert_contains "$(FM_HOME="$dir/home" "$ROOT/bin/fm-send-queue.sh" show "$id")" "submit to %1 unconfirmed" \
+    "quarantined unconfirmed replay did not retain its diagnostics"
+  fm_send_queue_ack_failed_reports "$dir/home/state" || fail "could not acknowledge unconfirmed-replay report"
+  out=$(PATH="$dir/fakebin:$PATH" fm_send_queue_tick "$dir/home" "$dir/home/state" "$stub")
+  [ -z "$out" ] || fail "acknowledged unconfirmed replay reported again: $out"
+  [ "$(wc -l < "$calls" | tr -d ' ')" = 1 ] || fail "ambiguous replay was retried or overtaken"
+  pass "fm-send defer: an unconfirmed replay is quarantined, reported once with diagnostics, and never retried"
+}
+
+test_malformed_failed_record_keeps_blocking_its_target() {
+  local dir rc first
+  dir=$(new_case malformed-failed)
+  set_focus "$dir" $'1\t1\t1'
+  run_send "$dir" t1 '/first' >/dev/null; rc=$?
+  expect_code 4 "$rc" "first message should queue"
+  run_send "$dir" t1 '/second' >/dev/null; rc=$?
+  expect_code 4 "$rc" "second message should queue"
+  first=$(find "$dir/home/state/send-queue" -maxdepth 1 -type d -name '*.pending' | sort | head -1)
+  rm -f "$first/corr"
+  set_focus "$dir" $'0\t0\t0'
+  run_tick "$dir" >/dev/null
+  [ "$(queue_count "$dir" failed)" = 1 ] || fail "malformed record was not quarantined"
+  fm_send_queue_ack_failed_reports "$dir/home/state" || fail "could not acknowledge malformed-record report"
+  run_tick "$dir" >/dev/null
+  run_tick "$dir" >/dev/null
+  [ "$(literal_count "$dir")" = 0 ] || fail "later record overtook a malformed quarantined record"
+  [ "$(queue_count "$dir" pending)" = 1 ] || fail "later record left pending state while blocked"
+  pass "fm-send defer: a malformed quarantined record keeps blocking its endpoint on every tick"
+}
+
+test_deferral_resets_attempt_aged_by_reconciliation() {
+  local dir rc rec corr
+  dir=$(new_case aged-attempt)
+  fm_write_meta "$dir/home/state/t1.meta" "window=sess:fm-t1" "kind=secondmate" "harness=claude"
+  set_focus "$dir" $'1\t1\t1'
+  printf '#!/usr/bin/env bash\nfor r in "%s"/*; do [ -f "$r" ] && sed -i.bak "s/^phase=.*/phase=delivery_unknown/" "$r" && rm -f "$r.bak"; done\n' \
+    "$dir/home/state/pending-replies" > "$dir/fake/on-guard"
+  chmod +x "$dir/fake/on-guard"
+  run_send "$dir" t1 '/report-home' >/dev/null; rc=$?
+  expect_code 4 "$rc" "focused secondmate request should defer"
+  rm -f "$dir/fake/on-guard"
+  rec=$(find "$dir/home/state/pending-replies" -maxdepth 1 -type f ! -name '.*' | head -1)
+  corr=$(sed -n 's/^corr_id=//p' "$rec")
+  [ "$(sed -n 's/^phase=//p' "$rec")" = awaiting_report ] \
+    || fail "deferral left a reconciliation-aged phase instead of resetting it: $(sed -n 's/^phase=//p' "$rec")"
+  [ ! -e "$dir/home/state/pending-replies/.delivery-confirmed-$corr" ] \
+    || fail "deferral left the attempted-delivery marker behind"
+  set_focus "$dir" $'0\t0\t0'
+  run_tick "$dir" >/dev/null
+  [ -n "$(sed -n 's/^delivered_epoch=//p' "$rec")" ] || fail "replay after the reset did not confirm delivery"
+  [ "$(literal_count "$dir")" = 1 ] || fail "reset deferred request was not typed exactly once"
+  pass "fm-send defer: a no-input deferral resets an attempt that reconciliation aged to delivery_unknown"
+}
+
 test_focused_send_defers_then_delivers_once
 test_per_target_fifo_is_preserved
 test_pending_and_unknown_composers_defer_without_touching_draft
@@ -328,5 +405,8 @@ test_special_keys_refuse_and_never_queue
 test_interrupted_delivery_is_quarantined_without_retyping
 test_lease_refusal_returns_claim_to_pending_without_typing
 test_quarantined_record_blocks_until_operator_retires_it
+test_unconfirmed_replay_is_quarantined_and_reported_once
+test_malformed_failed_record_keeps_blocking_its_target
+test_deferral_resets_attempt_aged_by_reconciliation
 
 echo "all fm-send defer tests passed"
