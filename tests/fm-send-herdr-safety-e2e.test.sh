@@ -7,6 +7,10 @@ set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HERDR_LAB_HELPER=${HERDR_LAB_HELPER:-/Users/podles/fleet/PodleMac/bin/fm-herdr-lab.sh}
+# Same suite exemption tests/lib.sh exports: this test drives fm-send and
+# fm-control against a scratch FM_HOME and an isolated lab session, so the
+# gate-lifecycle refusal must not fire when the suite runs from a gate worktree.
+export FM_GATE_REFUSE_BYPASS=1
 
 fail() { printf 'not ok - %s\n' "$1" >&2; exit 1; }
 pass() { printf 'ok - %s\n' "$1"; }
@@ -197,9 +201,18 @@ PENDING_TAB_ID=$(printf '%s' "$PENDING_CREATE" | jq -r '.result.tab.tab_id // em
 PENDING_PANE_ID=$(printf '%s' "$PENDING_CREATE" | jq -r '.result.root_pane.pane_id // empty')
 [ -n "$PENDING_TAB_ID" ] && [ -n "$PENDING_PANE_ID" ] \
   || fail "pending-composer tab create did not return ids"
-lab pane run "$PENDING_PANE_ID" "bash -c 'printf \\\"❯ \\\"; read -r _line; sleep 300'" >/dev/null \
+lab pane run "$PENDING_PANE_ID" "$SCRATCH/agentbin/claude" >/dev/null \
   || fail "could not start the pending-composer fixture"
-sleep 0.5
+PENDING_LIVE=0
+for _ in $(seq 1 50); do
+  if lab pane process-info --pane "$PENDING_PANE_ID" 2>/dev/null \
+    | jq -e '.result.process_info.foreground_processes[]? | select((.name // "") == "claude" or ((.argv0 // "") | endswith("/claude")))' >/dev/null; then
+    PENDING_LIVE=1
+    break
+  fi
+  sleep 0.1
+done
+[ "$PENDING_LIVE" = 1 ] || fail "unfocused pending-composer stand-in never became a live agent process"
 lab pane report-agent "$PENDING_PANE_ID" --source fm-send-safety-e2e \
   --agent claude --state idle >/dev/null \
   || fail "could not register the pending-composer fixture"
