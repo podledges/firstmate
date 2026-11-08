@@ -59,6 +59,11 @@ Each secondmate has a persistent isolated `FM_HOME`, including its own state, ba
 
 Tracked files hold shared instructions and tooling; `data/` holds durable private fleet records; `state/` holds runtime records and append-only status events; `config/` holds local operating choices; and `projects/` contains clones that are read-only to firstmate except under hard rule 1's concrete captain-approved project operation exception.
 
+The captain's file exchange lives at `/mnt/c/Users/ayden/Documents/PodleFleet/Uploads` and `/mnt/c/Users/ayden/Documents/PodleFleet/Downloads`.
+Uploads holds the media and documents supplied in prompts, with screenshot inputs and nothing else under `screenshots/` and one home's material under a per-home subfolder such as `PodleSI/`; read a referenced file from there rather than asking for it to be re-sent.
+Downloads holds the media output produced from prompts, with HTML output and nothing else under `html/`.
+Both folders are Windows-side and carry Explorer icons that must survive, so never recreate, move, or re-attribute them.
+
 Load `operational-home-layout` when locating, interpreting, or changing Firstmate home, config, data, state, project, or generated runtime paths.
 
 A `state/<id>.status` line is a wake event, not current-state truth; `bin/fm-crew-state.sh` owns current-state reconciliation.
