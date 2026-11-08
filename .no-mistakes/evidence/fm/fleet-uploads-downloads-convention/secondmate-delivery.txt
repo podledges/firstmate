@@ -1,0 +1,32 @@
+Primary checkout set to this commit (7ffebff) on main.
+New secondmate home via the same `git clone` fm-home-seed.sh ensure_home uses:
+  SEED_CLONE_HEAD=7ffebff
+  SEED_CLONE_AGENTS=CONTRACT_PRESENT
+  CLAUDE.md is the @AGENTS.md pointer, so Claude inlines that file.
+
+Existing secondmate home still on the parent commit eb3a9b2:
+  BEHIND_AGENTS=CONTRACT_ABSENT
+
+bin/fm-ff-lib.sh ff_target to primary_head_commit (7ffebff777ce629a856a449ed6bff96ee25acea4):
+  secondmate podlesi: updated eb3a9b2..7ffebff (instructions changed: AGENTS.md)
+  AFTER_FF_HEAD=7ffebff
+  AFTER_FF_AGENTS=CONTRACT_PRESENT
+  AFTER_FF_AGENTS_BYTE_IDENTICAL_TO_PRIMARY=yes
+
+Delivered paragraph from the fast-forwarded secondmate AGENTS.md:
+  The captain's file exchange lives at `/mnt/c/Users/ayden/Documents/PodleFleet/Uploads` and `/mnt/c/Users/ayden/Documents/PodleFleet/Downloads`.
+  Uploads holds the media and documents supplied in prompts, with screenshot inputs and nothing else under `screenshots/` and one home's material under a per-home subfolder such as `PodleSI/`; read a referenced file from there rather than asking for it to be re-sent.
+  Downloads holds the media output produced from prompts, with HTML output and nothing else under `html/`.
+  Both folders are Windows-side and carry Explorer icons that must survive, so never recreate, move, or re-attribute them.
+
+Running-home nudge constant from bin/fm-secondmate-nudge-lib.sh, sent when that instruction surface changes:
+  firstmate was updated to the latest - please re-read your AGENTS.md to pick up the new instructions.
+
+Second ff_target against the same home:
+  secondmate podlesi: already current
+
+Live WSL paths named by the contract:
+  Uploads, Downloads, screenshots/, PodleSI/, and html/ all exist.
+  Uploads is readable. Downloads and html/ are writable.
+  A referenced PDF under Uploads/PodleSI/ was readable (573865 bytes); contents were not copied.
+  screenshots/ and html/ contain no files, so neither holds a non-matching file.

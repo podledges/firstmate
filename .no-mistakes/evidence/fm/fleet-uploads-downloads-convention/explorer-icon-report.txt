@@ -1,0 +1,22 @@
+﻿ICON_RESOURCE uploads 256x256 frames=15
+ICON_RESOURCE downloads 256x256 frames=15
+SYSICONINDEX Uploads 254
+SYSICONINDEX Downloads 255
+SYSICONINDEX plain-Documents 126
+SYSICONINDEX Uploads-screenshots 3
+SYSICONINDEX Uploads-PodleSI 3
+SYSICONINDEX Downloads-html 3
+ATTRIB C:\Users\ayden\Documents\PodleFleet\Uploads :: S                 C:\Users\ayden\Documents\PodleFleet\Uploads
+ATTRIB C:\Users\ayden\Documents\PodleFleet\Downloads :: S                 C:\Users\ayden\Documents\PodleFleet\Downloads
+ATTRIB C:\Users\ayden\Documents\PodleFleet\Uploads\desktop.ini :: A  SH                C:\Users\ayden\Documents\PodleFleet\Uploads\desktop.ini
+ATTRIB C:\Users\ayden\Documents\PodleFleet\Downloads\desktop.ini :: A  SH                C:\Users\ayden\Documents\PodleFleet\Downloads\desktop.ini
+ATTRIB C:\Users\ayden\Documents\PodleFleet\Uploads\screenshots :: C:\Users\ayden\Documents\PodleFleet\Uploads\screenshots
+ATTRIB C:\Users\ayden\Documents\PodleFleet\Uploads\PodleSI :: C:\Users\ayden\Documents\PodleFleet\Uploads\PodleSI
+ATTRIB C:\Users\ayden\Documents\PodleFleet\Downloads\html :: C:\Users\ayden\Documents\PodleFleet\Downloads\html
+UPLOADS_INI [.ShellClassInfo]
+UPLOADS_INI IconResource=C:\Users\ayden\Documents\.ico\.ico\stickies-2--rocket-launch-chart-duo.ico,0
+UPLOADS_INI InfoTip=Media and documents Podles uploads in prompts. Screenshots go in screenshots\.
+DOWNLOADS_INI [.ShellClassInfo]
+DOWNLOADS_INI IconResource=C:\Users\ayden\Documents\.ico\.ico\stickies-2--server-network-duo.ico,0
+DOWNLOADS_INI InfoTip=Media output produced by agents. HTML output goes in html\.
+EXPLORER_SHOT False explorer window titled PodleFleet was not found
