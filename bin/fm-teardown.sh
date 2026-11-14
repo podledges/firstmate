@@ -44,7 +44,10 @@
 # REFUSES if the worktree holds work that has not LANDED, because cleanup
 # hard-resets/removes the worktree and kills its processes. Work has landed when it is
 # reachable from any remote-tracking branch (a fork counts as a remote, so
-# upstream-contribution PRs pushed to a fork satisfy this in any mode), OR - for a
+# upstream-contribution PRs pushed to a fork satisfy this in any mode) - EXCEPT
+# the no-mistakes pipeline's own `no-mistakes` remote, whose tracking refs are
+# staging in a same-machine cache repo, not a landing place; see
+# NM_CACHE_REMOTE_EXCLUDE below - OR - for a
 # normal ship task whose commits are not so reachable - when its PR is merged and
 # GitHub reports a PR head that contains the current local work, or its content is
 # already present in the up-to-date default branch. This recognizes the common
@@ -1510,6 +1513,21 @@ patch_id_for_commit() {
     | awk 'NR == 1 { print $1 }'
 }
 
+# The no-mistakes pipeline registers a remote literally named `no-mistakes` in
+# the project clone and syncs the task branch into its own cache repo under the
+# daemon's data directory, so a run that never pushed anywhere durable still
+# leaves refs/remotes/no-mistakes/<branch> at the local head. That ref is
+# pipeline staging on the same disk - internal, prunable, and gone with the
+# daemon's data - so reachability from it proves nothing about landing, and
+# counting it let teardown destroy an unlanded branch (observed 2026-11-14: a
+# failed pipeline run left the cache ref behind, and a later teardown read the
+# branch's never-pushed commits as remote-reachable). Every reachability test
+# below excludes that remote's tracking refs; genuinely landed work is still
+# reachable from another remote, a merged PR head, or the default branch.
+# A real remote that merely shares the name is excluded too, which only errs
+# toward refusal, never toward discarding work.
+NM_CACHE_REMOTE_EXCLUDE='--exclude=no-mistakes/*'
+
 unpushed_patches_are_in_pr_head() {
   local pr_head=$1 current base pr_patch_ids commit patch_id unpushed
   current=$(git -C "$WT" rev-parse --verify HEAD 2>/dev/null) || return 1
@@ -1523,7 +1541,7 @@ unpushed_patches_are_in_pr_head() {
       | sort -u
   ) || return 1
   [ -n "$pr_patch_ids" ] || return 1
-  unpushed=$(git -C "$WT" log --format=%H HEAD --not --remotes -- 2>/dev/null) || return 1
+  unpushed=$(git -C "$WT" log --format=%H HEAD --not "$NM_CACHE_REMOTE_EXCLUDE" --remotes -- 2>/dev/null) || return 1
   [ -n "$unpushed" ] || return 1
   while IFS= read -r commit; do
     [ -n "$commit" ] || continue
@@ -1909,7 +1927,7 @@ validate_worktree_teardown_safety() {
   fi
   dirty=$(printf '%s\n' "$dirty_raw" | grep -vE '^\?\? (\.claude/|\.fm-(grok|kimi)-turnend$)' || true)
 
-  if ! unpushed_raw=$(git -C "$WT" log --oneline HEAD --not --remotes -- 2>/dev/null); then
+  if ! unpushed_raw=$(git -C "$WT" log --oneline HEAD --not "$NM_CACHE_REMOTE_EXCLUDE" --remotes -- 2>/dev/null); then
     if worktree_safety_blocked_by_lock "commits not on a remote"; then
       return "$TEARDOWN_WORKTREE_SAFETY_LOCK_BLOCKED"
     fi
