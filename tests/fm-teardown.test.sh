@@ -26,6 +26,8 @@
 #   (c) local-only + merged into local main, no remote         -> ALLOW  (no regression)
 #   (d) no-mistakes + HEAD on origin remote-tracking branch    -> ALLOW  (no regression)
 #   (e) no-mistakes + unpushed, no PR, content not in default  -> REFUSE (safety)
+#   (e2) no-mistakes + unpushed, reachable only from the pipeline's own
+#        `no-mistakes` cache remote                            -> REFUSE (nm-cache fix)
 #   (f) local-only + truly unpushed + --force                  -> ALLOW  (escape hatch)
 #   (g) no-mistakes + squash-merged PR, exact PR head          -> ALLOW  (squash fix)
 #   (h) no-mistakes + no PR but content already in default     -> ALLOW  (content fallback)
@@ -35,6 +37,7 @@
 #   (l) no-mistakes + stale origin/main but fetched content     -> ALLOW  (fresh fetch)
 #   (m) no-mistakes + local HEAD ancestor of merged PR head     -> ALLOW  (lagging local)
 #   (n) no-mistakes + replayed unpushed patch in merged PR head -> ALLOW  (replayed local)
+#   (n2) merged PR + stale nm-cache ref hiding an unlanded commit -> REFUSE (nm-cache fix)
 #   (o) fm-pr-check rerun after HEAD moved                      -> no stale pr_head
 #   (p) fm-pr-check when local HEAD lags                        -> record remote PR head
 #   (q) no-mistakes + NO pr= recorded, PR discovered by branch  -> ALLOW  (yolo/no-CI merge)
@@ -870,6 +873,71 @@ test_no_mistakes_truly_unpushed_refuses() {
   expect_code 1 "$rc" "nm-unpushed: teardown should refuse"
   grep -q REFUSED "$case_dir/stderr" || fail "nm-unpushed: no REFUSED line in stderr"
   pass "no-mistakes worktree with genuinely unlanded work is refused (safety preserved)"
+}
+
+# Simulate the no-mistakes pipeline's branch sync: a bare cache repo registered
+# on the project as a remote literally named `no-mistakes`, the worktree's task
+# branch pushed there, and the tracking ref fetched so refs/remotes/no-mistakes/
+# holds the branch head - exactly what a pipeline run (even a failed one) leaves
+# behind in the clone. Args: case_dir
+add_nm_cache_remote_with_synced_branch() {
+  local case_dir=$1
+  git init -q --bare "$case_dir/nm-cache.git"
+  git -C "$case_dir/project" remote add no-mistakes "$case_dir/nm-cache.git"
+  git -C "$case_dir/wt" push -q no-mistakes fm/task-x1
+  git -C "$case_dir/wt" fetch -q no-mistakes
+}
+
+test_nm_cache_remote_ref_still_refuses() {
+  local case_dir rc
+  case_dir=$(make_case nm-cache-ref)
+  write_meta "$case_dir" no-mistakes ship
+  # Real content, no PR, not on origin/main: genuinely unlanded work whose only
+  # remote-tracking reachability is the pipeline's own cache remote. This is the
+  # 2026-11-14 incident shape: a failed no-mistakes run synced the branch into
+  # the daemon's cache, and teardown then read the never-pushed commits as
+  # remote-reachable, deleted the branch pointer, and returned the worktree.
+  wt_commit_file "$case_dir" feature.txt hello "unlanded work"
+  add_nm_cache_remote_with_synced_branch "$case_dir"
+
+  set +e
+  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "nm-cache-ref: teardown should refuse"
+  grep -q REFUSED "$case_dir/stderr" || fail "nm-cache-ref: no REFUSED line in stderr"
+  git -C "$case_dir/project" show-ref --verify --quiet refs/heads/fm/task-x1 \
+    || fail "nm-cache-ref: the task branch pointer was deleted"
+  pass "work reachable only from the no-mistakes cache remote is refused (nm-cache fix)"
+}
+
+test_merged_pr_with_nm_cache_hidden_commit_refuses() {
+  local case_dir rc pr_head
+  case_dir=$(make_case nm-cache-pr-hidden)
+  write_meta "$case_dir" no-mistakes ship
+  # An unlanded commit that a stale nm-cache ref makes remote-reachable, followed
+  # by a commit whose equivalent patch IS in the merged PR head. Counting the
+  # cache ref would shrink the unpushed set to the replayed commit alone and read
+  # the whole worktree as landed, destroying the hidden commit; the patch
+  # containment test must see both commits and refuse.
+  wt_commit_file "$case_dir" secret.txt unlanded "unlanded local work"
+  add_nm_cache_remote_with_synced_branch "$case_dir"
+  wt_commit_file "$case_dir" feature.txt hello "add feature"
+  append_pr_meta_url "$case_dir"
+  pr_head=$(land_equivalent_patch_on_origin_branch "$case_dir" pr-head feature.txt hello "add feature")
+  add_gh_pr_merged_for_head "$case_dir" "$pr_head"
+
+  set +e
+  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "nm-cache-pr-hidden: teardown should refuse"
+  grep -q REFUSED "$case_dir/stderr" || fail "nm-cache-pr-hidden: no REFUSED line in stderr"
+  git -C "$case_dir/project" show-ref --verify --quiet refs/heads/fm/task-x1 \
+    || fail "nm-cache-pr-hidden: the task branch pointer was deleted"
+  pass "merged PR containment ignores nm-cache refs and still sees the hidden unlanded commit"
 }
 
 test_squash_merged_branch_deleted_allows() {
@@ -4651,6 +4719,8 @@ test_local_only_truly_unpushed_refuses
 test_local_only_merged_to_local_main_allows
 test_no_mistakes_origin_remote_allows
 test_no_mistakes_truly_unpushed_refuses
+test_nm_cache_remote_ref_still_refuses
+test_merged_pr_with_nm_cache_hidden_commit_refuses
 test_local_only_force_overrides_unpushed
 test_secondmate_pr_registration_publishes_ready_line
 test_secondmate_home_teardown_delivers_final_line_or_refuses
