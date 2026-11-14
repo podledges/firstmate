@@ -1,0 +1,44 @@
+Live validation: bin/fm-teardown.sh landed-work guard vs the no-mistakes cache remote
+(fleet-wide safety defect reported 2026-11-14 by cg2271)
+
+Driven directly against the real bin/fm-teardown.sh script with disposable git
+fixtures built by tests/fm-teardown.test.sh (real bare "origin" repo, real
+project clone, real task worktree, real `no-mistakes` cache remote with a
+synced branch ref - the exact shape the incident report describes).
+
+=== 1. REGRESSION REPRODUCTION: base commit (9be72f5, pre-fix) ===
+Command: bash <trimmed copy of tests/fm-teardown.test.sh containing only the
+two new nm-cache tests>, run with bin/fm-teardown.sh temporarily restored to
+the base commit's content.
+
+not ok - nm-cache-ref: teardown should refuse: expected exit 1, got 0
+
+This reproduces the reported incident live: with only the pre-fix guard, a
+worktree whose sole commit is unlanded, reachable only via the pipeline's own
+`no-mistakes` cache remote, is wrongly treated as landed and teardown proceeds
+(exit 0) instead of refusing.
+
+=== 2. FIX VALIDATION: target commit (7c3d5f2) ===
+Same two scenarios, bin/fm-teardown.sh restored to the target commit's content
+(byte-identical diff after restore: `git status --porcelain` empty, `git diff
+--stat` empty).
+
+ok - work reachable only from the no-mistakes cache remote is refused (nm-cache fix)
+ok - merged PR containment ignores nm-cache refs and still sees the hidden unlanded commit
+
+=== 3. NO-REGRESSION SWEEP: full tests/fm-teardown.test.sh on target commit ===
+Every other landed/unlanded teardown-guard scenario in the matrix (local-only
+fork remote, origin remote-tracking, squash-merge, content-fallback, dirty
+worktree, gh-down fail-safe, stale PR head, replayed/rebased local commits,
+lock-race recovery, parked-run abort/ledger logic, etc.) still passes with the
+fix applied - the cache-remote exclusion does not change behavior for any
+already-landed or already-correctly-refused case.
+
+One unrelated failure was observed in this run:
+  not ok - leaked-process-reap: leaked worktree process survived teardown
+This is an environment gap, not a regression from this change: this host has
+no `lsof` binary (`which lsof` -> not found), and leaked-process reaping in
+bin/fm-teardown.sh depends on it to resolve a process's cwd. The diff under
+test touches only the two remote-reachability checks
+(unpushed_patches_are_in_pr_head, validate_worktree_teardown_safety); it does
+not touch process-reaping code at all.
