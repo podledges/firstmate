@@ -1624,9 +1624,10 @@ fm_treehouse_pool_slot() {  # <project-dir> <worktree>
 fm_treehouse_pool_root() {  # [home]
   local home=${1:-$FM_HOME} base hash
   home=$(CDPATH='' cd -- "$home" 2>/dev/null && pwd -P) || return 1
-  base=${TREEHOUSE_ROOT:-$HOME}
+  base=${TREEHOUSE_ROOT:-${HOME:-}}
   # A relative root resolves per repository rather than per home, which is the
-  # sharing this scoping exists to remove, so it is refused rather than reused.
+  # sharing this scoping exists to remove, so it is refused rather than reused;
+  # so is an absent base, which would otherwise silently become the cwd.
   case "$base" in /*) ;; *) return 1 ;; esac
   base=$(CDPATH='' cd -- "$base" 2>/dev/null && pwd -P) || return 1
   hash=$(printf '%s' "$home" | git hash-object --stdin 2>/dev/null) || return 1
@@ -1706,7 +1707,9 @@ fm_treehouse_slot_unsafe_reason() {  # <project-dir> <slot-repo-dir> [task-id]
   fi
   for ref in "refs/remotes/origin/$default" "refs/heads/$default"; do
     git -C "$dir" rev-parse --verify --quiet "$ref" >/dev/null 2>&1 || continue
-    ! git -C "$dir" merge-base --is-ancestor "$head" "$ref" 2>/dev/null || return 0
+    if git -C "$dir" merge-base --is-ancestor "$head" "$ref" 2>/dev/null; then
+      return 0
+    fi
   done
   branch=$(git -C "$dir" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
   FM_TREEHOUSE_SLOT_UNSAFE="it holds ${branch:-detached HEAD} at ${head:0:12}, which is not on $default"
