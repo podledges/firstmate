@@ -1724,6 +1724,7 @@ fm_treehouse_slot_unsafe_reason() {  # <project-dir> <slot-repo-dir> [task-id]
 # cannot be read at all: an unreadable pool is refused rather than treated as
 # empty, since "nothing is attached to it" is precisely the signal that proved
 # unsafe.
+# shellcheck disable=SC2034 # FM_TREEHOUSE_POOL_ERROR is read by callers.
 fm_treehouse_pool_screen() {  # <project-dir> <pool-root> [task-id]
   local project=$1 root=$2 id=${3:-} out paths path
   FM_TREEHOUSE_POOL_UNSAFE=
