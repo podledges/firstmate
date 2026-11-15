@@ -69,6 +69,15 @@ export REAL_PS_FOR_TEST
 REAL_LSOF_FOR_TEST=$(command -v lsof)
 export REAL_LSOF_FOR_TEST
 
+# Cases that prove the cwd-rooted process reap need a real lsof. Without it
+# teardown takes its documented tmux process-group fallback, which those
+# fixtures' fake tmux cannot answer, so they have no verdict to give; the
+# fallback itself keeps its own case below. Report the missing capability
+# rather than asserting an outcome the host cannot produce.
+lsof_backed_reap_supported() {
+  [ -n "$REAL_LSOF_FOR_TEST" ] || { echo "skip - lsof not installed"; return 1; }
+}
+
 # Build a fresh sandbox for one test case. Sets up:
 #   $CASE/state/        - firstmate state dir (with a fresh watcher beacon)
 #   $CASE/fakebin/      - mocks for treehouse, tmux (PATH-prepended by caller)
@@ -4077,6 +4086,7 @@ test_own_autonomous_run_is_left_alone() {
 
 test_leaked_worktree_process_is_reaped() {
   local case_dir rc pid
+  lsof_backed_reap_supported || return 0
   case_dir=$(make_case leaked-process-reap)
   write_meta "$case_dir" no-mistakes ship
   land_shippable_commit "$case_dir"
@@ -4106,6 +4116,7 @@ test_leaked_worktree_process_is_reaped() {
 
 test_leaked_tasktmp_process_is_reaped() {
   local case_dir rc pid
+  lsof_backed_reap_supported || return 0
   case_dir=$(make_case leaked-tasktmp-reap)
   write_meta "$case_dir" no-mistakes ship
   printf '%s\n' "tasktmp=$case_dir/tasktmp" >> "$case_dir/state/task-x1.meta"
@@ -4197,6 +4208,7 @@ EOF
 
 test_reused_pid_identity_is_not_force_killed() {
   local case_dir rc pid
+  lsof_backed_reap_supported || return 0
   case_dir=$(make_case reused-pid-identity)
   write_meta "$case_dir" no-mistakes ship
   land_shippable_commit "$case_dir"
@@ -4244,6 +4256,7 @@ SH
 
 test_exec_changed_process_is_still_reaped() {
   local case_dir rc pid marker done_flag survived=0
+  lsof_backed_reap_supported || return 0
   case_dir=$(make_case exec-changed-process)
   write_meta "$case_dir" no-mistakes ship
   land_shippable_commit "$case_dir"
@@ -4306,6 +4319,7 @@ SH
 
 test_process_spawned_during_grace_is_reaped_on_later_pass() {
   local case_dir rc pid child_file child_pid="" parent_survived=0 child_survived=0
+  lsof_backed_reap_supported || return 0
   case_dir=$(make_case grace-spawn-convergence)
   write_meta "$case_dir" no-mistakes ship
   land_shippable_commit "$case_dir"
@@ -4423,6 +4437,7 @@ EOF
 
 test_run_abort_precedes_process_reap_precedes_worktree_removal() {
   local case_dir rc head pid abort_log
+  lsof_backed_reap_supported || return 0
   case_dir=$(make_case abort-then-reap-then-remove-order)
   write_meta "$case_dir" no-mistakes ship
   land_shippable_commit "$case_dir"
