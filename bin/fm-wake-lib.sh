@@ -1562,21 +1562,205 @@ fm_treehouse_project_lock_path() {  # <project-dir>
   printf '%s/.treehouse-project-%s.lock\n' "$root/state" "$hash"
 }
 
-# A Treehouse slot has the managed pool's fixed <pool>/<slot>/<repo> layout.
-# Require both its pool state and the same Git common directory as the recorded
-# project; an ordinary linked worktree is not evidence that Treehouse owns it.
-fm_treehouse_pool_slot() {  # <project-dir> <worktree>
+# A Treehouse slot has the managed pool's fixed
+# <root>/.treehouse/<repo>-<hash>/<slot>/<repo> layout. Classify one against the
+# project a spawn or teardown recorded, setting FM_TREEHOUSE_SLOT_BINDING to:
+#   mine    - a pool slot that is a worktree of this project's clone
+#   foreign - a pool slot that is a worktree of SOME OTHER clone
+#   none    - not a managed pool slot at all
+# Treehouse keys a pool by repository, not by clone, so every clone of one
+# origin shares one pool directory and `foreign` is a reachable state rather
+# than a theoretical one; an ordinary linked worktree is still not evidence that
+# Treehouse owns it, so it stays `none`.
+# shellcheck disable=SC2034 # FM_TREEHOUSE_SLOT_BINDING_COMMON is read by callers.
+fm_treehouse_slot_binding() {  # <project-dir> <worktree>
   local project=$1 worktree=$2 slot pool state project_common slot_common
-  [ -d "$project" ] && [ -d "$worktree" ] || return 1
-  slot=$(CDPATH='' cd -- "$worktree" 2>/dev/null && pwd -P) || return 1
+  FM_TREEHOUSE_SLOT_BINDING=none
+  FM_TREEHOUSE_SLOT_BINDING_COMMON=
+  [ -d "$project" ] && [ -d "$worktree" ] || return 0
+  slot=$(CDPATH='' cd -- "$worktree" 2>/dev/null && pwd -P) || return 0
   pool=$(dirname "$(dirname "$slot")")
   state="$pool/treehouse-state.json"
-  [ -f "$state" ] && [ ! -L "$state" ] || return 1
+  [ -f "$state" ] && [ ! -L "$state" ] || return 0
+  project_common=$(git -C "$project" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 0
+  slot_common=$(git -C "$slot" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 0
+  project_common=$(CDPATH='' cd -- "$project_common" 2>/dev/null && pwd -P) || return 0
+  slot_common=$(CDPATH='' cd -- "$slot_common" 2>/dev/null && pwd -P) || return 0
+  FM_TREEHOUSE_SLOT_BINDING_COMMON=$slot_common
+  if [ "$project_common" = "$slot_common" ]; then
+    FM_TREEHOUSE_SLOT_BINDING=mine
+  else
+    FM_TREEHOUSE_SLOT_BINDING=foreign
+  fi
+}
+
+# True when <worktree> is a Treehouse pool slot of <project-dir>'s own clone.
+fm_treehouse_pool_slot() {  # <project-dir> <worktree>
+  fm_treehouse_slot_binding "$1" "$2"
+  [ "$FM_TREEHOUSE_SLOT_BINDING" = mine ]
+}
+
+# The Treehouse pool root a Firstmate home allocates worker worktrees from.
+#
+# Treehouse resolves its root from `--root`, then TREEHOUSE_ROOT, then a
+# repository treehouse.toml, and keys the pool under it by repository alone:
+# <root>/.treehouse/<repo>-<hash>, where the hash identifies the origin rather
+# than the clone. Every home on one machine therefore shares one pool per
+# repository unless the root itself differs, and a shell-profile TREEHOUSE_ROOT
+# cannot separate them because every home inherits the same one. The root is the
+# only containment reachable at allocation time, and bin/fm-spawn.sh drives
+# `treehouse get` inside the worker's own pane, so it has to travel on that
+# command line - an exported variable would arrive after the slot is taken. A
+# passed root also overrides a repository treehouse.toml, which firstmate must
+# not write anyway.
+#
+# Every home gets its own subtree under the ambient base, named for the home and
+# a hash of its resolved path, so a slot path names the home that owns it. No
+# home keeps the bare base, the root home included: a pool that is already
+# shared stays exactly as it is, holding whatever preserved copies it holds,
+# while new allocation moves to pools that were never shared. A home that moves
+# allocates from a new pool, and fm_treehouse_slot_pool_root keeps every slot it
+# recorded under the old one returnable.
+fm_treehouse_pool_root() {  # [home]
+  local home=${1:-$FM_HOME} base hash
+  home=$(CDPATH='' cd -- "$home" 2>/dev/null && pwd -P) || return 1
+  base=${TREEHOUSE_ROOT:-$HOME}
+  # A relative root resolves per repository rather than per home, which is the
+  # sharing this scoping exists to remove, so it is refused rather than reused.
+  case "$base" in /*) ;; *) return 1 ;; esac
+  base=$(CDPATH='' cd -- "$base" 2>/dev/null && pwd -P) || return 1
+  hash=$(printf '%s' "$home" | git hash-object --stdin 2>/dev/null) || return 1
+  printf '%s/.treehouse/homes/%s-%s\n' "$base" "$(basename "$home")" "${hash:0:10}"
+}
+
+# The pool root that owns an ALREADY-allocated slot, derived from the slot's own
+# path rather than from any home's current choice, so a worktree recorded under
+# one root stays returnable after a different root starts allocating.
+fm_treehouse_slot_pool_root() {  # <worktree>
+  local worktree=$1 slot pool base root
+  slot=$(CDPATH='' cd -- "$worktree" 2>/dev/null && pwd -P) || return 1
+  pool=$(dirname "$(dirname "$slot")")
+  [ -f "$pool/treehouse-state.json" ] && [ ! -L "$pool/treehouse-state.json" ] || return 1
+  base=$(dirname "$pool")
+  [ "$(basename "$base")" = .treehouse ] || return 1
+  root=$(dirname "$base")
+  case "$root" in /) return 1 ;; /*) ;; *) return 1 ;; esac
+  printf '%s\n' "$root"
+}
+
+# Why a pool slot must not be handed to a fresh worker, or empty when reusing it
+# destroys nothing. The reason lands in FM_TREEHOUSE_SLOT_UNSAFE; a return of 1
+# means the project itself could not be read, so nothing about the slot was
+# proved either way.
+#
+# Treehouse decides a slot is free from the processes attached to it. That
+# answers "is anything running here" and nothing else: it is blind both to which
+# clone the slot is a worktree of and to a checkout still holding commits nobody
+# has landed - and a worker exiting is exactly what drops the process while
+# leaving both. Each of those is proved here instead, so an unsteered spawn
+# refuses rather than reusing a slot that is holding another task's work.
+fm_treehouse_slot_unsafe_reason() {  # <project-dir> <slot-repo-dir> [task-id]
+  local project=$1 dir=$2 id=${3:-} project_common dir_common default head branch ref
+  FM_TREEHOUSE_SLOT_UNSAFE=
   project_common=$(git -C "$project" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
-  slot_common=$(git -C "$slot" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
   project_common=$(CDPATH='' cd -- "$project_common" 2>/dev/null && pwd -P) || return 1
-  slot_common=$(CDPATH='' cd -- "$slot_common" 2>/dev/null && pwd -P) || return 1
-  [ "$project_common" = "$slot_common" ]
+  # Nothing checked out yet: Treehouse creates the copy, so there is none to lose.
+  [ -e "$dir" ] || return 0
+  if ! dir_common=$(git -C "$dir" rev-parse --path-format=absolute --git-common-dir 2>/dev/null); then
+    FM_TREEHOUSE_SLOT_UNSAFE="it is not a readable git worktree"
+    return 0
+  fi
+  if ! dir_common=$(CDPATH='' cd -- "$dir_common" 2>/dev/null && pwd -P); then
+    FM_TREEHOUSE_SLOT_UNSAFE="its git directory cannot be resolved"
+    return 0
+  fi
+  if [ "$dir_common" != "$project_common" ]; then
+    FM_TREEHOUSE_SLOT_UNSAFE="it is a worktree of $dir_common, not of this home's clone ($project_common)"
+    return 0
+  fi
+  fm_treehouse_slot_owner_state "$dir" "$id"
+  case "$FM_TREEHOUSE_SLOT_OWNER" in
+    other|mine)
+      FM_TREEHOUSE_SLOT_UNSAFE="it is still claimed by task $FM_TREEHOUSE_SLOT_OWNER_ID"
+      [ -z "$FM_TREEHOUSE_SLOT_OWNER_HOME" ] ||
+        FM_TREEHOUSE_SLOT_UNSAFE="$FM_TREEHOUSE_SLOT_UNSAFE of home $FM_TREEHOUSE_SLOT_OWNER_HOME"
+      return 0
+      ;;
+    unsafe)
+      FM_TREEHOUSE_SLOT_UNSAFE="its slot-owner claim cannot be read"
+      return 0
+      ;;
+  esac
+  if [ -n "$(git -C "$dir" status --porcelain 2>/dev/null)" ]; then
+    FM_TREEHOUSE_SLOT_UNSAFE="it holds uncommitted changes"
+    return 0
+  fi
+  head=$(git -C "$dir" rev-parse --verify --quiet HEAD 2>/dev/null) || return 0
+  if ! command -v fm_default_branch >/dev/null 2>&1; then
+    # shellcheck source=bin/fm-tangle-lib.sh
+    . "$FM_WAKE_LIB_DIR/fm-tangle-lib.sh"
+  fi
+  if ! default=$(fm_default_branch "$dir"); then
+    FM_TREEHOUSE_SLOT_UNSAFE="its default branch cannot be resolved, so landed work cannot be told from preserved work"
+    return 0
+  fi
+  for ref in "refs/remotes/origin/$default" "refs/heads/$default"; do
+    git -C "$dir" rev-parse --verify --quiet "$ref" >/dev/null 2>&1 || continue
+    ! git -C "$dir" merge-base --is-ancestor "$head" "$ref" 2>/dev/null || return 0
+  done
+  branch=$(git -C "$dir" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+  FM_TREEHOUSE_SLOT_UNSAFE="it holds ${branch:-detached HEAD} at ${head:0:12}, which is not on $default"
+}
+
+# Screen every slot `treehouse get` could hand <project-dir> from <pool-root>
+# before the allocation happens, because the pane-driven get picks the slot
+# itself and a reset cannot be taken back afterwards.
+#
+# Sets FM_TREEHOUSE_POOL_UNSAFE to one "<slot>: <reason>" line per candidate
+# that must not be reused. Returns 1 with FM_TREEHOUSE_POOL_ERROR when the pool
+# cannot be read at all: an unreadable pool is refused rather than treated as
+# empty, since "nothing is attached to it" is precisely the signal that proved
+# unsafe.
+fm_treehouse_pool_screen() {  # <project-dir> <pool-root> [task-id]
+  local project=$1 root=$2 id=${3:-} out paths path
+  FM_TREEHOUSE_POOL_UNSAFE=
+  FM_TREEHOUSE_POOL_ERROR=
+  if ! command -v jq >/dev/null 2>&1; then
+    FM_TREEHOUSE_POOL_ERROR="jq is not installed, so the pool's slot list cannot be read"
+    return 1
+  fi
+  if ! out=$( (CDPATH='' cd -- "$project" && treehouse status --json --root "$root") 2>/dev/null ); then
+    FM_TREEHOUSE_POOL_ERROR="treehouse status --root $root failed in $project"
+    return 1
+  fi
+  # A slot Treehouse reports as in-use, leased, or dirty is one it will not hand
+  # out, so screening it would refuse spawns over slots that were never at risk.
+  # Every other state is a candidate, including one this Treehouse version has
+  # not named yet, and a candidate must also have no process attached, so a
+  # renamed in-use label cannot quietly turn a running worker's slot into a
+  # refusal.
+  if ! paths=$(printf '%s' "$out" | jq -r '
+      .[]
+      | select((.status // "") as $s
+        | ($s != "in-use" and $s != "leased" and $s != "dirty")
+          and ((.processes // []) | length) == 0)
+      | .path // empty' 2>/dev/null); then
+    FM_TREEHOUSE_POOL_ERROR="treehouse status --root $root did not report a readable slot list"
+    return 1
+  fi
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    if ! fm_treehouse_slot_unsafe_reason "$project" "$path" "$id"; then
+      FM_TREEHOUSE_POOL_ERROR="the project clone $project could not be read"
+      return 1
+    fi
+    [ -n "$FM_TREEHOUSE_SLOT_UNSAFE" ] || continue
+    FM_TREEHOUSE_POOL_UNSAFE="$FM_TREEHOUSE_POOL_UNSAFE$path: $FM_TREEHOUSE_SLOT_UNSAFE
+"
+  done <<EOF
+$paths
+EOF
+  return 0
 }
 
 # Slot-owner claim: which task a Treehouse pool slot currently belongs to.
