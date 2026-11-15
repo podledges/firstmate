@@ -595,6 +595,9 @@ function makeHost(session) {
       clear() { children.length = 0; },
       addChild(child) { children.push(child); },
     },
+    // Pi's real listing iterates this. Object.create skips the class-field
+    // initializer, so a missing value is not iterable.
+    pendingBashComponents: [],
     editor: {
       getText: () => host.editorText,
       setText: (text) => { host.editorText = text; },
