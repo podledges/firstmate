@@ -179,6 +179,11 @@
 # leased home releases its durable treehouse lease so the pool slot is freed,
 # never left leased forever. If the treehouse return fails, teardown leaves the
 # leased home and state in place instead of hiding a still-held lease.
+# Every treehouse return names the pool root that the returned path itself sits
+# under rather than whatever root this home allocates from today, so a worktree
+# or leased home recorded under an earlier or another home's root is still
+# returned to the pool that owns it. A recorded path that is not in the managed
+# pool layout returns against the ambient root exactly as before.
 # Usage: fm-teardown.sh <task-id> [--force] [--legacy-record]
 #   --force skips ordinary-task dirty and landed-work checks, skips scout report
 #   checks, and discards secondmate child work for kind=secondmate. Only use it
