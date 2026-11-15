@@ -317,6 +317,23 @@
 #   containment test reads local refs only and never fetches, so this gate stays
 #   usable offline; a stale remote-tracking ref can therefore make an unpushed
 #   commit look contained, which is exactly why no remedy command is printed.
+# Worker worktree pool (treehouse backends):
+#   A ship or scout slot is allocated from the spawning home's own Treehouse
+#   pool root, passed as `--root` on the `treehouse get` line because the pane
+#   runs that command itself. bin/fm-wake-lib.sh's fm_treehouse_pool_root owns
+#   the root (docs/configuration.md "Worker worktree pool" owns where it sits);
+#   it overrides a repository treehouse.toml, which firstmate never writes.
+#   Before that line is sent, every slot the pool could hand out is screened and
+#   the spawn refuses, naming each slot and reason, when any of them is a
+#   worktree of a different clone, still claimed by a task, dirty, or holding
+#   commits that are not on the project's default branch. Treehouse reports a
+#   slot free from attached processes alone, which is blind to all four, and the
+#   refusal happens before anything is allocated so nothing is moved, reset, or
+#   removed. A pool that cannot be read refuses the same way rather than being
+#   treated as empty. After allocation, a slot that is still a pool worktree of
+#   another clone refuses the launch instead of being recorded.
+#   bin/fm-teardown.sh returns a slot to the pool its own path names, so every
+#   worktree recorded under any earlier root stays returnable.
 # Batch dispatch: pass one or more `id=repo` pairs instead of a single <id> <project>, e.g.
 #     fm-spawn.sh fix-a-k3=projects/foo add-b-q7=projects/bar [--scout]
 #   Each pair re-execs this script in single-task mode, so the single path stays the only
@@ -4506,7 +4523,29 @@ elif [ "$RELAUNCH" -eq 1 ]; then
   fi
   [ "$KIND" = secondmate ] || validate_spawn_worktree "relaunch" "$T"
 elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
-  spawn_send_text_line "$WT_TARGET" 'treehouse get'
+  # Allocate from THIS home's pool, and prove the pool holds nothing a fresh
+  # worker would destroy, before any slot is taken. Treehouse keys a pool by
+  # repository rather than by clone and calls a slot free whenever no process is
+  # attached to it, so without both of these a spawn from one home can be handed
+  # a worktree of another home's clone, or a slot still holding another task's
+  # preserved, unlanded work. bin/fm-wake-lib.sh owns the root scoping and the
+  # safety test; the refusal is here, under the project lock taken above, where
+  # nothing has been created yet and the pane has not been told to allocate.
+  SPAWN_POOL_ROOT=$(fm_treehouse_pool_root "$FM_HOME") || {
+    echo "error: could not resolve a Treehouse pool root for home $FM_HOME; refusing to allocate from a pool that may belong to another Firstmate home" >&2
+    exit 1
+  }
+  if ! fm_treehouse_pool_screen "$PROJ_ABS" "$SPAWN_POOL_ROOT" "$ID"; then
+    echo "error: the Treehouse pool at $SPAWN_POOL_ROOT could not be screened for $PROJ_ABS ($FM_TREEHOUSE_POOL_ERROR); refusing to allocate a slot whose contents cannot be proved safe to reuse" >&2
+    exit 1
+  fi
+  if [ -n "$FM_TREEHOUSE_POOL_UNSAFE" ]; then
+    echo "error: spawn refused: the Treehouse pool at $SPAWN_POOL_ROOT would offer task $ID a slot that must not be reused:" >&2
+    printf '%s' "$FM_TREEHOUSE_POOL_UNSAFE" >&2
+    echo "reconcile each slot's task before dispatching to $PROJ_ABS again; nothing was allocated, moved, or removed" >&2
+    exit 1
+  fi
+  spawn_send_text_line "$WT_TARGET" "treehouse get --root $(shell_quote "$SPAWN_POOL_ROOT")"
 
   # Wait for the treehouse subshell: the pane's cwd moves from the project to the worktree.
   # Target the stable window id, not the name: if the name is ever lost (e.g. an
@@ -4579,7 +4618,16 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
   # under its successor.
   # Written under the Treehouse project lock held from before slot allocation
   # through metadata publication, so no other spawn or return sees a half-claim.
-  if fm_treehouse_pool_slot "$PROJ_ABS" "$WT"; then
+  # The pre-allocation screen above refuses a pool that offers a foreign slot,
+  # so a slot that still arrives bound to another clone means the allocation
+  # itself crossed homes; refuse rather than record a worktree of a clone this
+  # home does not own.
+  fm_treehouse_slot_binding "$PROJ_ABS" "$WT"
+  if [ "$FM_TREEHOUSE_SLOT_BINDING" = foreign ]; then
+    echo "error: treehouse get handed task $ID the pool slot $WT, which is a worktree of $FM_TREEHOUSE_SLOT_BINDING_COMMON and not of this home's clone $PROJ_ABS; refusing to launch a worker in another Firstmate home's copy; inspect window $T" >&2
+    exit 1
+  fi
+  if [ "$FM_TREEHOUSE_SLOT_BINDING" = mine ]; then
     if ! fm_treehouse_slot_owner_claim "$WT" "$ID" "$FM_HOME"; then
       echo "error: could not claim Treehouse pool slot $WT for task $ID; refusing to launch a worker whose slot cannot later be proved to be its own; inspect window $T" >&2
       exit 1

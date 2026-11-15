@@ -8,6 +8,7 @@ Start with the directory layout, then use the setting reference for the behavior
 | What you want to configure | Start here |
 | --- | --- |
 | Firstmate's code, private files, or project location | [FM_HOME](#fm_home) and [operational home layout](#operational-home-layout-and-state) |
+| Where worker copies of a project are allocated | [Worker worktree pool](#worker-worktree-pool) |
 | Task windows and worker tools | [Runtime backend](#runtime-backend-configbackend--fm_backend) and [harness support](#harness-support) |
 | Worker permissions, accounts, or environment | [Claude permission mode](#claude-permission-mode-configclaude-permission-mode), [worker account pin](#worker-account-pin-configclaude-account-configpi-account), [worker tool exclusions](#worker-tool-exclusions-configcrew-exclude-tools), and [worker launch environment](#worker-launch-environment-configlaunch-env-allowlist) |
 | Backlog, preferences, and memory | [Backlog backend](#backlog-backend-taskstoml--configbacklog-backend), [captain preferences](#captain-preferences-datacaptainmd--datacaptain-sharedmd), and [startup memory budget](#startup-memory-budget-configstartup-memory-budget) |
@@ -96,6 +97,15 @@ Each effective `FM_HOME` contains private operational directories.
 - Parent-owned secondmate pending-reply records under `state/pending-replies/` (`bin/fm-pending-reply-lib.sh`).
 
 `config/` holds local gitignored operating choices, including explicit extension bindings under `config/extensions.d/`.
+
+### Worker worktree pool
+
+Ship and scout workers take an isolated copy of a project from a Treehouse pool that lives outside `FM_HOME`.
+Each home allocates from its own pool root at `<base>/.treehouse/homes/<home-name>-<hash>`, where `<base>` is `TREEHOUSE_ROOT` when it is set to an absolute path and the user's home directory otherwise, and `<hash>` identifies the home's resolved path.
+Treehouse keys a pool by repository rather than by clone, so without this per-home root every home on one machine shares one pool per repository and can be handed a copy belonging to another home.
+A pool root is never shared between homes, and an existing shared pool is left exactly as it is rather than migrated; a worktree already recorded under any earlier root keeps resolving and is returned to the pool its own path names.
+A relative `TREEHOUSE_ROOT` resolves per repository rather than per home, so it is refused instead of used.
+`bin/fm-spawn.sh`'s header owns how a slot is screened before allocation and what refuses a spawn.
 
 `projects/` holds local project clones.
 Firstmate reads these clones, but changes them only through the narrow guarded and concrete captain-approved exceptions in `AGENTS.md`.
