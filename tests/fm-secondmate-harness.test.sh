@@ -1075,6 +1075,10 @@ test_spawn_fallback_chain_and_crew_scout_unaffected() {
   proj="$w/crew-project"
   wt="$w/crew-wt"
   fakebin=$(make_launch_capturing_tmux "$w/tmux-crew")
+  # A plain (non-secondmate) spawn now screens the Treehouse pool for real
+  # before allocating, so the fakebin needs the same no-op treehouse every
+  # other ship/scout spawn fixture provides.
+  fm_fake_exit0 "$fakebin" treehouse
   fm_git_worktree "$proj" "$wt" "wt-crew"
   mkdir -p "$home/data/$id" "$home/projects" "$home/state"
   cat > "$home/data/$id/brief.md" <<'EOF'
