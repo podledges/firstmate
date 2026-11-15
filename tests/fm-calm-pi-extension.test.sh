@@ -535,11 +535,11 @@ const watcherOne = operationalInput.encodeFirstmateOperationalInput("watcher", "
 const watcherTwo = operationalInput.encodeFirstmateOperationalInput("watcher", "QUEUED_MONITOR_TWO");
 const legacyAway = "⁣Supervisor escalate (QUEUED_LEGACY_AWAY)";
 const captainText = "CAPTAIN_QUEUED_TEXT";
-// A captain can type the marker's words; only the authenticated envelope may hide.
+// A captain can type the marker’s words; only the authenticated envelope may hide.
 const lookalike = "FIRSTMATE_OP: v1 away-supervisor: CAPTAIN_TYPED_LOOKALIKE";
 const operationalTexts = [watcherOne, watcherTwo, legacyAway];
 
-// Implements every session member the retention relies on with Pi's own semantics:
+// Implements every session member the retention relies on with Pi’s own semantics:
 // queueing appends, clearQueue empties both lists, and a prompt only starts when idle.
 function makeSession({ missing = [], rejectPrompt = false } = {}) {
   const session = {
@@ -595,7 +595,7 @@ function makeHost(session) {
       clear() { children.length = 0; },
       addChild(child) { children.push(child); },
     },
-    // Pi's real listing iterates this. Object.create skips the class-field
+    // Pi’s real listing iterates this. Object.create skips the class-field
     // initializer, so a missing value is not iterable.
     pendingBashComponents: [],
     editor: {
@@ -629,7 +629,7 @@ visibility.setCalmPresentation(true);
   host.updatePendingMessagesDisplay();
   const rows = host.rows();
   assertNoOperationalText(rows, "queued listing under Calm");
-  check(rows.includes(`Follow-up: ${captainText}`), `captain's queued row disappeared: ${rows}`);
+  check(rows.includes(`Follow-up: ${captainText}`), `captain’s queued row disappeared: ${rows}`);
   check(rows.includes(lookalike), `an unauthenticated lookalike was hidden: ${rows}`);
   check(rows.includes("to edit all queued messages"), `dequeue hint missing: ${rows}`);
   check(host.warnings.length === 0, `a supported session warned: ${host.warnings}`);
