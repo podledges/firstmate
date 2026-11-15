@@ -117,10 +117,17 @@ jobs:
           set -eu
           npm install -g @earendil-works/pi-coding-agent
           npm ls -g --depth 0 @earendil-works/pi-coding-agent
+      - name: Install pinned TypeScript for the Pi extension typecheck
+        run: |
+          set -eu
+          npm install -g typescript@5.9.3
+          tsc --version
       - name: Run portable parallel shard 1
         run: |
           set -eu
           mkdir -p "$RUNNER_TEMP/fm-test"
+          # TypeScript and the Pi package are installed above, so a missing
+          # typecheck prerequisite is a broken lane, not a valid skip.
           bin/fm-test-run.sh --lane portable-parallel-1 \
             --fail-on-gate-skip 'Pi extension typecheck prerequisite not found' \
             --json "$RUNNER_TEMP/fm-test/fm-test-timing-portable-parallel-1.json"
@@ -231,8 +238,9 @@ jobs:
         run: |
           set -eu
           mkdir -p "$RUNNER_TEMP/fm-test"
-          # The Pi package is installed above and CI provides npm and tsc, so
-          # any missing typecheck prerequisite is a broken lane, not a valid skip.
+          # The Pi package is installed above. The runner image provides npm,
+          # not tsc; the parallel typecheck job installs TypeScript. A skip for
+          # a missing typecheck prerequisite is still a broken lane.
           bin/fm-test-run.sh --lane "$FM_SERIAL_LANE" \
             --fail-on-gate-skip 'Pi extension typecheck prerequisite not found' \
             --json "$RUNNER_TEMP/fm-test/fm-test-timing-portable-serial-${FM_SERIAL_SHARD}.json"

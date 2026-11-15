@@ -1217,6 +1217,8 @@ export default function (pi: ExtensionAPI) {
   }
 
   pi.on?.("before_agent_start", (event) => {
+    // A custom-triggered run is not the follow-up this consumption matches.
+    if (!("prompt" in event) || typeof event.prompt !== "string") return;
     consumeWake(generation, event.prompt);
   });
   pi.on?.("message_start", (event) => {

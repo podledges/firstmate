@@ -1676,11 +1676,14 @@ ${context.command}
     if (!(await enqueueDelivery(() => actingAsOwner(promptGeneration)))) return;
     if (promptGeneration !== generation || !currentMainSession || !collectCurrentMainDialog()) return;
 
-    // This event is Pi's authoritative complete current prompt. At this point
-    // SessionManager still contains only the preceding dialog, so relying on
-    // getEntries() here loses the captain request that the next wake may answer.
-    // Stage it verbatim and remember the future persisted index for turn_end's
-    // duplicate suppression. Operational extension injections are not dialog.
+    // The user variant is Pi's authoritative complete current prompt. A
+    // custom-triggered run has no prompt and is not captain dialog. At this
+    // point SessionManager still contains only the preceding dialog, so relying
+    // on getEntries() here loses the captain request that the next wake may
+    // answer. Stage the user prompt verbatim and remember the future persisted
+    // index for turn_end's duplicate suppression. Operational extension
+    // injections are not dialog.
+    if (!("prompt" in event) || typeof event.prompt !== "string") return;
     const prompt = event.prompt;
     processingOpenedThisRun = queuedProcessingContent !== null && prompt === queuedProcessingContent;
     const trimmed = prompt.trim();
