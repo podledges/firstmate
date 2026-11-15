@@ -66,7 +66,10 @@ run_guard() {
   shift
   local out rc
   set +e
-  out=$(clean_env "$@" PATH="$BIN:/usr/bin:/bin" "$path" 2>&1)
+  # The system essentials are not in /usr/bin on every supported host, and a
+  # guard that cannot even reach coreutils reports a shell error instead of the
+  # verdict under test; FM_TEST_BASE_PATH is the suite-wide way to name them.
+  out=$(clean_env "$@" PATH="$BIN:${FM_TEST_BASE_PATH:-/usr/bin:/bin}" "$path" 2>&1)
   rc=$?
   set -e
   printf '%s\n' "$rc"
@@ -171,7 +174,7 @@ test_gate_lets_a_guard_drive_the_real_fleet_scripts_under_a_gate_marker() {
   } > "$path"
   chmod +x "$path"
   set +e
-  out=$(clean_env NO_MISTAKES_GATE=1 PATH="$BIN:/usr/bin:/bin" "$path" 2>&1)
+  out=$(clean_env NO_MISTAKES_GATE=1 PATH="$BIN:${FM_TEST_BASE_PATH:-/usr/bin:/bin}" "$path" 2>&1)
   rc=$?
   set -e
   expect_code 0 "$rc" "a guard opened with the shared gate must not be refused"
@@ -191,7 +194,7 @@ test_gate_exports_disable_autoupdater_for_a_proceeding_run() {
   } > "$path"
   chmod +x "$path"
   set +e
-  out=$(clean_env PATH="$BIN:/usr/bin:/bin" "$path" 2>&1)
+  out=$(clean_env PATH="$BIN:${FM_TEST_BASE_PATH:-/usr/bin:/bin}" "$path" 2>&1)
   rc=$?
   set -e
   expect_code 0 "$rc" "a proceeding guard must exit cleanly"
@@ -233,7 +236,7 @@ exit 0
 SH
   chmod +x "$panebin/claude"
   set +e
-  DISABLE_AUTOUPDATER=1 PATH="$panebin:/usr/bin:/bin" bash -c "$launch" >/dev/null 2>&1
+  DISABLE_AUTOUPDATER=1 PATH="$panebin:${FM_TEST_BASE_PATH:-/usr/bin:/bin}" bash -c "$launch" >/dev/null 2>&1
   rc=$?
   set -e
   expect_code 0 "$rc" "the staged claude launch must run cleanly in the synthetic pane"
@@ -276,7 +279,7 @@ SH
   # The synthetic daemon-launched pane runs the staged command with the variable
   # absent from its own environment; env -u strips any value the suite inherited.
   set +e
-  env -u DISABLE_AUTOUPDATER PATH="$panebin:/usr/bin:/bin" bash -c "$launch" >/dev/null 2>&1
+  env -u DISABLE_AUTOUPDATER PATH="$panebin:${FM_TEST_BASE_PATH:-/usr/bin:/bin}" bash -c "$launch" >/dev/null 2>&1
   rc=$?
   set -e
   expect_code 0 "$rc" "the staged claude launch must run cleanly in the synthetic pane"
