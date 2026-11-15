@@ -1100,9 +1100,20 @@ write_endpoint_close_meta() {  # <case-dir> <id> <window>
     "kind=ship" "mode=no-mistakes"
 }
 
+# Every blocked-close case needs the blocked close to leave the endpoint
+# standing. Without lsof, teardown takes its documented process-group fallback
+# and signals the tmux pane group itself, which closes the very window the
+# fixture blocked from closing, so the premise cannot hold on a host with no
+# lsof. Report the capability instead of asserting a verdict the host cannot
+# produce.
+blocked_close_supported() {
+  [ -n "$REAL_TMUX" ] || { echo "skip - tmux not installed"; return 1; }
+  command -v lsof >/dev/null 2>&1 || { echo "skip - lsof not installed"; return 1; }
+}
+
 test_failed_endpoint_close_refuses_before_removing_the_record() {
   local dir socket session='close failure' id=strand-task rc
-  [ -n "$REAL_TMUX" ] || { echo "skip - tmux not installed"; return 0; }
+  blocked_close_supported || return 0
   dir=$(make_case close-failure)
   socket=dedicated.sock
   ( cd "$dir" && env -u TMUX -u TMUX_PANE "$REAL_TMUX" -S "$socket" new-session -d -s "$session" -n control )
@@ -1162,7 +1173,7 @@ test_failed_endpoint_close_refuses_before_removing_the_record() {
 
 test_forced_teardown_continues_past_a_close_it_could_not_make() {
   local dir socket session='forced close failure' id=forced-task rc
-  [ -n "$REAL_TMUX" ] || { echo "skip - tmux not installed"; return 0; }
+  blocked_close_supported || return 0
   dir=$(make_case forced-close-failure)
   socket=dedicated.sock
   ( cd "$dir" && env -u TMUX -u TMUX_PANE "$REAL_TMUX" -S "$socket" new-session -d -s "$session" -n control )
@@ -1210,7 +1221,7 @@ test_forced_teardown_continues_past_a_close_it_could_not_make() {
 
 test_unreadable_close_read_refuses_while_a_definitive_absence_completes() {
   local dir socket='dedicated.sock' session='unreadable read' id=unreadable-task rc
-  [ -n "$REAL_TMUX" ] || { echo "skip - tmux not installed"; return 0; }
+  blocked_close_supported || return 0
 
   # A close that failed, followed by an inventory read that could not run at
   # all. Nothing here shows the window absent, so treating it as closed would
@@ -1281,7 +1292,7 @@ test_unreadable_close_read_refuses_while_a_definitive_absence_completes() {
 
 test_forced_secondmate_child_close_failure_still_refuses() {
   local dir socket='dedicated.sock' session='child close failure' mate parent=mate-task child=child-task rc
-  [ -n "$REAL_TMUX" ] || { echo "skip - tmux not installed"; return 0; }
+  blocked_close_supported || return 0
   dir=$(make_case secondmate-child-close-failure)
   mate="$dir/mate"
   mkdir -p "$mate/state" "$mate/data" "$mate/config"
