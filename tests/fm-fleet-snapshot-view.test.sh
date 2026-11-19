@@ -256,13 +256,14 @@ test_fixture_snapshot_json() {
 }
 
 test_large_fleet_payloads_use_stream_transport() {
-  local home fakebin snapshot_out summary_out view_out arg_max pad row_count i snapshot_bytes
-  local child child_id j child_title records_out arg_ceiling page_size
+  local home fakebin snapshot_out summary_out contribution_out view_out arg_max pad row_count i snapshot_bytes
+  local child child_id j child_title records_out contribution_backlog contribution_tasks arg_ceiling page_size
   local dependency_count dependencies dependency_tokens dependency_id child_summary child_summary_bytes
   home=$(make_home large-transport)
   fakebin=$(make_fakebin "$home")
   snapshot_out=$home/snapshot.json
   summary_out=$home/summary.json
+  contribution_out=$home/contribution-input.json
   view_out=$home/view.md
   arg_max=$(getconf ARG_MAX 2>/dev/null || printf '262144')
   case "$arg_max" in ''|*[!0-9]*) arg_max=262144 ;; esac
@@ -343,6 +344,30 @@ test_large_fleet_payloads_use_stream_transport() {
       and .tasks[0].id == "task-000"
       and .tasks[-1].id == "task-023"
   ' "$snapshot_out" >/dev/null || fail "large snapshot lost fleet or task rows"
+
+  PATH="$fakebin:$PATH" FM_HOME="$home" "$SNAPSHOT" --contribution-input > "$contribution_out" \
+    || fail "large contribution input failed"
+  jq -e --argjson backlog_n "$row_count" '
+    (.backlog.records | length) == $backlog_n
+      and (.tasks | length) == 24
+      and .tasks[0].id == "task-000"
+      and .tasks[-1].id == "task-023"
+      and all(.tasks[]; has("merge_authority"))
+  ' "$contribution_out" >/dev/null || fail "large contribution input lost backlog or task rows"
+  contribution_backlog=$home/contribution-backlog.json
+  contribution_tasks=$home/contribution-tasks.json
+  jq '.backlog' "$contribution_out" > "$contribution_backlog"
+  jq '.tasks' "$contribution_out" > "$contribution_tasks"
+  if LC_ALL=C jq -n \
+    --argjson backlog "$(< "$contribution_backlog")" \
+    --argjson tasks "$(< "$contribution_tasks")" \
+    '{backlog:$backlog,tasks:$tasks}' \
+    > "$home/contribution-argv-counterfactual.out" \
+    2> "$home/contribution-argv-counterfactual.err"; then
+    fail "contribution payloads did not exceed the host argument limit"
+  fi
+  grep -i 'argument list too long' "$home/contribution-argv-counterfactual.err" >/dev/null \
+    || fail "contribution argv counterfactual failed for an unexpected reason"
 
   child_summary=$home/registered-home-summary.json
   PATH="$fakebin:$PATH" FM_HOME="$child" "$SNAPSHOT" --secondmate-home-summary > "$child_summary" \
