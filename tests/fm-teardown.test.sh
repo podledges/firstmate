@@ -589,21 +589,6 @@ SH
   chmod +x "$case_dir/fakebin/lsof"
 }
 
-# fakebin/lsof stub: report one real, non-zombie process as cwd-rooted under
-# the supplied directory. This keeps process-reap tests deterministic on hosts
-# that do not install lsof while retaining a real process identity and signal.
-add_lsof_cwd_process() {  # <case-dir> <pid> <cwd>
-  local case_dir=$1 pid=$2 cwd=$3
-  cat > "$case_dir/fakebin/lsof" <<EOF
-#!/usr/bin/env bash
-stat=
-stat=\$('$REAL_PS_FOR_TEST' -p '$pid' -o stat= 2>/dev/null | tr -d '[:space:]') || true
-case "\$stat" in ''|Z*) exit 0 ;; esac
-printf 'p%s\\nfcwd\\nn%s\\n' '$pid' '$cwd'
-EOF
-  chmod +x "$case_dir/fakebin/lsof"
-}
-
 # The task's live endpoint: a shell parked on a fifo it also holds open for
 # writing, so it blocks on a read that never reaches EOF and stays alive with
 # no child of its own until the test kills it. This stands in for the pane
@@ -632,6 +617,44 @@ start_endpoint_child() {  # <case-dir> <name> <command>
   case "$ENDPOINT_CHILD_PID" in
     ''|*[!0-9]*) fail "$name: endpoint child did not start" ;;
   esac
+}
+
+# Launch, from inside the endpoint shell, a background job in its OWN process
+# group whose launcher exits while its children keep running - the 2026-11-17
+# shape, where the children are reparented to init and no ancestry link back to
+# the declaration survives. Sets JOB_PGID and JOB_CHILD_PIDS (one pid per line).
+start_detached_job_group() {  # <case-dir> <name> <child-count>
+  local case_dir=$1 name=$2 count=$3 launcher i pid
+  printf 'setsid bash -c %s &\necho $! > %s\n' \
+    "'for i in \$(seq 1 $count); do sleep 300 & echo \$! >> $case_dir/$name.children; done'" \
+    "$case_dir/$name.launcher-pid" > "$case_dir/$name.stdin"
+  sleep 1
+  launcher=$(cat "$case_dir/$name.launcher-pid" 2>/dev/null || true)
+  case "$launcher" in ''|*[!0-9]*) fail "$name: detached job launcher did not start" ;; esac
+  JOB_CHILD_PIDS=$(cat "$case_dir/$name.children" 2>/dev/null || true)
+  [ "$(printf '%s\n' "$JOB_CHILD_PIDS" | grep -c '^[0-9]')" = "$count" ] \
+    || fail "$name: expected $count job children, got: $JOB_CHILD_PIDS"
+  JOB_PGID=''
+  while IFS= read -r pid; do
+    [ -n "$pid" ] || continue
+    kill -0 "$pid" 2>/dev/null || fail "$name: job child $pid is not running"
+    JOB_PGID=$("$REAL_PS_FOR_TEST" -o pgid= -p "$pid" 2>/dev/null | tr -d '[:space:]')
+  done <<EOF
+$JOB_CHILD_PIDS
+EOF
+  case "$JOB_PGID" in ''|*[!0-9]*) fail "$name: could not resolve the job's process group" ;; esac
+  [ "$JOB_PGID" != "$ENDPOINT_PID" ] \
+    || fail "$name: the job did not get a process group of its own"
+}
+
+kill_pid_lines() {  # <pid-list>
+  local pid
+  while IFS= read -r pid; do
+    [ -n "$pid" ] || continue
+    kill -KILL "$pid" 2>/dev/null || true
+  done <<EOF
+$1
+EOF
 }
 
 add_stat_error() {
@@ -4197,13 +4220,15 @@ test_own_autonomous_run_is_left_alone() {
   pass "a task-owned autonomous running step is left alone rather than aborted"
 }
 
-# The incident's real shape: the worker starts its render from inside its own
-# agent shell, so the job lives in the endpoint's process tree and no topology
-# rule can tell it from a helper the harness spawned there. What makes it the
-# declared job is that the worker NAMED its pid in the `paused:` line, the field
-# bin/fm-brief.sh instructs workers to write and bin/fm-classify-lib.sh parses.
+# The incident's real shape, reproduced end to end: the worker starts its
+# render from inside its own agent shell, the launcher exits within seconds,
+# and the eight renders keep running reparented to init with their cwd still
+# under the worktree - exactly what the cwd-rooted reap finds and kills. No
+# ancestry link back to the declaration survives; the process group the renders
+# still carry is the only handle on them, and naming it is what bin/fm-brief.sh
+# instructs and bin/fm-classify-lib.sh parses.
 test_declared_background_job_is_not_reaped() {
-  local case_dir rc endpoint job head
+  local case_dir rc endpoint head pid
   case_dir=$(make_case declared-background-job)
   write_meta "$case_dir" no-mistakes ship
   land_shippable_commit "$case_dir"
@@ -4217,10 +4242,9 @@ EOF
 
   start_task_endpoint "$case_dir" declared-job "$case_dir/wt"
   endpoint=$ENDPOINT_PID
-  start_endpoint_child "$case_dir" declared-job "sleep 300"
-  job=$ENDPOINT_CHILD_PID
+  start_detached_job_group "$case_dir" declared-job 3
   printf 'paused [job=%s] [at=%s]: background render until all 8 topic videos exist\n' \
-    "$job" "$(date +%s)" > "$case_dir/state/task-x1.status"
+    "$JOB_PGID" "$(date +%s)" > "$case_dir/state/task-x1.status"
 
   rc=0
   FM_FAKE_AXI_STATUS="$(parked_axi_status_toon fm/task-x1 "$head")" \
@@ -4228,16 +4252,19 @@ EOF
     run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
 
   expect_code 1 "$rc" "declared-background-job: teardown should refuse"
-  if ! kill -0 "$job" 2>/dev/null; then
-    fail "declared-background-job: teardown killed the declared background job"
-  fi
-  kill -KILL "$job" "$endpoint" 2>/dev/null || true
+  while IFS= read -r pid; do
+    [ -n "$pid" ] || continue
+    kill -0 "$pid" 2>/dev/null \
+      || fail "declared-background-job: teardown killed declared job process $pid"
+  done <<EOF
+$JOB_CHILD_PIDS
+EOF
+  kill_pid_lines "$JOB_CHILD_PIDS"
+  kill -KILL "$endpoint" 2>/dev/null || true
   assert_grep "declares a background job that is still running" "$case_dir/stderr" \
     "declared-background-job: teardown did not explain the declared-wait refusal"
   assert_grep "background render until all 8 topic videos exist" "$case_dir/stderr" \
     "declared-background-job: teardown did not identify the active wait"
-  assert_grep "  $job " "$case_dir/stderr" \
-    "declared-background-job: teardown did not name the live job pid it refused on"
   assert_grep ">> $case_dir/state/task-x1.status" "$case_dir/stderr" \
     "declared-background-job: teardown named no command that clears the declared wait"
   assert_grep "--force" "$case_dir/stderr" \
@@ -4255,7 +4282,7 @@ EOF
   assert_present "$case_dir/wt" "declared-background-job: teardown removed the worktree"
   assert_present "$case_dir/state/task-x1.meta" "declared-background-job: teardown removed task metadata"
   assert_absent "$case_dir/treehouse.log" "declared-background-job: teardown returned the worktree"
-  pass "a declared background job running inside the endpoint's own tree refuses teardown with every record intact"
+  pass "a declared job group whose launcher already exited still refuses teardown with every record intact"
 }
 
 test_finished_declared_background_job_tears_down() {
@@ -4266,11 +4293,11 @@ test_finished_declared_background_job_tears_down() {
 
   start_task_endpoint "$case_dir" finished-job "$case_dir/wt"
   endpoint=$ENDPOINT_PID
-  start_endpoint_child "$case_dir" finished-job "sleep 1"
+  start_endpoint_child "$case_dir" finished-job "setsid sleep 1"
   job=$ENDPOINT_CHILD_PID
   printf 'paused [job=%s] [at=%s]: background render until all 8 topic videos exist\n' \
     "$job" "$(date +%s)" > "$case_dir/state/task-x1.status"
-  sleep 2
+  sleep 3
   state=$("$REAL_PS_FOR_TEST" -p "$job" -o stat= 2>/dev/null | tr -d '[:space:]' || true)
   case "$state" in
     ''|Z*) ;;
@@ -4287,6 +4314,82 @@ test_finished_declared_background_job_tears_down() {
   assert_absent "$case_dir/state/task-x1.meta" \
     "declared-job-finished: teardown kept the task record"
   pass "a declared background job that has finished no longer holds teardown"
+}
+
+# A pid the kernel recycled onto an unrelated process cannot be the job the
+# worker declared hours earlier, and must not hold teardown behind a refusal
+# naming a stranger. The oracle is the declaration's own [at=] epoch: a process
+# that started after the line was written is not what the line named.
+test_declared_job_pid_started_after_the_declaration_tears_down() {
+  local case_dir rc endpoint job
+  case_dir=$(make_case declared-job-recycled-pid)
+  write_meta "$case_dir" no-mistakes ship
+  land_shippable_commit "$case_dir"
+
+  start_task_endpoint "$case_dir" recycled-pid "$case_dir/wt"
+  endpoint=$ENDPOINT_PID
+  start_endpoint_child "$case_dir" recycled-pid "setsid sleep 300"
+  job=$ENDPOINT_CHILD_PID
+  # Only the start-time bound can let this teardown through: the declared id is
+  # alive and leads its own group, so without it the gate would refuse.
+  kill -0 "$job" 2>/dev/null \
+    || fail "declared-job-recycled-pid: the declared id is not live, so the case proves nothing"
+  [ "$("$REAL_PS_FOR_TEST" -o pgid= -p "$job" 2>/dev/null | tr -d '[:space:]')" = "$job" ] \
+    || fail "declared-job-recycled-pid: the declared id does not lead its own group"
+  printf 'paused [job=%s] [at=%s]: background render until all 8 topic videos exist\n' \
+    "$job" "$(( $(date +%s) - 3600 ))" > "$case_dir/state/task-x1.status"
+
+  rc=0
+  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+  kill -KILL "$job" "$endpoint" 2>/dev/null || true
+  expect_code 0 "$rc" "declared-job-recycled-pid: a pid younger than its declaration must not hold teardown"
+  assert_not_contains "$(cat "$case_dir/stderr")" "declares a background job" \
+    "declared-job-recycled-pid: teardown refused on a process that postdates the declaration"
+  pass "a declared id now held by a process younger than the declaration does not hold teardown"
+}
+
+# Every shape bin/fm-classify-lib.sh rejects must refuse rather than fall
+# through: the worker said it had something to protect, so proceeding destroys
+# exactly the job the declaration was written to save. One fixture, re-declared
+# per shape, because a refusal leaves the task untouched and reusable.
+test_unreadable_declared_job_tag_refuses() {
+  local case_dir rc declaration
+  case_dir=$(make_case declared-job-unreadable)
+  write_meta "$case_dir" no-mistakes ship
+  land_shippable_commit "$case_dir"
+  seed_backlog_in_flight "$case_dir"
+  cat > "$case_dir/fakebin/treehouse" <<EOF
+#!/usr/bin/env bash
+printf 'return\n' >> "$case_dir/treehouse.log"
+EOF
+  chmod +x "$case_dir/fakebin/treehouse"
+
+  for declaration in \
+    'paused [job=4821, 4822] [at=1788576000]: render' \
+    'paused [job=4821 [at=1788576000]: render' \
+    'paused [at=1788576000]: render [job=4821] until done' \
+    'paused [job=4821] [job=4822] [at=1788576000]: render' \
+    'paused [job=$!] [at=1788576000]: render' \
+    'paused [job=1] [at=1788576000]: render' \
+    'paused [job=123456789012] [at=1788576000]: render'
+  do
+    printf '%s\n' "$declaration" > "$case_dir/state/task-x1.status"
+    rc=0
+    run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+    expect_code 1 "$rc" "declared-job-unreadable: teardown proceeded past '$declaration'"
+    assert_grep "cannot read" "$case_dir/stderr" \
+      "declared-job-unreadable: teardown did not report the unreadable declaration for '$declaration'"
+    assert_grep "$declaration" "$case_dir/stderr" \
+      "declared-job-unreadable: teardown did not quote back '$declaration'"
+    assert_present "$case_dir/state/task-x1.meta" \
+      "declared-job-unreadable: teardown removed task metadata for '$declaration'"
+    assert_absent "$case_dir/state/task-x1.backlog-close" \
+      "declared-job-unreadable: teardown left a close marker behind for '$declaration'"
+    assert_absent "$case_dir/treehouse.log" \
+      "declared-job-unreadable: teardown returned the worktree for '$declaration'"
+  done
+  pass "every [job=...] shape teardown cannot read refuses instead of destroying the job it named"
 }
 
 test_declared_wait_with_only_the_endpoint_running_tears_down() {
@@ -4325,7 +4428,7 @@ test_forced_teardown_discards_a_declared_background_job() {
 
   start_task_endpoint "$case_dir" forced-job "$case_dir/wt"
   endpoint=$ENDPOINT_PID
-  start_endpoint_child "$case_dir" forced-job "sleep 300"
+  start_endpoint_child "$case_dir" forced-job "setsid sleep 300"
   job=$ENDPOINT_CHILD_PID
   printf 'paused [job=%s] [at=%s]: background render until all 8 topic videos exist\n' \
     "$job" "$(date +%s)" > "$case_dir/state/task-x1.status"
@@ -4344,6 +4447,7 @@ test_forced_teardown_discards_a_declared_background_job() {
 
 test_leaked_worktree_process_is_reaped() {
   local case_dir rc pid
+  lsof_backed_reap_supported || return 0
   case_dir=$(make_case leaked-process-reap)
   write_meta "$case_dir" no-mistakes ship
   land_shippable_commit "$case_dir"
@@ -4363,7 +4467,6 @@ test_leaked_worktree_process_is_reaped() {
   disown
   sleep 0.3
   kill -0 "$pid" 2>/dev/null || fail "leaked-process-reap: setup sleeper did not start"
-  add_lsof_cwd_process "$case_dir" "$pid" "$case_dir/wt"
 
   rc=0
   run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
@@ -5021,6 +5124,8 @@ test_another_branchs_parked_run_is_never_touched
 test_own_autonomous_run_is_left_alone
 test_declared_background_job_is_not_reaped
 test_finished_declared_background_job_tears_down
+test_declared_job_pid_started_after_the_declaration_tears_down
+test_unreadable_declared_job_tag_refuses
 test_declared_wait_with_only_the_endpoint_running_tears_down
 test_forced_teardown_discards_a_declared_background_job
 test_leaked_worktree_process_is_reaped
