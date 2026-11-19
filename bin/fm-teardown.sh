@@ -254,9 +254,14 @@
 # and lost 6 of 8 output videos). The declaration is a current `paused:` line
 # naming the job and its completion condition; the proof the job is still
 # running is a live process rooted by cwd under the task's own worktree or
-# tasktmp that is neither the pane shell nor the agent harness - those two are
-# rooted there by construction for every live endpoint, so they are evidence of
-# nothing. declared_background_job_refusal owns that gate and runs as a
+# tasktmp that is outside the endpoint's own process tree. That tree - the
+# pane shell, the agent, and whatever the agent is running right now - is
+# rooted there by construction for every live endpoint, so it is evidence of
+# nothing; everything else is the declared job, whatever it is called.
+# Proceeding past a declared wait requires POSITIVE evidence that no such
+# process exists, so a step that cannot produce it (no lsof, a failed scan, an
+# unidentifiable endpoint, an unreadable process table) refuses too.
+# declared_background_job_refusal owns that gate and runs as a
 # precondition, before the backlog close marker is written and before the
 # task's own no-mistakes run is aborted, so a refusal leaves every durable
 # record, the parked run, the worktree and its pool slot exactly as they were
@@ -2202,58 +2207,142 @@ $dir_pids"
   TASK_PIDS=$(printf '%s\n' "$pids" | grep -E '^[0-9]+$' | sort -un || true)
 }
 
+# The pid of this task's own endpoint process - the pane shell every live
+# endpoint runs, and the root of the process tree the agent and everything the
+# agent is currently running belong to. Resolved from the identity each backend
+# already publishes: tmux's `pane_pid`, Herdr's `pane process-info` shell_pid.
+# Returns 1 when no such identity exists (a windowless record names no
+# endpoint) or the backend cannot answer; the caller treats that as no
+# evidence, never as an empty exclusion set.
+teardown_endpoint_leader_pid() {
+  local pid info
+  [ -n "$T" ] || return 1
+  case "$BACKEND" in
+    tmux)
+      pid=$(tmux display-message -p -t "$T" '#{pane_pid}' 2>/dev/null) || return 1
+      ;;
+    herdr)
+      fm_backend_source herdr || return 1
+      fm_backend_herdr_parse_target "$T" || return 1
+      info=$(fm_backend_herdr_cli "$FM_BACKEND_HERDR_SESSION" pane process-info \
+        --pane "$FM_BACKEND_HERDR_PANE" 2>/dev/null) || return 1
+      printf '%s' "$info" | jq -e --arg pane "$FM_BACKEND_HERDR_PANE" '
+        .result.type == "pane_process_info"
+        and .result.process_info.pane_id == $pane' >/dev/null 2>&1 || return 1
+      pid=$(printf '%s' "$info" | jq -er \
+        '.result.process_info.shell_pid | select(type == "number" and . > 1) | floor' 2>/dev/null) || return 1
+      ;;
+    *) return 1 ;;
+  esac
+  pid=$(printf '%s' "$pid" | tr -d '[:space:]')
+  case "$pid" in ''|*[!0-9]*|0|1) return 1 ;; esac
+  printf '%s\n' "$pid"
+}
+
+# The pids in <pid-list> that are neither <root> nor anywhere under it, from
+# one process-table snapshot. Returns 1 when the table cannot be read, so an
+# unreadable table is never mistaken for "everything is outside the tree".
+task_pids_outside_process_tree() {  # <root-pid> <pid-list>
+  local root=$1 list=$2 table pid ppid tree changed
+  table=$(LC_ALL=C ps -eo pid=,ppid= 2>/dev/null) || return 1
+  [ -n "$table" ] || return 1
+  tree=$'\n'"$root"$'\n'
+  changed=1
+  while [ "$changed" = 1 ]; do
+    changed=0
+    while read -r pid ppid; do
+      case "$pid" in ''|*[!0-9]*) continue ;; esac
+      case "$tree" in *$'\n'"$pid"$'\n'*) continue ;; esac
+      case "$tree" in
+        *$'\n'"$ppid"$'\n'*)
+          tree="$tree$pid"$'\n'
+          changed=1
+          ;;
+      esac
+    done <<EOF
+$table
+EOF
+  done
+  while IFS= read -r pid; do
+    [ -n "$pid" ] || continue
+    case "$tree" in *$'\n'"$pid"$'\n'*) continue ;; esac
+    printf '%s\n' "$pid"
+  done <<EOF
+$list
+EOF
+}
+
+# Print one refusal for a declared wait teardown must not run over: the
+# headline, the worker's own declaration, an optional evidence block, and the
+# only act that retracts a pause - the task's own next status event. A keyed
+# `resolved` line for the pause's own key does it too; `fm-send --resolve-key
+# default` does NOT, because a keyless pause is its own phase
+# (bin/fm-classify-lib.sh), so the instruction names the append that always works.
+declared_wait_refuse() {  # <wait-line> <headline> [<evidence-block>]
+  echo "REFUSED: $2" >&2
+  printf 'declared wait: %s\n' "$1" >&2
+  [ -z "${3:-}" ] || printf '%s' "$3" >&2
+  printf 'A `%s:` line is retracted only by the task'"'"'s own next status event, so once that job is finished record one and retry teardown:\n' \
+    "${FM_CLASSIFY_PAUSED_VERB:-$FM_CLASSIFY_PAUSED_VERB_DEFAULT}" >&2
+  printf '  echo "working [at=$(date +%%s)]: <what the job finished>" >> %s\n' "$STATE/$ID.status" >&2
+}
+
 # The teardown precondition described in the script header: refuse while the
 # task's current `paused:` line declares a background job that is still
 # running. The declaration is free-form - the worker names the job and its
-# completion condition in plain text - so the only evidence that it is still
-# incomplete is a live process of its own. The backend creates the task window
-# with `-c <worktree>`, so the pane shell and the agent harness are rooted
-# under the worktree by construction for every live endpoint; classifying them
-# out through the shared harness-identity owner leaves exactly the processes a
-# declared job can be, and lets a human wait ("paused: waiting for the PR
-# reviewer") tear down normally. status_declared_wait_line owns retractions and
-# phase-key resolution, so a pause this task already superseded is not current.
-# A missing or failing lsof cannot establish that evidence either way and so
-# refuses nothing; the reap's own lsof-error refusal still covers it.
+# completion condition in plain text - so the job is recognized by what it is
+# NOT: the backend creates the task window with `-c <worktree>`, so the pane
+# shell, the agent and everything the agent is currently running are rooted
+# under the worktree for every live endpoint and prove nothing. Excluding the
+# endpoint's own process tree by identity rather than by command name leaves
+# exactly the processes a declared job can be - a `bash render-all.sh &` the
+# worker disowned counts, a language server the harness spawned does not - and
+# lets a human wait ("paused: waiting for the PR reviewer") tear down normally.
+# status_declared_wait_line owns retractions and phase-key resolution, so a
+# pause this task already superseded is not current.
+# Proceeding past a declared wait needs POSITIVE evidence that the job is not
+# running. Every step that cannot produce it - no lsof to scan with, a failed
+# scan, an unidentifiable endpoint, an unreadable process table - refuses here
+# instead: nothing below this point can tell a declared job from a leaked one,
+# and the lsof-absent reap kills the endpoint's whole process group outright.
 declared_background_job_refusal() {  # <dir>...
-  local wait_line pid name args argv0 found=''
+  local wait_line leader outside pid args evidence=''
   wait_line=$(status_declared_wait_line "$STATE/$ID.status")
   status_is_paused "$wait_line" || return 0
-  # The harness classifier is a backend sibling: the tmux and herdr adapters
-  # already sourced it through fm_backend_source above, and the other backends
-  # never do. Prove it and its own siblings readable by name, exactly as the
-  # startup source list does, rather than letting `.` abort cleanup silently.
-  if ! declare -F fm_agent_process_classify >/dev/null 2>&1; then
-    teardown_require_source "$SCRIPT_DIR/fm-session-lock-lib.sh"
-    teardown_require_source "$SCRIPT_DIR/fm-gemini-lib.sh"
-    teardown_require_source "$SCRIPT_DIR/fm-agent-process-lib.sh"
-    # shellcheck source=bin/fm-agent-process-lib.sh
-    . "$SCRIPT_DIR/fm-agent-process-lib.sh"
+  if ! command -v lsof >/dev/null 2>&1; then
+    declared_wait_refuse "$wait_line" \
+      "task $ID declares a background job and lsof is not installed on this host, so teardown cannot see whether that job is still running; nothing was changed. Install lsof, or clear the declaration once the job is done."
+    return 1
   fi
-  command -v lsof >/dev/null 2>&1 || return 0
-  task_pids_under_roots "$@" || return 0
+  if ! task_pids_under_roots "$@"; then
+    declared_wait_refuse "$wait_line" \
+      "task $ID declares a background job and the process scan under ${TASK_PIDS_FAILED_DIR:-<missing>} failed, so teardown cannot see whether that job is still running; nothing was changed."
+    return 1
+  fi
   [ -n "$TASK_PIDS" ] || return 0
+  if ! leader=$(teardown_endpoint_leader_pid); then
+    declared_wait_refuse "$wait_line" \
+      "task $ID declares a background job and its $BACKEND endpoint process cannot be identified, so teardown cannot tell that job from the task's own pane processes; nothing was changed."
+    return 1
+  fi
+  if ! outside=$(task_pids_outside_process_tree "$leader" "$TASK_PIDS"); then
+    declared_wait_refuse "$wait_line" \
+      "task $ID declares a background job and this host's process table could not be read, so teardown cannot tell that job from the task's own pane processes; nothing was changed."
+    return 1
+  fi
   while IFS= read -r pid; do
     [ -n "$pid" ] || continue
-    name=$(LC_ALL=C ps -p "$pid" -o comm= 2>/dev/null) || continue
-    name=$(fm_nm_trim "$name")
-    [ -n "$name" ] || continue
-    args=$(LC_ALL=C ps -p "$pid" -o args= 2>/dev/null) || args=
+    args=$(LC_ALL=C ps -p "$pid" -o args= 2>/dev/null) || continue
     args=$(fm_nm_trim "$args")
-    [ -n "$args" ] || args=$name
-    argv0=${args%% *}
-    [ "$(fm_agent_process_classify "$name" "$argv0" "$args" "$pid")" = other ] || continue
-    found="$found  $pid $args"$'\n'
+    [ -n "$args" ] || args='<unnamed>'
+    evidence="$evidence  $pid $args"$'\n'
   done <<EOF
-$TASK_PIDS
+$outside
 EOF
-  [ -n "$found" ] || return 0
-  echo "REFUSED: task $ID declares a background job that is still running; nothing was changed." >&2
-  printf 'declared wait: %s\n' "$wait_line" >&2
-  printf 'still running under the task roots (neither its pane shell nor its agent):\n%s' "$found" >&2
-  printf 'Let the job reach that completion condition. A `%s:` line is retracted only by the task'"'"'s own next status event, so once the job is done record one and retry teardown:\n' \
-    "${FM_CLASSIFY_PAUSED_VERB:-$FM_CLASSIFY_PAUSED_VERB_DEFAULT}" >&2
-  printf '  echo "working [at=$(date +%%s)]: <what the job finished>" >> %s\n' "$STATE/$ID.status" >&2
+  [ -n "$evidence" ] || return 0
+  declared_wait_refuse "$wait_line" \
+    "task $ID declares a background job that is still running; nothing was changed." \
+    "still running under the task roots, outside endpoint process $leader's own tree:"$'\n'"$evidence"
   return 1
 }
 
