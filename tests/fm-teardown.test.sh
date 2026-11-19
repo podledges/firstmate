@@ -4168,10 +4168,12 @@ test_own_autonomous_run_is_left_alone() {
 }
 
 test_declared_background_job_is_not_reaped() {
-  local case_dir rc pid
+  local case_dir rc pid head
   case_dir=$(make_case declared-background-job)
   write_meta "$case_dir" no-mistakes ship
   land_shippable_commit "$case_dir"
+  seed_backlog_in_flight "$case_dir"
+  head=$(git -C "$case_dir/wt" rev-parse HEAD)
   printf 'paused [at=%s]: background ffmpeg render pid pending until all topic videos exist\n' \
     "$(date +%s)" > "$case_dir/state/task-x1.status"
   cat > "$case_dir/fakebin/treehouse" <<EOF
@@ -4188,21 +4190,73 @@ EOF
   add_lsof_cwd_process "$case_dir" "$pid" "$case_dir/wt"
 
   rc=0
-  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+  FM_FAKE_AXI_STATUS="$(parked_axi_status_toon fm/task-x1 "$head")" \
+  FM_FAKE_NM_ABORT_LOG="$case_dir/nm-abort.log" \
+    run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
 
   expect_code 1 "$rc" "declared-background-job: teardown should refuse"
   if ! kill -0 "$pid" 2>/dev/null; then
     fail "declared-background-job: teardown killed the declared background job"
   fi
   kill -KILL "$pid" 2>/dev/null || true
-  assert_grep "declares a background job" "$case_dir/stderr" \
+  assert_grep "declares a background job that is still running" "$case_dir/stderr" \
     "declared-background-job: teardown did not explain the declared-wait refusal"
   assert_grep "background ffmpeg render" "$case_dir/stderr" \
     "declared-background-job: teardown did not identify the active wait"
+  assert_grep "$pid" "$case_dir/stderr" \
+    "declared-background-job: teardown did not name the process it found still running"
+  assert_grep ">> $case_dir/state/task-x1.status" "$case_dir/stderr" \
+    "declared-background-job: teardown named no command that clears the declared wait"
+  # The refusal has to leave the task whole, or the preserved render ends up
+  # unattributable anyway: a replayed close marker would retire the task record
+  # and the backlog row at the next session start, and an aborted pipeline run
+  # cannot be recovered by a later retry.
+  assert_absent "$case_dir/state/task-x1.backlog-close" \
+    "declared-background-job: teardown left a pending backlog close marker behind"
+  [ "$(backlog_row_state "$case_dir")" = in_flight ] \
+    || fail "declared-background-job: teardown moved the backlog row to $(backlog_row_state "$case_dir")"
+  assert_absent "$case_dir/nm-abort.log" \
+    "declared-background-job: teardown aborted the task's own parked no-mistakes run"
   assert_present "$case_dir/wt" "declared-background-job: teardown removed the worktree"
   assert_present "$case_dir/state/task-x1.meta" "declared-background-job: teardown removed task metadata"
   assert_absent "$case_dir/treehouse.log" "declared-background-job: teardown returned the worktree"
-  pass "an incomplete declared background job refuses teardown before its process is reaped"
+  pass "an incomplete declared background job refuses teardown with every durable record intact"
+}
+
+test_declared_wait_with_only_the_endpoint_running_tears_down() {
+  local case_dir rc pid
+  case_dir=$(make_case declared-wait-endpoint-only)
+  write_meta "$case_dir" no-mistakes ship
+  land_shippable_commit "$case_dir"
+  # A human wait, not a background job. The task window is created with
+  # `-c <worktree>`, so its pane shell is rooted under the worktree for every
+  # live endpoint and proves nothing about an unfinished job.
+  printf 'paused [at=%s]: waiting for the PR reviewer\n' \
+    "$(date +%s)" > "$case_dir/state/task-x1.status"
+
+  # A pane shell and nothing else: opening the fifo read-write parks bash on a
+  # read that never reaches EOF, so the fixture process has no child of its own
+  # to confuse the scan with.
+  mkfifo "$case_dir/pane-stdin"
+  ( cd "$case_dir/wt" && exec bash --norc --noprofile -s ) <> "$case_dir/pane-stdin" &
+  pid=$!
+  disown
+  sleep 0.3
+  kill -0 "$pid" 2>/dev/null || fail "declared-wait-endpoint-only: setup pane shell did not start"
+  [ "$("$REAL_PS_FOR_TEST" -p "$pid" -o comm= | tr -d '[:space:]')" = bash ] \
+    || fail "declared-wait-endpoint-only: fixture process is not the pane shell it claims to be"
+  add_lsof_cwd_process "$case_dir" "$pid" "$case_dir/wt"
+
+  rc=0
+  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+  kill -KILL "$pid" 2>/dev/null || true
+  expect_code 0 "$rc" "declared-wait-endpoint-only: teardown should still succeed"
+  assert_not_contains "$(cat "$case_dir/stderr")" "declares a background job" \
+    "declared-wait-endpoint-only: a pane shell was mistaken for a declared background job"
+  assert_absent "$case_dir/state/task-x1.meta" \
+    "declared-wait-endpoint-only: teardown kept the task record"
+  pass "a declared wait whose only live process is the task's own endpoint tears down normally"
 }
 
 test_leaked_worktree_process_is_reaped() {
@@ -4267,47 +4321,6 @@ test_leaked_tasktmp_process_is_reaped() {
   assert_grep "reaping leaked worktree process" "$case_dir/stderr" \
     "leaked-tasktmp-reap: teardown did not report reaping the leaked tasktmp process"
   pass "a leaked descendant process rooted under the task's per-task tasktmp is reaped by teardown too"
-}
-
-test_lsof_absent_preserves_declared_background_process_group() {
-  local case_dir rc pid path_without_lsof
-  case_dir=$(make_case lsof-absent-declared-background-job)
-  write_meta "$case_dir" no-mistakes ship
-  land_shippable_commit "$case_dir"
-  printf 'paused [at=%s]: background ffmpeg render pid pending until all topic videos exist\n' \
-    "$(date +%s)" > "$case_dir/state/task-x1.status"
-  path_without_lsof=$(make_path_without_lsof "$case_dir")
-  PATH="$path_without_lsof" command -v lsof >/dev/null 2>&1 \
-    && fail "lsof-absent-declared-background-job: fixture path unexpectedly exposes lsof"
-
-  perl -e 'setpgrp(0, 0); chdir shift or die; exec "sleep", "300"' "$case_dir/wt" &
-  pid=$!
-  disown
-  sleep 0.3
-  kill -0 "$pid" 2>/dev/null || fail "lsof-absent-declared-background-job: setup sleeper did not start"
-  cat > "$case_dir/fakebin/tmux" <<EOF
-#!/usr/bin/env bash
-if [ "\${1:-}" = display-message ] && [ "\${*: -1}" = '#{pane_pid}' ]; then
-  printf '%s\n' '$pid'
-fi
-exit 0
-EOF
-  chmod +x "$case_dir/fakebin/tmux"
-
-  rc=0
-  FM_TEARDOWN_TEST_PATH="$path_without_lsof" \
-    run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
-
-  expect_code 1 "$rc" "lsof-absent-declared-background-job: teardown should refuse"
-  if ! kill -0 "$pid" 2>/dev/null; then
-    fail "lsof-absent-declared-background-job: teardown killed the declared background process group"
-  fi
-  kill -KILL "$pid" 2>/dev/null || true
-  assert_grep "declares a background job" "$case_dir/stderr" \
-    "lsof-absent-declared-background-job: teardown did not explain the declared-wait refusal"
-  assert_present "$case_dir/wt" "lsof-absent-declared-background-job: teardown removed the worktree"
-  assert_present "$case_dir/state/task-x1.meta" "lsof-absent-declared-background-job: teardown removed task metadata"
-  pass "missing lsof still preserves a process group protected by the task's declared wait"
 }
 
 test_lsof_absent_reaps_tmux_process_group() {
@@ -4924,9 +4937,9 @@ test_not_found_status_after_abort_confirms_completion
 test_another_branchs_parked_run_is_never_touched
 test_own_autonomous_run_is_left_alone
 test_declared_background_job_is_not_reaped
+test_declared_wait_with_only_the_endpoint_running_tears_down
 test_leaked_worktree_process_is_reaped
 test_leaked_tasktmp_process_is_reaped
-test_lsof_absent_preserves_declared_background_process_group
 test_lsof_absent_reaps_tmux_process_group
 test_lsof_error_refuses_before_removal
 test_reused_pid_identity_is_not_force_killed

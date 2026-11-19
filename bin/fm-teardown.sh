@@ -248,6 +248,20 @@
 # checks before any destructive return. Teardown output notes every wait, retry, and
 # removal so the operator can see what happened.
 #
+# REFUSES, alongside those safety refusals and before any of them acts, while
+# the task's own status log declares an UNFINISHED BACKGROUND JOB that is still
+# running (observed 2026-11-17: cleanup killed a declared ffmpeg render mid-run
+# and lost 6 of 8 output videos). The declaration is a current `paused:` line
+# naming the job and its completion condition; the proof the job is still
+# running is a live process rooted by cwd under the task's own worktree or
+# tasktmp that is neither the pane shell nor the agent harness - those two are
+# rooted there by construction for every live endpoint, so they are evidence of
+# nothing. declared_background_job_refusal owns that gate and runs as a
+# precondition, before the backlog close marker is written and before the
+# task's own no-mistakes run is aborted, so a refusal leaves every durable
+# record, the parked run, the worktree and its pool slot exactly as they were
+# and a later teardown of the same id still works.
+#
 # Pre-teardown cleanup sequence (runs once every landed/discard-work safety
 # refusal above has already passed, and BEFORE any worktree return, branch
 # delete, or backend kill below - a still-active run or a leaked process may
@@ -288,13 +302,13 @@
 #     whose CURRENT WORKING DIRECTORY is this task's own worktree or tasktmp
 #     root via `lsof -a -d cwd` (cheap: bounded by process count, not by
 #     walking the worktree's file tree) and sends TERM, then KILL after a short
-#     grace period to any survivor whose process identity still matches. Before
-#     either signal, the reap reads the task's current declared wait through
-#     fm-classify-lib.sh. A live process plus a current paused: declaration is
-#     preserved as the task's incomplete background job rather than guessed to
-#     be leaked. Both roots are unique per task and never shared, so this can
-#     never reach another task's or the primary's processes. Idempotent: nothing
-#     left to find is a silent no-op.
+#     grace period to any survivor whose process identity still matches. Both
+#     roots are unique per task and never
+#     shared, so this can never reach another task's or the primary's
+#     processes. Idempotent: nothing left to find is a silent no-op.
+#     A leaked process is not the same thing as the task's own declared,
+#     unfinished background job; declared_background_job_refusal above owns
+#     that distinction and refuses before anything here runs.
 #   Fix 3 - sweep abandoned remote job workers. A remote job worker started
 #     from a worktree's own bin/ outlives that worktree's removal without
 #     being reachable by Fix 2, because its working directory is wherever it
@@ -2172,20 +2186,6 @@ task_pid_list_contains() {  # <pid-list> <pid>
   printf '%s\n' "$1" | grep -Fxq "$2"
 }
 
-# A paused declaration is free-form because the worker names both its job and
-# completion condition in plain text. Once cleanup has found a process it would
-# signal, a still-current pause is therefore the durable evidence that the
-# process may be that incomplete background job. Refuse instead of guessing;
-# status_declared_wait_line owns retractions and phase-key resolution.
-refuse_reap_for_declared_background_job() {  # <label>
-  local label=$1 wait_line
-  wait_line=$(status_declared_wait_line "$STATE/$ID.status")
-  status_is_paused "$wait_line" || return 0
-  echo "REFUSED: $ID still declares a background job while lingering $label processes remain; preserving the processes until the declared completion condition is met and the wait is resolved." >&2
-  printf 'declared wait: %s\n' "$wait_line" >&2
-  return 1
-}
-
 task_pids_under_roots() {  # <dir>...
   TASK_PIDS=
   TASK_PIDS_FAILED_DIR=
@@ -2200,6 +2200,61 @@ task_pids_under_roots() {  # <dir>...
 $dir_pids"
   done
   TASK_PIDS=$(printf '%s\n' "$pids" | grep -E '^[0-9]+$' | sort -un || true)
+}
+
+# The teardown precondition described in the script header: refuse while the
+# task's current `paused:` line declares a background job that is still
+# running. The declaration is free-form - the worker names the job and its
+# completion condition in plain text - so the only evidence that it is still
+# incomplete is a live process of its own. The backend creates the task window
+# with `-c <worktree>`, so the pane shell and the agent harness are rooted
+# under the worktree by construction for every live endpoint; classifying them
+# out through the shared harness-identity owner leaves exactly the processes a
+# declared job can be, and lets a human wait ("paused: waiting for the PR
+# reviewer") tear down normally. status_declared_wait_line owns retractions and
+# phase-key resolution, so a pause this task already superseded is not current.
+# A missing or failing lsof cannot establish that evidence either way and so
+# refuses nothing; the reap's own lsof-error refusal still covers it.
+declared_background_job_refusal() {  # <dir>...
+  local wait_line pid name args argv0 found=''
+  wait_line=$(status_declared_wait_line "$STATE/$ID.status")
+  status_is_paused "$wait_line" || return 0
+  # The harness classifier is a backend sibling: the tmux and herdr adapters
+  # already sourced it through fm_backend_source above, and the other backends
+  # never do. Prove it and its own siblings readable by name, exactly as the
+  # startup source list does, rather than letting `.` abort cleanup silently.
+  if ! declare -F fm_agent_process_classify >/dev/null 2>&1; then
+    teardown_require_source "$SCRIPT_DIR/fm-session-lock-lib.sh"
+    teardown_require_source "$SCRIPT_DIR/fm-gemini-lib.sh"
+    teardown_require_source "$SCRIPT_DIR/fm-agent-process-lib.sh"
+    # shellcheck source=bin/fm-agent-process-lib.sh
+    . "$SCRIPT_DIR/fm-agent-process-lib.sh"
+  fi
+  command -v lsof >/dev/null 2>&1 || return 0
+  task_pids_under_roots "$@" || return 0
+  [ -n "$TASK_PIDS" ] || return 0
+  while IFS= read -r pid; do
+    [ -n "$pid" ] || continue
+    name=$(LC_ALL=C ps -p "$pid" -o comm= 2>/dev/null) || continue
+    name=$(fm_nm_trim "$name")
+    [ -n "$name" ] || continue
+    args=$(LC_ALL=C ps -p "$pid" -o args= 2>/dev/null) || args=
+    args=$(fm_nm_trim "$args")
+    [ -n "$args" ] || args=$name
+    argv0=${args%% *}
+    [ "$(fm_agent_process_classify "$name" "$argv0" "$args" "$pid")" = other ] || continue
+    found="$found  $pid $args"$'\n'
+  done <<EOF
+$TASK_PIDS
+EOF
+  [ -n "$found" ] || return 0
+  echo "REFUSED: task $ID declares a background job that is still running; nothing was changed." >&2
+  printf 'declared wait: %s\n' "$wait_line" >&2
+  printf 'still running under the task roots (neither its pane shell nor its agent):\n%s' "$found" >&2
+  printf 'Let the job reach that completion condition. A `%s:` line is retracted only by the task'"'"'s own next status event, so once the job is done record one and retry teardown:\n' \
+    "${FM_CLASSIFY_PAUSED_VERB:-$FM_CLASSIFY_PAUSED_VERB_DEFAULT}" >&2
+  printf '  echo "working [at=$(date +%%s)]: <what the job finished>" >> %s\n' "$STATE/$ID.status" >&2
+  return 1
 }
 
 reap_task_backend_process_group() {  # <label>
@@ -2235,7 +2290,6 @@ reap_task_backend_process_group() {  # <label>
   current_pgid=$(ps -o pgid= -p "$leader" 2>/dev/null) || current_pgid=""
   current_pgid=$(printf '%s' "$current_pgid" | tr -d '[:space:]')
   [ "$current_pgid" = "$pgid" ] || return 0
-  refuse_reap_for_declared_background_job "$label" || return 1
   echo "teardown: reaping leaked $label process group for $ID: $pgid" >&2
   kill -TERM -- "-$pgid" 2>/dev/null || true
   sleep 1
@@ -2259,7 +2313,7 @@ reap_task_worktree_processes() {  # <label> <dir>...
   shift
   if ! command -v lsof >/dev/null 2>&1; then
     reap_task_backend_process_group "$label"
-    return $?
+    return 0
   fi
   while [ "$pass" -le "$max_passes" ]; do
     if ! task_pids_under_roots "$@"; then
@@ -2268,7 +2322,6 @@ reap_task_worktree_processes() {  # <label> <dir>...
     fi
     pids=$TASK_PIDS
     [ -n "$pids" ] || return 0
-    refuse_reap_for_declared_background_job "$label" || return 1
     tracked_pids=()
     tracked_identities=()
     while IFS= read -r pid; do
@@ -3497,6 +3550,21 @@ if teardown_owns_worktree && [ -d "$WT" ] && [ "$FORCE" != "--force" ]; then
     else
       exit 1
     fi
+  fi
+fi
+
+# The declared-background-job precondition (see script header). It sits here,
+# with the other refusals and ahead of every destructive step, because a
+# refusal must leave the task completely intact: no backlog close marker on
+# disk, the task's own parked no-mistakes run not aborted, and the worktree,
+# its pool slot and every durable record still held for a later teardown of
+# this same id. It inspects the same roots the reap would. Not for
+# kind=secondmate, whose runtime lifecycle is not task-worktree cleanup.
+if [ "$KIND" != secondmate ]; then
+  if teardown_owns_worktree; then
+    declared_background_job_refusal "$WT" "$TASK_TMP" || exit 1
+  else
+    declared_background_job_refusal "$TASK_TMP" || exit 1
   fi
 fi
 
