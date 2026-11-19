@@ -1,0 +1,8 @@
+Does the new regression assertion actually fail before the product fix?
+Same (new) test file, run against the base-commit bin/fm-fleet-snapshot.sh.
+
+/tmp/fm-contrib-live.khVwic/base-repo/bin/fm-fleet-snapshot.sh: line 1999: /etc/profiles/per-user/podles/bin/jq: Argument list too long
+not ok - large contribution input lost backlog or task rows
+(pipeline status above filtered; explicit rerun status below)
+base-code test exit=1
+4:not ok - large contribution input lost backlog or task rows

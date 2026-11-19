@@ -1,0 +1,21 @@
+Adversarial: the final composition stage fails (simulated jq kill/OOM on the payload).
+A failure must surface as a non-zero exit, never as exit 0 with empty stdout.
+
+=== 1. --contribution-input, BASELINE (base commit 9b07f98) ===
+exit status: 0 (0 = fail-open)
+stdout bytes: 0
+stderr: /tmp/fm-contrib-live.khVwic/base-bin/fm-fleet-snapshot.sh: line 1999: /tmp/fm-contrib-live.khVwic/failjq/jq: Argument list too long
+
+=== 2. --contribution-input, FIXED (target commit d934e34) ===
+exit status: 1
+stdout bytes: 0
+stderr:
+jq: error: simulated composition failure (killed composing a multi-MB payload)
+fm-fleet-snapshot: contribution input composition failed
+
+=== 3. main --json path, FIXED (second call site) ===
+exit status: 1
+stdout bytes: 0
+stderr:
+jq: error: simulated composition failure (killed composing a multi-MB payload)
+fm-fleet-snapshot: contribution input composition failed

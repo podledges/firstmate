@@ -1,0 +1,22 @@
+Session-start bootstrap step: bin/fm-contributions.sh arm --if-owned
+(bin/fm-bootstrap.sh:1611 runs exactly this on a local session start)
+
+### BASELINE (base commit 9b07f98) ###
+exit status: 0
+--- stderr ---
+/tmp/fm-contrib-live.khVwic/base-bin/fm-fleet-snapshot.sh: line 1999: /etc/profiles/per-user/podles/bin/jq: Argument list too long
+--- contribution check armed? ---
+ls: cannot access '/tmp/fm-contrib-live.khVwic/home-base-arm/state/contributions.check.sh': No such file or directory
+(no contributions.check.sh: coverage never armed)
+
+### FIXED (target commit d934e34) ###
+exit status: 0
+--- stderr ---
+--- contribution check armed? ---
+/tmp/fm-contrib-live.khVwic/home-fixed-arm/state/contributions.check.sh
+--- armed check shim contents ---
+#!/usr/bin/env bash
+export FM_HOME=<disposable-work>/home-fixed-arm
+export FM_STATE_OVERRIDE=<disposable-work>/home-fixed-arm/state
+export FM_DATA_OVERRIDE=<disposable-work>/home-fixed-arm/data
+exec {run-worktree}/bin/fm-contributions.sh poll

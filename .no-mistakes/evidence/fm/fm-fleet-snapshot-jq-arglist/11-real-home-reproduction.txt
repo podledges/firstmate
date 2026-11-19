@@ -1,0 +1,18 @@
+Literal reproduction named in the report: run the snapshot's session-start read
+on the operator's own home (read-only: --contribution-input only reads
+data/backlog.md and state/*.meta; all writes go to a private TMPDIR).
+real home backlog.md: 214126 bytes, 45 task meta files
+
+=== BASELINE (base commit 9b07f98) ===
+exit status: 0
+stderr: <disposable>/base-bin/fm-fleet-snapshot.sh: line 1999: /etc/profiles/per-user/podles/bin/jq: Argument list too long
+stdout bytes: 0
+
+=== FIXED (target commit d934e34) ===
+exit status: 0
+stderr: 
+stdout bytes: 477048
+row counts: {"backlog_present":true,"backlog_rows":160,"tasks":45,"tasks_with_merge_authority":45}
+
+temp leftovers in private TMPDIR: 0
+operator home unchanged (no writes performed by this read-only mode)

@@ -1,0 +1,10 @@
+Main-path equivalence after folding both composition sites into one helper.
+base commit 9b07f98 --json vs target commit d934e34 --json on identical fixtures,
+key-sorted, per-run fields (generated/fm_home/roots/observed_at) normalized.
+
+$ diff <(base --json | jq -S ...) <(target --json | jq -S ...)
+identical - no fleet-visible output change (221 backlog rows, 24 tasks, 686 KB)
+
+--- contributions coverage block from both runs ---
+base:  {"known":24,"checked":0,"counts":{"captain":0,"fleet":24,"maintainer":0,"nobody":0},"complete":false,"unreadable_records":0}
+target:{"known":24,"checked":0,"counts":{"captain":0,"fleet":24,"maintainer":0,"nobody":0},"complete":false,"unreadable_records":0}

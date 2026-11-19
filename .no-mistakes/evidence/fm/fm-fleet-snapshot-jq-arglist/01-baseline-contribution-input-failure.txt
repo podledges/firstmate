@@ -1,0 +1,7 @@
+### BASELINE (base commit 9b07f98 script) ###
+$ FM_HOME=<disposable-home> base-bin/fm-fleet-snapshot.sh --contribution-input > base-input.json
+exit status: 0
+--- stderr ---
+/tmp/fm-contrib-live.khVwic/base-bin/fm-fleet-snapshot.sh: line 1999: /etc/profiles/per-user/podles/bin/jq: Argument list too long
+--- stdout size (bytes) ---
+0

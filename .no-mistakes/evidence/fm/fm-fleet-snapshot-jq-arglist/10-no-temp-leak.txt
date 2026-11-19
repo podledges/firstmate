@@ -1,0 +1,11 @@
+Transport temp dirs are created earlier now (before the --contribution-input
+branch). Check that repeated session-start reads leave nothing behind.
+Private TMPDIR: <disposable>/tmpwatch
+before: 0 entries
+after 3 runs: 0 entries
+total 8
+drwxr-xr-x  2 podles users 4096 Nov 19 17:23 .
+drwx------ 17 podles users 4096 Nov 19 17:23 ..
+
+and after a failing composition (guarded exit 1):
+exit: 1 ; leftover entries: 0

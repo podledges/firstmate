@@ -1,0 +1,33 @@
+Full fleet snapshot at oversized fleet size (the main --json path that also
+composes the contribution input and feeds fm-contributions.sh snapshot)
+
+$ FM_HOME=<disposable-home> bin/fm-fleet-snapshot.sh --json > snapshot.json
+exit status: 0
+--- stderr ---
+--- size (bytes) ---
+686788
+--- contributions coverage block + row counts ---
+{
+  "schema": "fm-fleet-snapshot.v1",
+  "backlog_rows": 221,
+  "tasks": 24,
+  "contributions": {
+    "known": 24,
+    "checked": 0,
+    "counts": {
+      "captain": 0,
+      "fleet": 24,
+      "maintainer": 0,
+      "nobody": 0
+    },
+    "unmeasured": 0,
+    "complete": false,
+    "proven_clear": false,
+    "stale_verdicts": 0,
+    "missing_verdicts": 0,
+    "unreadable_records": 0,
+    "valid_until": 900,
+    "captain": [],
+    "captain_omitted": 0
+  }
+}

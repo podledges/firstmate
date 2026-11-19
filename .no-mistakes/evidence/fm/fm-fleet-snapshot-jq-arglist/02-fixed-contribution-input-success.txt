@@ -1,0 +1,27 @@
+### FIXED (target commit d934e34 worktree) ###
+$ FM_HOME=<disposable-home> bin/fm-fleet-snapshot.sh --contribution-input > fixed-input.json
+exit status: 0
+--- stderr ---
+(empty stderr above means no failure line)
+--- stdout size (bytes) ---
+634926
+--- shape check (jq) ---
+{
+  "backlog_present": true,
+  "backlog_rows": 221,
+  "tasks": 24,
+  "first_task": {
+    "id": "task-000",
+    "kind": "ship",
+    "pr": {
+      "url": "https://github.com/kunchenguid/firstmate/pull/9",
+      "head": ""
+    },
+    "merge_authority": "attended"
+  },
+  "last_task_id": "task-023",
+  "first_backlog_id": "task-000",
+  "last_backlog_id": "queued-00219"
+}
+--- every task carries merge_authority ---
+true
