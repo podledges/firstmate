@@ -288,10 +288,13 @@
 #     whose CURRENT WORKING DIRECTORY is this task's own worktree or tasktmp
 #     root via `lsof -a -d cwd` (cheap: bounded by process count, not by
 #     walking the worktree's file tree) and sends TERM, then KILL after a short
-#     grace period to any survivor whose process identity still matches. Both
-#     roots are unique per task and never
-#     shared, so this can never reach another task's or the primary's
-#     processes. Idempotent: nothing left to find is a silent no-op.
+#     grace period to any survivor whose process identity still matches. Before
+#     either signal, the reap reads the task's current declared wait through
+#     fm-classify-lib.sh. A live process plus a current paused: declaration is
+#     preserved as the task's incomplete background job rather than guessed to
+#     be leaked. Both roots are unique per task and never shared, so this can
+#     never reach another task's or the primary's processes. Idempotent: nothing
+#     left to find is a silent no-op.
 #   Fix 3 - sweep abandoned remote job workers. A remote job worker started
 #     from a worktree's own bin/ outlives that worktree's removal without
 #     being reachable by Fix 2, because its working directory is wherever it
@@ -2169,6 +2172,20 @@ task_pid_list_contains() {  # <pid-list> <pid>
   printf '%s\n' "$1" | grep -Fxq "$2"
 }
 
+# A paused declaration is free-form because the worker names both its job and
+# completion condition in plain text. Once cleanup has found a process it would
+# signal, a still-current pause is therefore the durable evidence that the
+# process may be that incomplete background job. Refuse instead of guessing;
+# status_declared_wait_line owns retractions and phase-key resolution.
+refuse_reap_for_declared_background_job() {  # <label>
+  local label=$1 wait_line
+  wait_line=$(status_declared_wait_line "$STATE/$ID.status")
+  status_is_paused "$wait_line" || return 0
+  echo "REFUSED: $ID still declares a background job while lingering $label processes remain; preserving the processes until the declared completion condition is met and the wait is resolved." >&2
+  printf 'declared wait: %s\n' "$wait_line" >&2
+  return 1
+}
+
 task_pids_under_roots() {  # <dir>...
   TASK_PIDS=
   TASK_PIDS_FAILED_DIR=
@@ -2218,6 +2235,7 @@ reap_task_backend_process_group() {  # <label>
   current_pgid=$(ps -o pgid= -p "$leader" 2>/dev/null) || current_pgid=""
   current_pgid=$(printf '%s' "$current_pgid" | tr -d '[:space:]')
   [ "$current_pgid" = "$pgid" ] || return 0
+  refuse_reap_for_declared_background_job "$label" || return 1
   echo "teardown: reaping leaked $label process group for $ID: $pgid" >&2
   kill -TERM -- "-$pgid" 2>/dev/null || true
   sleep 1
@@ -2241,7 +2259,7 @@ reap_task_worktree_processes() {  # <label> <dir>...
   shift
   if ! command -v lsof >/dev/null 2>&1; then
     reap_task_backend_process_group "$label"
-    return 0
+    return $?
   fi
   while [ "$pass" -le "$max_passes" ]; do
     if ! task_pids_under_roots "$@"; then
@@ -2250,6 +2268,7 @@ reap_task_worktree_processes() {  # <label> <dir>...
     fi
     pids=$TASK_PIDS
     [ -n "$pids" ] || return 0
+    refuse_reap_for_declared_background_job "$label" || return 1
     tracked_pids=()
     tracked_identities=()
     while IFS= read -r pid; do
