@@ -1978,6 +1978,15 @@ scout_report_lines() {
 }
 
 BACKLOG_JSON=$(backlog_json) || { echo "fm-fleet-snapshot: backlog read failed" >&2; exit 1; }
+# Every composed payload reaches jq through --slurpfile, never through --argjson
+# or another argv/environment argument: at current fleet size the backlog, task,
+# and contribution payloads exceed the host argument limit and jq dies with
+# "Argument list too long". The transport directory is created for every output
+# mode, including --contribution-input, because that mode composes a payload of
+# the same size. tests/fm-fleet-snapshot-view.test.sh pins the invariant: it
+# drives an oversized fleet through every output mode and proves, with an argv
+# counterfactual per composed payload, that the same payload really does
+# overflow the host argument limit.
 JSON_TRANSPORT_DIR=$(mktemp -d "${TMPDIR:-/tmp}/fm-fleet-snapshot.XXXXXX") \
   || { echo "fm-fleet-snapshot: temporary transport directory creation failed" >&2; exit 1; }
 BACKLOG_JSON_FILE="$JSON_TRANSPORT_DIR/backlog.json"
