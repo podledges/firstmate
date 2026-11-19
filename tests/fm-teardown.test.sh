@@ -589,53 +589,49 @@ SH
   chmod +x "$case_dir/fakebin/lsof"
 }
 
-# fakebin/lsof stub: report the named real, non-zombie processes as cwd-rooted
-# under the supplied directory. This keeps process-reap tests deterministic on
-# hosts that do not install lsof while retaining real process identities and
-# signals.
-add_lsof_cwd_process() {  # <case-dir> <cwd> <pid>...
-  local case_dir=$1 cwd=$2 pid
-  shift 2
+# fakebin/lsof stub: report one real, non-zombie process as cwd-rooted under
+# the supplied directory. This keeps process-reap tests deterministic on hosts
+# that do not install lsof while retaining a real process identity and signal.
+add_lsof_cwd_process() {  # <case-dir> <pid> <cwd>
+  local case_dir=$1 pid=$2 cwd=$3
   cat > "$case_dir/fakebin/lsof" <<EOF
 #!/usr/bin/env bash
-for pid in $*; do
-  stat=\$('$REAL_PS_FOR_TEST' -p "\$pid" -o stat= 2>/dev/null | tr -d '[:space:]') || true
-  case "\$stat" in ''|Z*) continue ;; esac
-  printf 'p%s\\nfcwd\\nn%s\\n' "\$pid" '$cwd'
-done
+stat=
+stat=\$('$REAL_PS_FOR_TEST' -p '$pid' -o stat= 2>/dev/null | tr -d '[:space:]') || true
+case "\$stat" in ''|Z*) exit 0 ;; esac
+printf 'p%s\\nfcwd\\nn%s\\n' '$pid' '$cwd'
 EOF
   chmod +x "$case_dir/fakebin/lsof"
 }
 
-# fakebin/tmux stub: answer `display-message -p -t <target> '#{pane_pid}'` with
-# <pid>, the identity teardown resolves the task's own endpoint process tree
-# from. Every other tmux call succeeds silently, as the default stub does.
-add_tmux_pane_pid() {  # <case-dir> <pid>
-  local case_dir=$1 pid=$2
-  cat > "$case_dir/fakebin/tmux" <<EOF
-#!/usr/bin/env bash
-if [ "\${1:-}" = display-message ] && [ "\${*: -1}" = '#{pane_pid}' ]; then
-  printf '%s\n' '$pid'
-fi
-exit 0
-EOF
-  chmod +x "$case_dir/fakebin/tmux"
-}
-
-# A shell parked on a fifo it also holds open for writing: it blocks on a read
-# that never reaches EOF, so it stays alive with no child of its own until the
-# test kills it, and commands written to that fifo run as its children. Sets
-# PARKED_SHELL_PID.
-start_parked_shell() {  # <case-dir> <name> <cwd>
+# The task's live endpoint: a shell parked on a fifo it also holds open for
+# writing, so it blocks on a read that never reaches EOF and stays alive with
+# no child of its own until the test kills it. This stands in for the pane
+# shell plus agent. Commands written to that fifo run as its children, which is
+# how a worker's own background job is actually launched - from inside the
+# endpoint's process tree, where nothing about its topology distinguishes it
+# from a helper the harness spawned. Sets ENDPOINT_PID.
+start_task_endpoint() {  # <case-dir> <name> <cwd>
   local case_dir=$1 name=$2 cwd=$3
   mkfifo "$case_dir/$name.stdin"
   ( cd "$cwd" && exec bash --norc --noprofile -s ) <> "$case_dir/$name.stdin" &
-  PARKED_SHELL_PID=$!
+  ENDPOINT_PID=$!
   disown
   sleep 0.3
-  kill -0 "$PARKED_SHELL_PID" 2>/dev/null || fail "$name: parked shell did not start"
-  [ "$("$REAL_PS_FOR_TEST" -p "$PARKED_SHELL_PID" -o comm= | tr -d '[:space:]')" = bash ] \
-    || fail "$name: parked shell is not reported as a shell"
+  kill -0 "$ENDPOINT_PID" 2>/dev/null || fail "$name: endpoint shell did not start"
+}
+
+# Run <command> inside the endpoint shell started as <name> and set
+# ENDPOINT_CHILD_PID to its pid.
+start_endpoint_child() {  # <case-dir> <name> <command>
+  local case_dir=$1 name=$2 command=$3
+  printf '%s & echo $! > %s\n' "$command" "$case_dir/$name.child-pid" \
+    > "$case_dir/$name.stdin"
+  sleep 0.3
+  ENDPOINT_CHILD_PID=$(cat "$case_dir/$name.child-pid" 2>/dev/null || true)
+  case "$ENDPOINT_CHILD_PID" in
+    ''|*[!0-9]*) fail "$name: endpoint child did not start" ;;
+  esac
 }
 
 add_stat_error() {
@@ -722,9 +718,8 @@ backlog_row_state() {
 make_path_without_lsof() {  # <case-dir>
   local case_dir=$1 path_dir="$1/path-without-lsof" cmd resolved
   mkdir -p "$path_dir"
-  for cmd in awk bash basename cat chmod cp cut date dirname env find git grep head hostname id jq ln \
-    mkdir mktemp mv node perl ps readlink realpath rm sed sh sleep sort stat tail tasks-axi timeout tr \
-    uname wc xargs; do
+  for cmd in awk bash basename cat chmod cp cut date dirname env find git grep head hostname id ln \
+    mkdir mktemp mv perl ps readlink realpath rm sed sh sleep sort stat tail timeout tr uname wc xargs; do
     resolved=$(command -v "$cmd" 2>/dev/null) || continue
     case "$resolved" in /*) ln -sf "$resolved" "$path_dir/$cmd" ;; esac
   done
@@ -4202,11 +4197,11 @@ test_own_autonomous_run_is_left_alone() {
   pass "a task-owned autonomous running step is left alone rather than aborted"
 }
 
-# bin/fm-brief.sh tells a worker to append `paused: {job and completion
-# condition}` before ending its turn with its own background shell still
-# running, so the declared job is routinely a SHELL - `bash render-all.sh &`
-# wrapping the renders. It is outside the endpoint's own process tree, which is
-# what makes it the declared job; its command name says nothing either way.
+# The incident's real shape: the worker starts its render from inside its own
+# agent shell, so the job lives in the endpoint's process tree and no topology
+# rule can tell it from a helper the harness spawned there. What makes it the
+# declared job is that the worker NAMED its pid in the `paused:` line, the field
+# bin/fm-brief.sh instructs workers to write and bin/fm-classify-lib.sh parses.
 test_declared_background_job_is_not_reaped() {
   local case_dir rc endpoint job head
   case_dir=$(make_case declared-background-job)
@@ -4214,20 +4209,18 @@ test_declared_background_job_is_not_reaped() {
   land_shippable_commit "$case_dir"
   seed_backlog_in_flight "$case_dir"
   head=$(git -C "$case_dir/wt" rev-parse HEAD)
-  printf 'paused [at=%s]: background render shell until all topic videos exist\n' \
-    "$(date +%s)" > "$case_dir/state/task-x1.status"
   cat > "$case_dir/fakebin/treehouse" <<EOF
 #!/usr/bin/env bash
 printf 'return\n' >> "$case_dir/treehouse.log"
 EOF
   chmod +x "$case_dir/fakebin/treehouse"
 
-  start_parked_shell "$case_dir" declared-background-job-endpoint "$case_dir/wt"
-  endpoint=$PARKED_SHELL_PID
-  start_parked_shell "$case_dir" declared-background-job-render "$case_dir/wt"
-  job=$PARKED_SHELL_PID
-  add_tmux_pane_pid "$case_dir" "$endpoint"
-  add_lsof_cwd_process "$case_dir" "$case_dir/wt" "$endpoint" "$job"
+  start_task_endpoint "$case_dir" declared-job "$case_dir/wt"
+  endpoint=$ENDPOINT_PID
+  start_endpoint_child "$case_dir" declared-job "sleep 300"
+  job=$ENDPOINT_CHILD_PID
+  printf 'paused [job=%s] [at=%s]: background render until all 8 topic videos exist\n' \
+    "$job" "$(date +%s)" > "$case_dir/state/task-x1.status"
 
   rc=0
   FM_FAKE_AXI_STATUS="$(parked_axi_status_toon fm/task-x1 "$head")" \
@@ -4241,14 +4234,14 @@ EOF
   kill -KILL "$job" "$endpoint" 2>/dev/null || true
   assert_grep "declares a background job that is still running" "$case_dir/stderr" \
     "declared-background-job: teardown did not explain the declared-wait refusal"
-  assert_grep "background render shell" "$case_dir/stderr" \
+  assert_grep "background render until all 8 topic videos exist" "$case_dir/stderr" \
     "declared-background-job: teardown did not identify the active wait"
   assert_grep "  $job " "$case_dir/stderr" \
-    "declared-background-job: teardown did not name the process it found still running"
-  assert_no_grep "  $endpoint " "$case_dir/stderr" \
-    "declared-background-job: teardown counted the task's own endpoint as the declared job"
+    "declared-background-job: teardown did not name the live job pid it refused on"
   assert_grep ">> $case_dir/state/task-x1.status" "$case_dir/stderr" \
     "declared-background-job: teardown named no command that clears the declared wait"
+  assert_grep "--force" "$case_dir/stderr" \
+    "declared-background-job: teardown named no override for discarding the job"
   # The refusal has to leave the task whole, or the preserved render ends up
   # unattributable anyway: a replayed close marker would retire the task record
   # and the backlog row at the next session start, and an aborted pipeline run
@@ -4262,7 +4255,38 @@ EOF
   assert_present "$case_dir/wt" "declared-background-job: teardown removed the worktree"
   assert_present "$case_dir/state/task-x1.meta" "declared-background-job: teardown removed task metadata"
   assert_absent "$case_dir/treehouse.log" "declared-background-job: teardown returned the worktree"
-  pass "a shell-shaped declared background job refuses teardown with every durable record intact"
+  pass "a declared background job running inside the endpoint's own tree refuses teardown with every record intact"
+}
+
+test_finished_declared_background_job_tears_down() {
+  local case_dir rc endpoint job state
+  case_dir=$(make_case declared-job-finished)
+  write_meta "$case_dir" no-mistakes ship
+  land_shippable_commit "$case_dir"
+
+  start_task_endpoint "$case_dir" finished-job "$case_dir/wt"
+  endpoint=$ENDPOINT_PID
+  start_endpoint_child "$case_dir" finished-job "sleep 1"
+  job=$ENDPOINT_CHILD_PID
+  printf 'paused [job=%s] [at=%s]: background render until all 8 topic videos exist\n' \
+    "$job" "$(date +%s)" > "$case_dir/state/task-x1.status"
+  sleep 2
+  state=$("$REAL_PS_FOR_TEST" -p "$job" -o stat= 2>/dev/null | tr -d '[:space:]' || true)
+  case "$state" in
+    ''|Z*) ;;
+    *) fail "declared-job-finished: the declared job was still running at $state" ;;
+  esac
+
+  rc=0
+  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+  kill -KILL "$endpoint" 2>/dev/null || true
+  expect_code 0 "$rc" "declared-job-finished: teardown should succeed once the named job is gone"
+  assert_not_contains "$(cat "$case_dir/stderr")" "declares a background job" \
+    "declared-job-finished: a finished declared job still refused teardown"
+  assert_absent "$case_dir/state/task-x1.meta" \
+    "declared-job-finished: teardown kept the task record"
+  pass "a declared background job that has finished no longer holds teardown"
 }
 
 test_declared_wait_with_only_the_endpoint_running_tears_down() {
@@ -4270,23 +4294,17 @@ test_declared_wait_with_only_the_endpoint_running_tears_down() {
   case_dir=$(make_case declared-wait-endpoint-only)
   write_meta "$case_dir" no-mistakes ship
   land_shippable_commit "$case_dir"
-  # A human wait, not a background job. The task window is created with
-  # `-c <worktree>`, so its pane shell AND whatever the agent is running right
-  # now - here a non-shell stdio helper - are rooted under the worktree for
-  # every live endpoint and prove nothing about an unfinished job.
+
+  # Byte-for-byte the process topology of the refusal case above - a live
+  # endpoint with a live non-shell child under the worktree - but a pure human
+  # wait that names no job. Naming the job is the whole difference, and an
+  # unnamed wait tears down exactly as it did before this gate existed.
+  start_task_endpoint "$case_dir" human-wait "$case_dir/wt"
+  endpoint=$ENDPOINT_PID
+  start_endpoint_child "$case_dir" human-wait "sleep 300"
+  helper=$ENDPOINT_CHILD_PID
   printf 'paused [at=%s]: waiting for the PR reviewer\n' \
     "$(date +%s)" > "$case_dir/state/task-x1.status"
-
-  start_parked_shell "$case_dir" declared-wait-endpoint "$case_dir/wt"
-  endpoint=$PARKED_SHELL_PID
-  printf 'sleep 300 & echo $! > %s\n' "$case_dir/helper.pid" > "$case_dir/declared-wait-endpoint.stdin"
-  sleep 0.3
-  helper=$(cat "$case_dir/helper.pid" 2>/dev/null || true)
-  case "$helper" in ''|*[!0-9]*) fail "declared-wait-endpoint-only: endpoint child did not start" ;; esac
-  [ "$("$REAL_PS_FOR_TEST" -p "$helper" -o comm= | tr -d '[:space:]')" = sleep ] \
-    || fail "declared-wait-endpoint-only: endpoint child is not the non-shell helper it claims to be"
-  add_tmux_pane_pid "$case_dir" "$endpoint"
-  add_lsof_cwd_process "$case_dir" "$case_dir/wt" "$endpoint" "$helper"
 
   rc=0
   run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
@@ -4294,54 +4312,34 @@ test_declared_wait_with_only_the_endpoint_running_tears_down() {
   kill -KILL "$helper" "$endpoint" 2>/dev/null || true
   expect_code 0 "$rc" "declared-wait-endpoint-only: teardown should still succeed"
   assert_not_contains "$(cat "$case_dir/stderr")" "declares a background job" \
-    "declared-wait-endpoint-only: the endpoint's own process tree was mistaken for a declared background job"
+    "declared-wait-endpoint-only: a human wait naming no job was treated as a background job"
   assert_absent "$case_dir/state/task-x1.meta" \
     "declared-wait-endpoint-only: teardown kept the task record"
-  pass "a declared wait whose only live processes are the task's own endpoint tree tears down normally"
+  pass "a declared wait that names no job tears down normally even with the endpoint's children alive"
 }
 
-# Without lsof there is no way to tell the declared job from a leaked process,
-# and the process-group fallback would TERM/KILL the endpoint's whole group -
-# the declared job with it. No evidence means no destruction.
-test_declared_wait_without_process_evidence_refuses() {
-  local case_dir rc head path_without_lsof
-  case_dir=$(make_case declared-wait-no-evidence)
+test_forced_teardown_discards_a_declared_background_job() {
+  local case_dir rc endpoint job
+  case_dir=$(make_case declared-job-forced)
   write_meta "$case_dir" no-mistakes ship
-  land_shippable_commit "$case_dir"
-  seed_backlog_in_flight "$case_dir"
-  head=$(git -C "$case_dir/wt" rev-parse HEAD)
-  printf 'paused [at=%s]: background ffmpeg render until all 8 topic videos exist\n' \
-    "$(date +%s)" > "$case_dir/state/task-x1.status"
-  cat > "$case_dir/fakebin/treehouse" <<EOF
-#!/usr/bin/env bash
-printf 'return\n' >> "$case_dir/treehouse.log"
-EOF
-  chmod +x "$case_dir/fakebin/treehouse"
-  path_without_lsof=$(make_path_without_lsof "$case_dir")
-  PATH="$path_without_lsof" command -v lsof >/dev/null 2>&1 \
-    && fail "declared-wait-no-evidence: fixture path unexpectedly exposes lsof"
+
+  start_task_endpoint "$case_dir" forced-job "$case_dir/wt"
+  endpoint=$ENDPOINT_PID
+  start_endpoint_child "$case_dir" forced-job "sleep 300"
+  job=$ENDPOINT_CHILD_PID
+  printf 'paused [job=%s] [at=%s]: background render until all 8 topic videos exist\n' \
+    "$job" "$(date +%s)" > "$case_dir/state/task-x1.status"
 
   rc=0
-  FM_TEARDOWN_TEST_PATH="$path_without_lsof" \
-  FM_FAKE_AXI_STATUS="$(parked_axi_status_toon fm/task-x1 "$head")" \
-  FM_FAKE_NM_ABORT_LOG="$case_dir/nm-abort.log" \
-    run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+  run_teardown "$case_dir" --force > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
 
-  expect_code 1 "$rc" "declared-wait-no-evidence: teardown should refuse"
-  assert_grep "lsof is not installed" "$case_dir/stderr" \
-    "declared-wait-no-evidence: teardown did not name the missing requirement"
-  assert_grep "background ffmpeg render" "$case_dir/stderr" \
-    "declared-wait-no-evidence: teardown did not identify the active wait"
-  assert_absent "$case_dir/state/task-x1.backlog-close" \
-    "declared-wait-no-evidence: teardown left a pending backlog close marker behind"
-  [ "$(backlog_row_state "$case_dir")" = in_flight ] \
-    || fail "declared-wait-no-evidence: teardown moved the backlog row to $(backlog_row_state "$case_dir")"
-  assert_absent "$case_dir/nm-abort.log" \
-    "declared-wait-no-evidence: teardown aborted the task's own parked no-mistakes run"
-  assert_present "$case_dir/wt" "declared-wait-no-evidence: teardown removed the worktree"
-  assert_present "$case_dir/state/task-x1.meta" "declared-wait-no-evidence: teardown removed task metadata"
-  assert_absent "$case_dir/treehouse.log" "declared-wait-no-evidence: teardown returned the worktree"
-  pass "a declared wait teardown cannot gather process evidence for is refused with every record intact"
+  kill -KILL "$job" "$endpoint" 2>/dev/null || true
+  expect_code 0 "$rc" "declared-job-forced: --force should discard the declared job like any other live work"
+  assert_not_contains "$(cat "$case_dir/stderr")" "declares a background job" \
+    "declared-job-forced: the declared-job gate refused a forced teardown"
+  assert_absent "$case_dir/state/task-x1.meta" \
+    "declared-job-forced: forced teardown kept the task record"
+  pass "--force overrides the declared-background-job refusal like every sibling discard-work gate"
 }
 
 test_leaked_worktree_process_is_reaped() {
@@ -4365,7 +4363,7 @@ test_leaked_worktree_process_is_reaped() {
   disown
   sleep 0.3
   kill -0 "$pid" 2>/dev/null || fail "leaked-process-reap: setup sleeper did not start"
-  add_lsof_cwd_process "$case_dir" "$case_dir/wt" "$pid"
+  add_lsof_cwd_process "$case_dir" "$pid" "$case_dir/wt"
 
   rc=0
   run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
@@ -5022,8 +5020,9 @@ test_not_found_status_after_abort_confirms_completion
 test_another_branchs_parked_run_is_never_touched
 test_own_autonomous_run_is_left_alone
 test_declared_background_job_is_not_reaped
+test_finished_declared_background_job_tears_down
 test_declared_wait_with_only_the_endpoint_running_tears_down
-test_declared_wait_without_process_evidence_refuses
+test_forced_teardown_discards_a_declared_background_job
 test_leaked_worktree_process_is_reaped
 test_leaked_tasktmp_process_is_reaped
 test_lsof_absent_reaps_tmux_process_group

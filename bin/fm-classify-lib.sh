@@ -432,6 +432,42 @@ status_paused_until() {  # <status-line> -> epoch on stdout
   fm_utc_iso_to_epoch "$token"
 }
 
+# --- optional declared background-job pids ----------------------------------
+# A worker waiting on its OWN background job NAMES that job, by writing its
+# process ids in a "[job=<pid>[,<pid>...]]" tag before the first colon - the
+# same bracketed-tag position [at=...] and [key=...] occupy, so verb, key, note
+# and time readers are unaffected:
+#   paused [job=4821,4822] [at=1788576000]: background render until 8 videos exist
+# bin/fm-brief.sh owns the instruction that tells a worker to write it, and
+# bin/fm-teardown.sh is the reader that must not destroy a job still running
+# under one. The tag exists because process topology cannot tell an idle agent
+# tree from a background job running inside it: the declaration is the only
+# thing that knows which process is the work. A declaration naming NO pid names
+# no job, and nothing here guesses one for it.
+# A pid is canonical unsigned decimal (no leading zero), greater than 1, at most
+# 10 digits. A malformed or duplicated tag yields NO pids rather than some of
+# them: protecting half a named job is worse than a stated absence, because the
+# unprotected half is destroyed under a message claiming the job was honored.
+FM_CLASSIFY_JOB_PID_MAX_DIGITS=10
+status_declared_job_pids() {  # <status-line> -> one pid per line; 1 when none
+  local head rest value pid out=''
+  case "$1" in *:*) head=${1%%:*} ;; *) head=$1 ;; esac
+  case "$head" in *\[job=*\]*) ;; *) return 1 ;; esac
+  rest=${head#*\[job=}
+  value=${rest%%\]*}
+  case "${rest#*\]}" in *\[job=*) return 1 ;; esac
+  [ -n "$value" ] || return 1
+  while [ -n "$value" ]; do
+    pid=${value%%,*}
+    case "$value" in *,*) value=${value#*,} ;; *) value='' ;; esac
+    case "$pid" in ''|*[!0-9]*|0*) return 1 ;; esac
+    [ "${#pid}" -le "$FM_CLASSIFY_JOB_PID_MAX_DIGITS" ] || return 1
+    [ "$pid" -gt 1 ] || return 1
+    out="$out$pid"$'\n'
+  done
+  printf '%s' "$out"
+}
+
 # --- optional event emission time -------------------------------------------
 # New writers may append "[at=<epoch>]" before the first colon, alongside key
 # and corr tags in any order. Epoch is UTC Unix seconds: canonical unsigned
