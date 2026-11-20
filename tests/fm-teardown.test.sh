@@ -626,6 +626,28 @@ file_holds_pid_lines() {  # <file> <count>
   [ "$seen" = "$count" ]
 }
 
+# The portable setsid spelling this repo already uses (tests/fm-procevent.test.sh),
+# and the one bin/fm-brief.sh instructs workers to use: stock macOS ships no
+# setsid(1), so a fixture written around that binary would prove nothing there.
+FM_TEST_SETSID="perl -MPOSIX=setsid -e 'setsid() >= 0 or exit 1; exec @ARGV'"
+
+# 0 once <pid> is alive and leads its own process group, which is what a job
+# launched the way bin/fm-brief.sh instructs must have.
+pid_leads_own_group() {  # <pid>
+  local pgid
+  pgid=$("$REAL_PS_FOR_TEST" -o pgid= -p "$1" 2>/dev/null | tr -d '[:space:]') || return 1
+  [ -n "$pgid" ] && [ "$pgid" = "$1" ]
+}
+
+# Resolve the process group <pid> actually belongs to, failing loudly rather
+# than letting a test declare a pid it never proved was a group.
+resolve_process_group() {  # <pid> <label>
+  local pgid
+  pgid=$("$REAL_PS_FOR_TEST" -o pgid= -p "$1" 2>/dev/null | tr -d '[:space:]') || pgid=''
+  case "$pgid" in ''|*[!0-9]*) fail "$2: could not resolve the process group of $1" ;; esac
+  printf '%s\n' "$pgid"
+}
+
 # The task's live endpoint: a shell parked on a fifo it also holds open for
 # writing, so it blocks on a read that never reaches EOF and stays alive with
 # no child of its own until the test kills it. This stands in for the pane
@@ -653,14 +675,28 @@ start_endpoint_child() {  # <case-dir> <name> <command>
   ENDPOINT_CHILD_PID=$(cat "$case_dir/$name.child-pid")
 }
 
+# Launch <command> from inside the endpoint shell in its OWN process group, the
+# way bin/fm-brief.sh instructs a worker to, and resolve the group the kernel
+# actually gave it rather than assuming the captured pid is one. Sets JOB_PID
+# and JOB_PGID.
+start_endpoint_job_group() {  # <case-dir> <name> <command>
+  local case_dir=$1 name=$2 command=$3
+  start_endpoint_child "$case_dir" "$name" "$FM_TEST_SETSID $command"
+  JOB_PID=$ENDPOINT_CHILD_PID
+  wait_until "$name: the job never took a process group of its own" \
+    pid_leads_own_group "$JOB_PID"
+  JOB_PGID=$(resolve_process_group "$JOB_PID" "$name")
+}
+
 # Launch, from inside the endpoint shell, a background job in its OWN process
 # group whose launcher exits while its children keep running - the 2026-11-17
 # shape, where the children are reparented to init and no ancestry link back to
 # the declaration survives. Sets JOB_PGID and JOB_CHILD_PIDS (one pid per line).
 start_detached_job_group() {  # <case-dir> <name> <child-count>
   local case_dir=$1 name=$2 count=$3 i pid child_pgid endpoint_pgid
-  printf 'setsid bash -c %s &\necho $! > %s\n' \
-    "'for i in \$(seq 1 $count); do sleep 300 & echo \$! >> $case_dir/$name.children; done'" \
+  printf '%s %s &\necho $! > %s\n' \
+    "$FM_TEST_SETSID" \
+    "bash -c 'for i in \$(seq 1 $count); do sleep 300 & echo \$! >> $case_dir/$name.children; done'" \
     "$case_dir/$name.launcher-pid" > "$case_dir/$name.stdin"
   wait_until "$name: detached job launcher did not start" \
     file_holds_pid_lines "$case_dir/$name.launcher-pid" 1
@@ -4335,17 +4371,19 @@ EOF
 }
 
 test_finished_declared_background_job_tears_down() {
-  local case_dir rc endpoint job
+  local case_dir rc endpoint job group
   case_dir=$(make_case declared-job-finished)
   write_meta "$case_dir" no-mistakes ship
   land_shippable_commit "$case_dir"
 
   start_task_endpoint "$case_dir" finished-job "$case_dir/wt"
   endpoint=$ENDPOINT_PID
-  start_endpoint_child "$case_dir" finished-job "setsid sleep 1"
-  job=$ENDPOINT_CHILD_PID
+  start_endpoint_job_group "$case_dir" finished-job "sleep 300"
+  job=$JOB_PID
+  group=$JOB_PGID
   printf 'paused [job=%s] [at=%s]: background render until all 8 topic videos exist\n' \
-    "$job" "$(date +%s)" > "$case_dir/state/task-x1.status"
+    "$group" "$(date +%s)" > "$case_dir/state/task-x1.status"
+  kill -KILL -- "-$group" 2>/dev/null || true
   wait_until "declared-job-finished: the declared job never finished" pid_is_gone "$job"
 
   rc=0
@@ -4466,10 +4504,10 @@ test_forced_teardown_discards_a_declared_background_job() {
 
   start_task_endpoint "$case_dir" forced-job "$case_dir/wt"
   endpoint=$ENDPOINT_PID
-  start_endpoint_child "$case_dir" forced-job "setsid sleep 300"
-  job=$ENDPOINT_CHILD_PID
+  start_endpoint_job_group "$case_dir" forced-job "sleep 300"
+  job=$JOB_PID
   printf 'paused [job=%s] [at=%s]: background render until all 8 topic videos exist\n' \
-    "$job" "$(date +%s)" > "$case_dir/state/task-x1.status"
+    "$JOB_PGID" "$(date +%s)" > "$case_dir/state/task-x1.status"
 
   rc=0
   run_teardown "$case_dir" --force > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
@@ -4484,27 +4522,28 @@ test_forced_teardown_discards_a_declared_background_job() {
 }
 
 test_leaked_worktree_process_is_reaped() {
-  local case_dir rc pid
+  local case_dir rc pid group
   lsof_backed_reap_supported || return 0
   case_dir=$(make_case leaked-process-reap)
   write_meta "$case_dir" no-mistakes ship
   land_shippable_commit "$case_dir"
-  printf 'paused [key=render] [at=%s]: background render until output exists\n' \
-    "$(date +%s)" > "$case_dir/state/task-x1.status"
-  printf 'resolved [key=render] [at=%s]: render completed\n' \
-    "$(date +%s)" >> "$case_dir/state/task-x1.status"
-
   # A backgrounded, disowned process rooted (by cwd) under the task's own
   # worktree - the same shape the observed incident's leaked `go test`
   # binaries took (reparented to init, no live task meta to attribute them
-  # to once an unpatched teardown had already run). The task's prior declared
-  # wait is resolved, so no current wait protects this process and ordinary
-  # leaked-process cleanup must remain unchanged.
+  # to once an unpatched teardown had already run).
   ( cd "$case_dir/wt" && exec sleep 300 ) &
   pid=$!
   disown
-  sleep 0.3
-  kill -0 "$pid" 2>/dev/null || fail "leaked-process-reap: setup sleeper did not start"
+  wait_until "leaked-process-reap: setup sleeper did not start" pid_is_running "$pid"
+  group=$(resolve_process_group "$pid" leaked-process-reap)
+
+  # The prior wait DECLARED this very process group, so only its resolution
+  # lets ordinary cleanup proceed: drop the resolved line and the gate holds
+  # the still-live group, and this case fails.
+  printf 'paused [key=render] [job=%s] [at=%s]: background render until output exists\n' \
+    "$group" "$(date +%s)" > "$case_dir/state/task-x1.status"
+  printf 'resolved [key=render] [at=%s]: render completed\n' \
+    "$(date +%s)" >> "$case_dir/state/task-x1.status"
 
   rc=0
   run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
