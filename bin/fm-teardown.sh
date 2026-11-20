@@ -248,6 +248,36 @@
 # checks before any destructive return. Teardown output notes every wait, retry, and
 # removal so the operator can see what happened.
 #
+# REFUSES, alongside those safety refusals and before any of them acts, while
+# the task's own status log declares an UNFINISHED BACKGROUND JOB that is still
+# running (observed 2026-11-17: cleanup killed a declared ffmpeg render mid-run
+# and lost 6 of 8 output videos). The declaration is a current `paused:` line
+# that NAMES the job's PROCESS GROUP in a `[job=<id>]` tag
+# (bin/fm-classify-lib.sh owns that grammar, bin/fm-brief.sh the instruction
+# that tells a worker to start the job in its own group and write that group),
+# and the refusal lasts exactly as long as a live process still belongs to that
+# group. A group and never a bare pid, because Fix 2 below finds processes by
+# working directory and so reaches a job whose launcher has exited and whose
+# children were reparented to init - the shape that lost 6 of 8 renders - while
+# the group id those children still carry is the one handle the declaration can
+# keep on them. Nothing narrows the group by when a member started: those
+# renders are forked long after the declaration is written.
+# No lsof scan, no cwd rooting and no endpoint identity enter into it: a worker
+# starts its render from the agent's own shell, so the job runs INSIDE the
+# endpoint's process tree where topology cannot tell it from a language server
+# the harness spawned. A declaration naming no job names no protected job, and
+# teardown then behaves exactly as it did before this gate existed - a plain
+# human wait ("paused: waiting for the PR reviewer") tears down normally on
+# every backend. That limit is deliberate. A declaration teardown cannot read
+# is refused instead: the worker said it had work to protect, so destroying it
+# silently is the one outcome worse than refusing.
+# declared_background_job_refusal owns the gate and runs as a
+# precondition, before the backlog close marker is written and before the
+# task's own no-mistakes run is aborted, so a refusal leaves every durable
+# record, the parked run, the worktree and its pool slot exactly as they were
+# and a later teardown of the same id still works. --force overrides it exactly
+# as it overrides every sibling discard-work refusal here.
+#
 # Pre-teardown cleanup sequence (runs once every landed/discard-work safety
 # refusal above has already passed, and BEFORE any worktree return, branch
 # delete, or backend kill below - a still-active run or a leaked process may
@@ -292,6 +322,12 @@
 #     roots are unique per task and never
 #     shared, so this can never reach another task's or the primary's
 #     processes. Idempotent: nothing left to find is a silent no-op.
+#     Reaching a reparented process is exactly why this reap cannot tell a
+#     leaked one from the task's own declared, unfinished background job: both
+#     arrive at init with their cwd under the worktree and nothing else to
+#     separate them. The only thing that ever could is the worker's own
+#     `[job=<id>]` process-group declaration, which
+#     declared_background_job_refusal above has already refused on.
 #   Fix 3 - sweep abandoned remote job workers. A remote job worker started
 #     from a worktree's own bin/ outlives that worktree's removal without
 #     being reachable by Fix 2, because its working directory is wherever it
@@ -2185,6 +2221,84 @@ $dir_pids"
   TASK_PIDS=$(printf '%s\n' "$pids" | grep -E '^[0-9]+$' | sort -un || true)
 }
 
+declared_job_refuse_head() {  # <wait-line> <headline>
+  echo "REFUSED: $2" >&2
+  printf 'declared wait: %s\n' "$1" >&2
+}
+
+declared_job_refuse_tail() {
+  # shellcheck disable=SC2016  # literal backtick-quoted verb, not an expansion
+  printf 'Let the job reach the declared completion condition, then record the task'"'"'s next status event and retry teardown - a `%s:` line is retracted only by that:\n' \
+    "${FM_CLASSIFY_PAUSED_VERB:-$FM_CLASSIFY_PAUSED_VERB_DEFAULT}" >&2
+  # shellcheck disable=SC2016  # $(date +%s) is the command the operator copies
+  printf '  echo "working [at=$(date +%%s)]: <what the job finished>" >> %s\n' "$STATE/$ID.status" >&2
+  printf 'Or discard the job with the usual override: fm-teardown.sh %s --force\n' "$ID" >&2
+}
+
+# The teardown precondition described in the script header. A worker waiting on
+# its own background job NAMES that job's PROCESS GROUP in its `paused:` line
+# ([job=<id>]; bin/fm-classify-lib.sh owns the grammar, bin/fm-brief.sh the
+# instruction). While any live process still belongs to that group, teardown
+# refuses. Nothing else is examined: no lsof, no cwd scan, no endpoint
+# identity, because process topology cannot tell an idle agent tree from a
+# background job running inside it.
+# The group is what makes the protection survive the shape that caused the
+# incident. The reap below finds processes by working directory, so a launcher
+# that exits leaves its renders reparented to init and reachable by that reap
+# while no ancestry link back to the declaration remains; the group id those
+# renders still carry is the one durable handle on them.
+# A worker that names the group the agent itself runs in rather than the job's
+# own gets a refusal too, since the agent is live in it; the refusal lists what
+# it found and names the remedy, because no portable process attribute tells
+# that group apart from a job group on every host this runs on.
+# The declared group is the whole test. Nothing here narrows it by when a
+# process started: a group outliving its leader is precisely the shape this
+# protects, and the renders that shape leaves behind were forked long after the
+# declaration was written.
+# A declaration naming no job at all leaves teardown behaving exactly as it did
+# before this gate existed - a plain human wait tears down normally on every
+# backend. An unreadable one does not: the worker said it had something to
+# protect, so it is refused with the declaration quoted back.
+# status_declared_wait_line owns retractions and phase-key resolution, so a
+# pause this task already superseded names nothing.
+declared_background_job_refusal() {
+  local wait_line group rc=0 snapshot pid pgid pstat args live=''
+  wait_line=$(status_declared_wait_line "$STATE/$ID.status")
+  status_is_paused "$wait_line" || return 0
+  group=$(status_declared_job_group "$wait_line") || rc=$?
+  [ "$rc" != 1 ] || return 0
+  if [ "$rc" != 0 ]; then
+    declared_job_refuse_head "$wait_line" \
+      "task $ID declares a background job in a [job=...] tag teardown cannot read, so the job it names cannot be found or preserved; nothing was changed."
+    printf 'A readable declaration states one process group id before the first colon: [job=<id>]. Rewrite the line with the real group id and retry teardown.\n' >&2
+    declared_job_refuse_tail
+    return 1
+  fi
+  snapshot=$(LC_ALL=C ps -A -o pid=,pgid=,stat=,args= 2>/dev/null) || snapshot=
+  if [ -z "$snapshot" ]; then
+    declared_job_refuse_head "$wait_line" \
+      "task $ID declares a background job and this host's process table could not be read, so teardown cannot tell whether that job is still running; nothing was changed."
+    declared_job_refuse_tail
+    return 1
+  fi
+  while read -r pid pgid pstat args; do
+    case "$pid" in ''|*[!0-9]*) continue ;; esac
+    [ "$pid" != "$$" ] || continue
+    [ "$pgid" = "$group" ] || continue
+    case "$pstat" in Z*) continue ;; esac
+    live="$live  $pid $args"$'\n'
+  done <<EOF
+$snapshot
+EOF
+  [ -n "$live" ] || return 0
+  declared_job_refuse_head "$wait_line" \
+    "task $ID declares a background job (process group $group) that is still running; nothing was changed."
+  printf 'declared job still running:\n%s' "$live" >&2
+  printf 'If that list is the agent and its own helpers rather than the job, the declaration named the group the agent runs in instead of the job'"'"'s: start the job in its own group and record THAT group, then rewrite the line.\n' >&2
+  declared_job_refuse_tail
+  return 1
+}
+
 reap_task_backend_process_group() {  # <label>
   local label=$1 leader leader_start pgid current_pgid own_pgid
   if [ "$BACKEND" != tmux ]; then
@@ -3479,6 +3593,18 @@ if teardown_owns_worktree && [ -d "$WT" ] && [ "$FORCE" != "--force" ]; then
       exit 1
     fi
   fi
+fi
+
+# The declared-background-job precondition (see script header). It sits here,
+# with the other refusals and ahead of every destructive step, because a
+# refusal must leave the task completely intact: no backlog close marker on
+# disk, the task's own parked no-mistakes run not aborted, and the worktree,
+# its pool slot and every durable record still held for a later teardown of
+# this same id. Like every sibling refusal here, --force overrides it: that is
+# this script's one operator override for discarding live work, and a gate no
+# override can clear is a task nobody can ever tear down.
+if [ "$FORCE" != "--force" ]; then
+  declared_background_job_refusal || exit 1
 fi
 
 # A Herdr close may reposition shared workspace order, so the whole
