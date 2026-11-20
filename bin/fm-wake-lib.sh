@@ -1681,11 +1681,15 @@ fm_treehouse_slot_unsafe_reason() {  # <project-dir> <slot-repo-dir> [task-id]
   fi
   fm_treehouse_slot_owner_state "$dir" "$id"
   case "$FM_TREEHOUSE_SLOT_OWNER" in
-    other|mine)
+    other)
       FM_TREEHOUSE_SLOT_UNSAFE="it is still claimed by task $FM_TREEHOUSE_SLOT_OWNER_ID"
       [ -z "$FM_TREEHOUSE_SLOT_OWNER_HOME" ] ||
         FM_TREEHOUSE_SLOT_UNSAFE="$FM_TREEHOUSE_SLOT_UNSAFE of home $FM_TREEHOUSE_SLOT_OWNER_HOME"
       return 0
+      ;;
+    mine)
+      # The same task may reclaim a slot only when the content checks below
+      # independently prove that Treehouse can reset it without losing work.
       ;;
     unsafe)
       FM_TREEHOUSE_SLOT_UNSAFE="its slot-owner claim cannot be read"
