@@ -2227,8 +2227,10 @@ declared_job_refuse_head() {  # <wait-line> <headline>
 }
 
 declared_job_refuse_tail() {
+  # shellcheck disable=SC2016  # literal backtick-quoted verb, not an expansion
   printf 'Let the job reach the declared completion condition, then record the task'"'"'s next status event and retry teardown - a `%s:` line is retracted only by that:\n' \
     "${FM_CLASSIFY_PAUSED_VERB:-$FM_CLASSIFY_PAUSED_VERB_DEFAULT}" >&2
+  # shellcheck disable=SC2016  # $(date +%s) is the command the operator copies
   printf '  echo "working [at=$(date +%%s)]: <what the job finished>" >> %s\n' "$STATE/$ID.status" >&2
   printf 'Or discard the job with the usual override: fm-teardown.sh %s --force\n' "$ID" >&2
 }
