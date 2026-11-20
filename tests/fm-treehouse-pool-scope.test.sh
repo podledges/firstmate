@@ -255,6 +255,35 @@ test_a_slot_still_claimed_by_a_task_refuses_the_spawn() {
   pass "a pool slot still claimed by another task refuses the spawn by name"
 }
 
+test_a_clean_landed_slot_claimed_by_the_same_task_can_be_reused() {
+  local case_dir id=pool-own-clean-e out rc=0
+  case_dir=$(make_pool_case own-clean "$id")
+  add_landed_slot "$case_dir" 1
+  add_landed_slot "$case_dir" 2
+  claim_slot "$case_dir" 2 "$id" "$case_dir/home"
+  write_pool_status "$case_dir" 1:available 2:available
+
+  out=$(run_pool_spawn "$case_dir" "$id" "$(slot_path "$case_dir" 1)") || rc=$?
+  expect_code 0 "$rc" "a same-task reclaim refused its own clean landed slot: $out"
+  assert_contains "$out" "spawned $id" "the same-task reclaim did not launch: $out"
+  pass "a task can reclaim when its own available slot is clean and landed"
+}
+
+test_an_unlanded_slot_claimed_by_the_same_task_still_refuses_reuse() {
+  local case_dir id=pool-own-held-f out rc=0 before
+  case_dir=$(make_pool_case own-held "$id")
+  add_landed_slot "$case_dir" 1
+  add_unlanded_slot "$case_dir" 2 fm/own-held
+  claim_slot "$case_dir" 2 "$id" "$case_dir/home"
+  write_pool_status "$case_dir" 1:available 2:available
+  before=$(slot_fingerprint "$case_dir" 2)
+
+  out=$(run_pool_spawn "$case_dir" "$id" "$(slot_path "$case_dir" 1)") || rc=$?
+  assert_refused_leaving_pool_untouched "$case_dir" "$id" 2 "$before" "$out" "$rc" \
+    "fm/own-held"
+  pass "a same-task claim does not make its unlanded slot reusable"
+}
+
 test_an_unreadable_pool_refuses_the_spawn() {
   local case_dir id=pool-unreadable-e out rc=0
   case_dir=$(make_pool_case unreadable "$id")
@@ -408,6 +437,8 @@ test_each_home_allocates_from_its_own_pool_root
 test_a_slot_holding_unlanded_work_refuses_the_spawn
 test_a_slot_of_another_clone_refuses_the_spawn
 test_a_slot_still_claimed_by_a_task_refuses_the_spawn
+test_a_clean_landed_slot_claimed_by_the_same_task_can_be_reused
+test_an_unlanded_slot_claimed_by_the_same_task_still_refuses_reuse
 test_an_unreadable_pool_refuses_the_spawn
 test_a_clean_landed_pool_still_allocates
 test_a_running_workers_slot_does_not_block_dispatch
