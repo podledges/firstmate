@@ -252,16 +252,16 @@
 # the task's own status log declares an UNFINISHED BACKGROUND JOB that is still
 # running (observed 2026-11-17: cleanup killed a declared ffmpeg render mid-run
 # and lost 6 of 8 output videos). The declaration is a current `paused:` line
-# that NAMES the job's PROCESS GROUP in a `[job=<id>,...]` tag
+# that NAMES the job's PROCESS GROUP in a `[job=<id>]` tag
 # (bin/fm-classify-lib.sh owns that grammar, bin/fm-brief.sh the instruction
 # that tells a worker to start the job in its own group and write that group),
-# and the refusal lasts exactly as long as a live process still belongs to a
-# declared group. A group and not a bare pid because Fix 2 below finds
-# processes by working directory and so reaches a job whose launcher has
-# exited and whose children were reparented to init - the shape that lost 6 of
-# 8 renders - while the group id those children still carry is the one handle
-# the declaration can keep on them. An id leading no live group is read as a
-# bare pid, so a worker that recorded only `$!` still gets that weaker cover.
+# and the refusal lasts exactly as long as a live process still belongs to that
+# group. A group and never a bare pid, because Fix 2 below finds processes by
+# working directory and so reaches a job whose launcher has exited and whose
+# children were reparented to init - the shape that lost 6 of 8 renders - while
+# the group id those children still carry is the one handle the declaration can
+# keep on them. Nothing narrows the group by when a member started: those
+# renders are forked long after the declaration is written.
 # No lsof scan, no cwd rooting and no endpoint identity enter into it: a worker
 # starts its render from the agent's own shell, so the job runs INSIDE the
 # endpoint's process tree where topology cannot tell it from a language server
@@ -326,7 +326,7 @@
 #     leaked one from the task's own declared, unfinished background job: both
 #     arrive at init with their cwd under the worktree and nothing else to
 #     separate them. The only thing that ever could is the worker's own
-#     `[job=<id>,...]` process-group declaration, which
+#     `[job=<id>]` process-group declaration, which
 #     declared_background_job_refusal above has already refused on.
 #   Fix 3 - sweep abandoned remote job workers. A remote job worker started
 #     from a worktree's own bin/ outlives that worktree's removal without
@@ -2221,19 +2221,6 @@ $dir_pids"
   TASK_PIDS=$(printf '%s\n' "$pids" | grep -E '^[0-9]+$' | sort -un || true)
 }
 
-# Epoch second a process started, from the POSIX `ps` elapsed-time field
-# ([[dd-]hh:]mm:ss) against <now-epoch>. Fails when the field is not that shape.
-task_elapsed_start_epoch() {  # <now-epoch> <etime>
-  local now=$1 etime=$2 d=0 h=0 m s part
-  case "$etime" in *-*) d=${etime%%-*}; etime=${etime#*-} ;; esac
-  case "$etime" in *:*:*) h=${etime%%:*}; etime=${etime#*:} ;; esac
-  case "$etime" in *:*) m=${etime%%:*}; s=${etime#*:} ;; *) return 1 ;; esac
-  for part in "$d" "$h" "$m" "$s"; do
-    case "$part" in ''|*[!0-9]*) return 1 ;; esac
-  done
-  printf '%s\n' "$(( now - (10#$d * 86400 + 10#$h * 3600 + 10#$m * 60 + 10#$s) ))"
-}
-
 declared_job_refuse_head() {  # <wait-line> <headline>
   echo "REFUSED: $2" >&2
   printf 'declared wait: %s\n' "$1" >&2
@@ -2248,9 +2235,8 @@ declared_job_refuse_tail() {
 
 # The teardown precondition described in the script header. A worker waiting on
 # its own background job NAMES that job's PROCESS GROUP in its `paused:` line
-# ([job=<id>,...]; bin/fm-classify-lib.sh owns the grammar, bin/fm-brief.sh the
-# instruction). While any live process still belongs to a declared group - or,
-# for an id that leads no group, while that bare pid is alive - teardown
+# ([job=<id>]; bin/fm-classify-lib.sh owns the grammar, bin/fm-brief.sh the
+# instruction). While any live process still belongs to that group, teardown
 # refuses. Nothing else is examined: no lsof, no cwd scan, no endpoint
 # identity, because process topology cannot tell an idle agent tree from a
 # background job running inside it.
@@ -2263,9 +2249,10 @@ declared_job_refuse_tail() {
 # own gets a refusal too, since the agent is live in it; the refusal lists what
 # it found and names the remedy, because no portable process attribute tells
 # that group apart from a job group on every host this runs on.
-# A process that started AFTER the declaration was written cannot be the job it
-# named, so a recycled pid does not hold teardown; the declaration's own [at=]
-# epoch is the bound, and a declaration carrying no epoch gets no such narrowing.
+# The declared group is the whole test. Nothing here narrows it by when a
+# process started: a group outliving its leader is precisely the shape this
+# protects, and the renders that shape leaves behind were forked long after the
+# declaration was written.
 # A declaration naming no job at all leaves teardown behaving exactly as it did
 # before this gate existed - a plain human wait tears down normally on every
 # backend. An unreadable one does not: the worker said it had something to
@@ -2273,52 +2260,39 @@ declared_job_refuse_tail() {
 # status_declared_wait_line owns retractions and phase-key resolution, so a
 # pause this task already superseded names nothing.
 declared_background_job_refusal() {
-  local wait_line ids rc=0 at_epoch now snapshot bound
-  local pid pgid pstat etime args start live=''
+  local wait_line group rc=0 snapshot pid pgid pstat args live=''
   wait_line=$(status_declared_wait_line "$STATE/$ID.status")
   status_is_paused "$wait_line" || return 0
-  ids=$(status_declared_job_ids "$wait_line") || rc=$?
+  group=$(status_declared_job_group "$wait_line") || rc=$?
   [ "$rc" != 1 ] || return 0
   if [ "$rc" != 0 ]; then
     declared_job_refuse_head "$wait_line" \
       "task $ID declares a background job in a [job=...] tag teardown cannot read, so the job it names cannot be found or preserved; nothing was changed."
-    printf 'A readable declaration states process group ids before the first colon, with no spaces: [job=<id>] or [job=<id>,<id>]. Rewrite the line with the real group id (ps -o pgid= -p <pid>) and retry teardown.\n' >&2
+    printf 'A readable declaration states one process group id before the first colon: [job=<id>]. Rewrite the line with the real group id and retry teardown.\n' >&2
     declared_job_refuse_tail
     return 1
   fi
-  ids=$'\n'$ids$'\n'
-  at_epoch=$(status_line_at_epoch "$wait_line") || at_epoch=
-  now=$(date +%s) || now=
-  bound=
-  [ -z "$at_epoch" ] || [ -z "$now" ] || bound=$((at_epoch + 2))
-  snapshot=$(LC_ALL=C ps -A -o pid=,pgid=,stat=,etime=,args= 2>/dev/null) || snapshot=
+  snapshot=$(LC_ALL=C ps -A -o pid=,pgid=,stat=,args= 2>/dev/null) || snapshot=
   if [ -z "$snapshot" ]; then
     declared_job_refuse_head "$wait_line" \
       "task $ID declares a background job and this host's process table could not be read, so teardown cannot tell whether that job is still running; nothing was changed."
     declared_job_refuse_tail
     return 1
   fi
-  while read -r pid pgid pstat etime args; do
+  while read -r pid pgid pstat args; do
     case "$pid" in ''|*[!0-9]*) continue ;; esac
     [ "$pid" != "$$" ] || continue
+    [ "$pgid" = "$group" ] || continue
     case "$pstat" in Z*) continue ;; esac
-    case "$ids" in
-      *$'\n'"$pgid"$'\n'*) ;;
-      *) case "$ids" in *$'\n'"$pid"$'\n'*) ;; *) continue ;; esac ;;
-    esac
-    if [ -n "$bound" ] && start=$(task_elapsed_start_epoch "$now" "$etime") \
-       && [ "$start" -gt "$bound" ]; then
-      continue
-    fi
     live="$live  $pid $args"$'\n'
   done <<EOF
 $snapshot
 EOF
   [ -n "$live" ] || return 0
   declared_job_refuse_head "$wait_line" \
-    "task $ID declares a background job that is still running; nothing was changed."
+    "task $ID declares a background job (process group $group) that is still running; nothing was changed."
   printf 'declared job still running:\n%s' "$live" >&2
-  printf 'If that list is the agent and its own helpers rather than the job, the declaration named the group the agent runs in instead of the job'"'"'s: start the job in its own group with `setsid <command> &`, record THAT group (ps -o pgid= -p <pid>), and rewrite the line.\n' >&2
+  printf 'If that list is the agent and its own helpers rather than the job, the declaration named the group the agent runs in instead of the job'"'"'s: start the job in its own group and record THAT group, then rewrite the line.\n' >&2
   declared_job_refuse_tail
   return 1
 }

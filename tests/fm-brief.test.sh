@@ -941,8 +941,10 @@ test_ship_and_scout_teach_validation_round_pause() {
       "$kind brief did not teach workers to declare their validation-round wait"
     assert_grep 'Before ending your turn with your own background shell or monitor still running' "$brief" \
       "$kind brief did not require declaring a background-work wait"
-    assert_grep '[job=<pgid>[,<pgid>...]]' "$brief" \
+    assert_grep '[job=<pgid>]' "$brief" \
       "$kind brief did not require naming the background job's process group, the only thing teardown can preserve it by"
+    assert_no_grep 'ps -o pgid= -p $!' "$brief" \
+      "$kind brief still reads the job's group from \$! , which can name the agent's own group instead"
     assert_grep 'start it in its OWN process group' "$brief" \
       "$kind brief did not require launching the background job in its own process group"
     assert_grep 'before waiting on your own pipeline run or a long foreground command' "$brief" \

@@ -432,49 +432,45 @@ status_paused_until() {  # <status-line> -> epoch on stdout
   fm_utc_iso_to_epoch "$token"
 }
 
-# --- optional declared background-job ids -----------------------------------
+# --- optional declared background-job group ---------------------------------
 # A worker waiting on its OWN background job NAMES that job, by writing its
-# PROCESS GROUP id in a "[job=<id>[,<id>...]]" tag before the first colon - the
-# same bracketed-tag position [at=...] and [key=...] occupy, so verb, key, note
-# and time readers are unaffected:
-#   paused [job=4821,4822] [at=1788576000]: background render until 8 videos exist
+# PROCESS GROUP id in a "[job=<id>]" tag before the first colon - the same
+# bracketed-tag position [at=...] and [key=...] occupy, so verb, key, note and
+# time readers are unaffected:
+#   paused [job=4821] [at=1788576000]: background render until 8 videos exist
 # bin/fm-brief.sh owns the instruction that tells a worker to start the job in
 # its own process group and write that group here; bin/fm-teardown.sh is the
-# reader that must not destroy a job still running under one. A group rather
-# than a bare pid because the cleanup this guards finds processes by working
+# reader that must not destroy a job still running under one. A group and never
+# a bare pid, because the cleanup this guards finds processes by working
 # directory, not by ancestry: when a launcher exits, its renders are reparented
 # to init and no pid link back to the declaration survives, while the group id
-# they still carry does. An id that names no live group is read as a plain pid,
-# so a worker that recorded `$!` without its own group still gets that weaker
-# protection.
+# they still carry does.
 # The tag exists because process topology cannot tell an idle agent tree from a
 # background job running inside it: the declaration is the only thing that
-# knows which process is the work. A declaration naming NO id names no job, and
-# nothing here guesses one for it.
-# An id is canonical unsigned decimal (no leading zero), greater than 1, at most
-# 10 digits. Return codes are three-way on purpose: 0 with ids, 1 when the line
-# names no job at all, and 2 when it tried to and the tag cannot be read. The
-# caller must not collapse 2 into 1 - the worker said it had something to
-# protect, so destroying it is the one outcome worse than refusing.
+# knows which process is the work. A declaration naming NO group names no job,
+# and nothing here guesses one for it.
+# Only the head is read. A "[job=" byte run that appears solely in the note is
+# ordinary prose - a worker writing "waiting on CI [job=1234] to finish"
+# declared nothing - and must never be mistaken for a declaration that then
+# holds teardown forever.
+# The id is canonical unsigned decimal (no leading zero), greater than 1, at
+# most 10 digits. Return codes are three-way on purpose: 0 with the id, 1 when
+# the line names no job at all, and 2 when it tried to and the tag cannot be
+# read. The caller must not collapse 2 into 1 - the worker said it had
+# something to protect, so destroying it is the one outcome worse than refusing.
 FM_CLASSIFY_JOB_ID_MAX_DIGITS=10
-status_declared_job_ids() {  # <status-line> -> one id per line; 1 none; 2 unreadable
-  local head rest value id out=''
-  case "$1" in *\[job=*) ;; *) return 1 ;; esac
+status_declared_job_group() {  # <status-line> -> group id; 1 none; 2 unreadable
+  local head rest id
   case "$1" in *:*) head=${1%%:*} ;; *) head=$1 ;; esac
+  case "$head" in *\[job=*) ;; *) return 1 ;; esac
   case "$head" in *\[job=*\]*) ;; *) return 2 ;; esac
   rest=${head#*\[job=}
-  value=${rest%%\]*}
+  id=${rest%%\]*}
   case "${rest#*\]}" in *\[job=*) return 2 ;; esac
-  [ -n "$value" ] || return 2
-  while [ -n "$value" ]; do
-    id=${value%%,*}
-    case "$value" in *,*) value=${value#*,} ;; *) value='' ;; esac
-    case "$id" in ''|*[!0-9]*|0*) return 2 ;; esac
-    [ "${#id}" -le "$FM_CLASSIFY_JOB_ID_MAX_DIGITS" ] || return 2
-    [ "$id" -gt 1 ] || return 2
-    out="$out$id"$'\n'
-  done
-  printf '%s' "$out"
+  case "$id" in ''|*[!0-9]*|0*) return 2 ;; esac
+  [ "${#id}" -le "$FM_CLASSIFY_JOB_ID_MAX_DIGITS" ] || return 2
+  [ "$id" -gt 1 ] || return 2
+  printf '%s' "$id"
 }
 
 # --- optional event emission time -------------------------------------------
