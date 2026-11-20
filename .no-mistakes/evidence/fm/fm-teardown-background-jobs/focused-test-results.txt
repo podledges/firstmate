@@ -1,0 +1,12 @@
+ok - local-only worktree with unpushed work is torn down under --force (escape hatch)
+ok - a declared job group whose launcher already exited still refuses teardown with every record intact
+ok - a declared background job that has finished no longer holds teardown
+ok - every [job=...] shape teardown cannot read refuses instead of destroying the job it named
+ok - a [job= run in the note is prose, and the wait that carries it tears down normally
+ok - a declared wait that names no job tears down normally even with the endpoint's children alive
+ok - --force overrides the declared-background-job refusal like every sibling discard-work gate
+ok - ordinary cleanup still reaps a leaked worktree process after its declared wait is resolved
+ok - fm-brief.sh: ship and scout scaffolds declare a validation-round pause once, then hold it
+FM_TEST_END 2026-11-20T14:09:10Z tests/fm-brief.test.sh exit=0 duration_ms=6560 gate_skip=false
+FM_TEST_END 2026-11-20T14:11:36Z tests/fm-teardown.test.sh exit=0 duration_ms=145948 gate_skip=false
+FM_TEST_SUMMARY total=2 failed=0 skipped_gate=0 duration_ms=152640

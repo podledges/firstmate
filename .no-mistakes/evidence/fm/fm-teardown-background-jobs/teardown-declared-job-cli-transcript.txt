@@ -1,0 +1,159 @@
+
+========== SCENARIO 1 - a declared, unfinished background render survives teardown ==========
+worker launched its render in process group 2603941 (cwd /tmp/fm-gate-prep.CTF6Im/lab/incident/wt)
+
+--- the worker's status log
+working [at=1795183952]: compiling topic videos
+paused [job=2603941] [at=1795183952]: background render until all 8 topic videos exist
+
+--- render output so far
+topic-1.mp4
+
+--- live members of the declared group 2603941
+2603941 2603941 sh -c          for i in 1 2 3 4 5 6 7 8; do           sleep 3; printf "topic %s rendered\n" "$i" > /tmp/fm-gate-prep.CTF6Im/lab/incident/out/topic-$i.mp4;         done
+2603941 2605189 sleep 3
+
+--- $ fm-teardown.sh pps-topic-compile
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no live watcher process holds this home lock (last beat: 4s ago).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REFUSED: task pps-topic-compile declares a background job (process group 2603941) that is still running; nothing was changed.
+declared wait: paused [job=2603941] [at=1795183952]: background render until all 8 topic videos exist
+declared job still running:
+  2603941 sh -c          for i in 1 2 3 4 5 6 7 8; do           sleep 3; printf "topic %s rendered\n" "$i" > /tmp/fm-gate-prep.CTF6Im/lab/incident/out/topic-$i.mp4;         done
+  2605189 sleep 3
+If that list is the agent and its own helpers rather than the job, the declaration named the group the agent runs in instead of the job's: start the job in its own group and record THAT group, then rewrite the line.
+Let the job reach the declared completion condition, then record the task's next status event and retry teardown - a `paused:` line is retracted only by that:
+  echo "working [at=$(date +%s)]: <what the job finished>" >> /tmp/fm-gate-prep.CTF6Im/lab/incident/state/pps-topic-compile.status
+Or discard the job with the usual override: fm-teardown.sh pps-topic-compile --force
+exit status: 1
+
+--- render output AFTER teardown ran (waiting for the render to complete)
+topic-1.mp4
+topic-2.mp4
+topic-3.mp4
+topic-4.mp4
+topic-5.mp4
+topic-6.mp4
+topic-7.mp4
+topic-8.mp4
+videos produced: 8 of 8
+
+--- task records after the refusal
+pps-topic-compile.meta
+pps-topic-compile.status
+worktree still present: /tmp/fm-gate-prep.CTF6Im/lab/incident/wt
+
+========== SCENARIO 2 - once that same declared render finishes, teardown proceeds ==========
+
+--- the declared group is now empty:
+(no live members)
+
+--- $ fm-teardown.sh pps-topic-compile
+WARNING: watcher still down (same stale episode; last beat: 25s ago, grace 300s) - full banner already printed this episode.
+/tmp/fm-gate-prep.CTF6Im/lab/incident/project: already current
+teardown pps-topic-compile complete (window firstmate:fm-pps-topic-compile, worktree /tmp/fm-gate-prep.CTF6Im/lab/incident/wt)
+Backlog: pps-topic-compile just finished (this home keeps no markdown backlog at /tmp/fm-gate-prep.CTF6Im/lab/incident/data/backlog.md). Update /tmp/fm-gate-prep.CTF6Im/lab/incident/data/backlog.md - move pps-topic-compile to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+exit status: 0
+
+--- task records after the successful teardown
+home-summary.json
+terminal-outcomes
+
+========== SCENARIO 3 - a plain human wait that names no job tears down as before ==========
+
+--- status log
+paused [at=1795183973]: waiting for the PR reviewer
+
+--- $ fm-teardown.sh pps-topic-compile
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no live watcher process holds this home lock (last beat: 0s ago).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+teardown: reaping leaked worktree process(es) for pps-topic-compile: 2615744
+/tmp/fm-gate-prep.CTF6Im/lab/human-wait/project: already current
+teardown pps-topic-compile complete (window firstmate:fm-pps-topic-compile, worktree /tmp/fm-gate-prep.CTF6Im/lab/human-wait/wt)
+Backlog: pps-topic-compile just finished (this home keeps no markdown backlog at /tmp/fm-gate-prep.CTF6Im/lab/human-wait/data/backlog.md). Update /tmp/fm-gate-prep.CTF6Im/lab/human-wait/data/backlog.md - move pps-topic-compile to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+exit status: 0
+declared-job gate: silent
+
+========== SCENARIO 4 - an unreadable [job=] declaration refuses instead of destroying ==========
+
+--- status line: paused [job=4821,4822] [at=1788576000]: background render
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no live watcher process holds this home lock (last beat: 0s ago).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+exit status: 1 ; task meta: kept
+
+--- status line: paused [job=] [at=1788576000]: background render
+WARNING: watcher still down (same stale episode; last beat: 1s ago, grace 300s) - full banner already printed this episode.
+REFUSED: task pps-topic-compile declares a background job in a [job=...] tag teardown cannot read, so the job it names cannot be found or preserved; nothing was changed.
+declared wait: paused [job=] [at=1788576000]: background render
+A readable declaration states one process group id before the first colon: [job=<id>]. Rewrite the line with the real group id and retry teardown.
+Let the job reach the declared completion condition, then record the task's next status event and retry teardown - a `paused:` line is retracted only by that:
+  echo "working [at=$(date +%s)]: <what the job finished>" >> /tmp/fm-gate-prep.CTF6Im/lab/unreadable/state/pps-topic-compile.status
+exit status: 1 ; task meta: kept
+
+--- status line: paused [job=$!] [at=1788576000]: background render
+WARNING: watcher still down (same stale episode; last beat: 1s ago, grace 300s) - full banner already printed this episode.
+REFUSED: task pps-topic-compile declares a background job in a [job=...] tag teardown cannot read, so the job it names cannot be found or preserved; nothing was changed.
+declared wait: paused [job=$!] [at=1788576000]: background render
+A readable declaration states one process group id before the first colon: [job=<id>]. Rewrite the line with the real group id and retry teardown.
+Let the job reach the declared completion condition, then record the task's next status event and retry teardown - a `paused:` line is retracted only by that:
+  echo "working [at=$(date +%s)]: <what the job finished>" >> /tmp/fm-gate-prep.CTF6Im/lab/unreadable/state/pps-topic-compile.status
+exit status: 1 ; task meta: kept
+
+========== SCENARIO 5 - a [job= run inside the free-text note is prose, not a declaration ==========
+
+--- status log
+paused [at=1795183976]: waiting on CI [job=1234] to finish
+●  1 task(s) in flight, but no live watcher process holds this home lock (last beat: 0s ago).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+/tmp/fm-gate-prep.CTF6Im/lab/note-prose/project: already current
+teardown pps-topic-compile complete (window firstmate:fm-pps-topic-compile, worktree /tmp/fm-gate-prep.CTF6Im/lab/note-prose/wt)
+Backlog: pps-topic-compile just finished (this home keeps no markdown backlog at /tmp/fm-gate-prep.CTF6Im/lab/note-prose/data/backlog.md). Update /tmp/fm-gate-prep.CTF6Im/lab/note-prose/data/backlog.md - move pps-topic-compile to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+exit status: 0
+unreadable-declaration refusal: silent
+
+========== SCENARIO 6 - --force discards a declared, still-running render ==========
+worker launched its render in process group 2625030 (cwd /tmp/fm-gate-prep.CTF6Im/lab/forced/wt)
+
+--- live members of the declared group before --force
+2625030 2625030 sh -c          for i in 1 2 3 4 5 6 7 8; do           sleep 3; printf "topic %s rendered\n" "$i" > /tmp/fm-gate-prep.CTF6Im/lab/forced/out/topic-$i.mp4;         done
+2625030 2625043 sleep 3
+
+--- $ fm-teardown.sh pps-topic-compile --force
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no live watcher process holds this home lock (last beat: 2s ago).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+teardown: reaping leaked worktree process(es) for pps-topic-compile: 2625030 2625043
+/tmp/fm-gate-prep.CTF6Im/lab/forced/project: already current
+teardown pps-topic-compile complete (window firstmate:fm-pps-topic-compile, worktree /tmp/fm-gate-prep.CTF6Im/lab/forced/wt)
+Backlog: pps-topic-compile just finished (this home keeps no markdown backlog at /tmp/fm-gate-prep.CTF6Im/lab/forced/data/backlog.md). Update /tmp/fm-gate-prep.CTF6Im/lab/forced/data/backlog.md - move pps-topic-compile to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+exit status: 0
+declared-job gate under --force: silent
+
+========== RESULTS ==========
+S1 declared render survives teardown: exit=1 (want 1) videos=8/8 (want 8)
+S2 finished render no longer blocks:  exit=0 (want 0) meta=gone (want gone)
+S3 plain human wait tears down:       exit=0 (want 0) gate=silent (want silent)
+S4 unreadable declaration refuses:    bad=0 (want 0)
+S5 [job= in the note is prose:        exit=0 (want 0) refusal=silent (want silent)
+S6 --force discards the render:       exit=0 (want 0) gate=silent (want silent)

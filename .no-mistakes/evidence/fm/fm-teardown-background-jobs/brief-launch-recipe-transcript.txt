@@ -1,0 +1,42 @@
+
+========== SCENARIO 7 - the recipe the brief hands a worker actually yields a usable declaration ==========
+
+--- recipe as rendered in /tmp/fm-gate-prep.CTF6Im/briefhome/data/pps-topic-compile/brief.md
+rm -f ${TMPDIR:-/tmp}/fm-job-pgid-pps-topic-compile; perl -MPOSIX=setsid -e 'setsid() >= 0 or exit 1; exec @ARGV' sh -c 'echo $$ > ${TMPDIR:-/tmp}/fm-job-pgid-pps-topic-compile; exec <command>' &
+
+--- executing it verbatim with <command> replaced by an 8-video render
+
+--- the file the recipe told the worker to read: /tmp/fm-gate-prep.CTF6Im/tmp/fm-job-pgid-pps-topic-compile
+contents: 2630424
+
+--- what the kernel says about that id
+2630424 2630424 bash /tmp/fm-gate-prep.CTF6Im/render.sh
+2630427 2630424 sleep 5
+the declared id is a real process group led by the job: yes
+
+--- the agent's own group, which a naive $! read would have captured instead
+2630410
+
+--- the resulting status line, read by the real classifier the gate uses
+paused [job=2630424] [at=1795183994]: background render until all 8 topic videos exist
+status_declared_job_group -> 2630424 rc=0
+
+========== SCENARIO 8 - a second launch that fails must not re-declare the first job's dead group ==========
+
+--- the first render's group is still in the file
+2630424
+/tmp/fm-gate-prep.CTF6Im/drive-brief.sh: line 52: 2630424 Killed                     perl -MPOSIX=setsid -e 'setsid() >= 0 or exit 1; exec @ARGV' sh -c 'echo $$ > ${TMPDIR:-/tmp}/fm-job-pgid-pps-topic-compile; exec bash /tmp/fm-gate-prep.CTF6Im/render.sh'
+
+--- first render killed; its group is now dead
+0
+
+--- worker launches batch B with the same recipe, but perl is unavailable on its PATH
+/tmp/fm-gate-prep.CTF6Im/drive-brief.sh: line 58: perl: command not found
+
+--- contents of /tmp/fm-gate-prep.CTF6Im/tmp/fm-job-pgid-pps-topic-compile after the failed launch
+contents: <empty>
+the brief told the worker: still empty means the job never got its own group - fix the launch
+
+========== RESULTS ==========
+S7 brief recipe yields the job's own live group: yes (want yes)
+S8 failed relaunch leaves the path empty:      yes (want yes)
