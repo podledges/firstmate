@@ -449,10 +449,14 @@ status_paused_until() {  # <status-line> -> epoch on stdout
 # background job running inside it: the declaration is the only thing that
 # knows which process is the work. A declaration naming NO group names no job,
 # and nothing here guesses one for it.
-# Only the head is read. A "[job=" byte run that appears solely in the note is
-# ordinary prose - a worker writing "waiting on CI [job=1234] to finish"
-# declared nothing - and must never be mistaken for a declaration that then
-# holds teardown forever.
+# Only the head is read, and where the head ends comes from the shared
+# _fm_status_unstamped rule rather than a naive split on the first colon: a
+# worker may write a readable time like "[at=2026-11-17T10:30Z]", whose colons
+# would otherwise end the head mid-tag and hide the job declaration behind it.
+# Hiding it is the destroy direction, which the three-way return exists to
+# prevent. A "[job=" byte run that appears solely in the note is ordinary prose
+# - a worker writing "waiting on CI [job=1234] to finish" declared nothing -
+# and must never be mistaken for a declaration that then holds teardown forever.
 # The id is canonical unsigned decimal (no leading zero), greater than 1, at
 # most 10 digits. Return codes are three-way on purpose: 0 with the id, 1 when
 # the line names no job at all, and 2 when it tried to and the tag cannot be
@@ -460,8 +464,9 @@ status_paused_until() {  # <status-line> -> epoch on stdout
 # something to protect, so destroying it is the one outcome worse than refusing.
 FM_CLASSIFY_JOB_ID_MAX_DIGITS=10
 status_declared_job_group() {  # <status-line> -> group id; 1 none; 2 unreadable
-  local head rest id
-  case "$1" in *:*) head=${1%%:*} ;; *) head=$1 ;; esac
+  local unstamped head rest id
+  _fm_status_unstamped "$1" unstamped
+  case "$unstamped" in *:*) head=${unstamped%%:*} ;; *) head=$unstamped ;; esac
   case "$head" in *\[job=*) ;; *) return 1 ;; esac
   case "$head" in *\[job=*\]*) ;; *) return 2 ;; esac
   rest=${head#*\[job=}

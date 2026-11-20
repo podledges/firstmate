@@ -589,6 +589,43 @@ SH
   chmod +x "$case_dir/fakebin/lsof"
 }
 
+# Fixed sleeps race the endpoint shell's scheduling on a loaded host, and the
+# fixtures below need a condition rather than a delay: poll until it holds, and
+# fail only once a generous bound has passed.
+FM_TEST_WAIT_TICKS=200
+wait_until() {  # <failure-message> <predicate> [args...]
+  local message=$1 ticks=0
+  shift
+  while ! "$@"; do
+    ticks=$((ticks + 1))
+    [ "$ticks" -lt "$FM_TEST_WAIT_TICKS" ] || fail "$message"
+    sleep 0.1
+  done
+}
+
+pid_is_running() {  # <pid>
+  kill -0 "$1" 2>/dev/null
+}
+
+# 0 once <pid> is gone, or is an unreaped zombie its parent has not collected.
+pid_is_gone() {  # <pid>
+  local state
+  state=$("$REAL_PS_FOR_TEST" -p "$1" -o stat= 2>/dev/null | tr -d '[:space:]') || return 0
+  case "$state" in ''|Z*) return 0 ;; esac
+  return 1
+}
+
+# 0 once <file> holds exactly <count> lines and every one of them is a pid.
+file_holds_pid_lines() {  # <file> <count>
+  local file=$1 count=$2 line seen=0
+  [ -s "$file" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in ''|*[!0-9]*) return 1 ;; esac
+    seen=$((seen + 1))
+  done < "$file"
+  [ "$seen" = "$count" ]
+}
+
 # The task's live endpoint: a shell parked on a fifo it also holds open for
 # writing, so it blocks on a read that never reaches EOF and stays alive with
 # no child of its own until the test kills it. This stands in for the pane
@@ -602,8 +639,7 @@ start_task_endpoint() {  # <case-dir> <name> <cwd>
   ( cd "$cwd" && exec bash --norc --noprofile -s ) <> "$case_dir/$name.stdin" &
   ENDPOINT_PID=$!
   disown
-  sleep 0.3
-  kill -0 "$ENDPOINT_PID" 2>/dev/null || fail "$name: endpoint shell did not start"
+  wait_until "$name: endpoint shell did not start" pid_is_running "$ENDPOINT_PID"
 }
 
 # Run <command> inside the endpoint shell started as <name> and set
@@ -612,11 +648,9 @@ start_endpoint_child() {  # <case-dir> <name> <command>
   local case_dir=$1 name=$2 command=$3
   printf '%s & echo $! > %s\n' "$command" "$case_dir/$name.child-pid" \
     > "$case_dir/$name.stdin"
-  sleep 0.3
-  ENDPOINT_CHILD_PID=$(cat "$case_dir/$name.child-pid" 2>/dev/null || true)
-  case "$ENDPOINT_CHILD_PID" in
-    ''|*[!0-9]*) fail "$name: endpoint child did not start" ;;
-  esac
+  wait_until "$name: endpoint child did not start" \
+    file_holds_pid_lines "$case_dir/$name.child-pid" 1
+  ENDPOINT_CHILD_PID=$(cat "$case_dir/$name.child-pid")
 }
 
 # Launch, from inside the endpoint shell, a background job in its OWN process
@@ -624,16 +658,15 @@ start_endpoint_child() {  # <case-dir> <name> <command>
 # shape, where the children are reparented to init and no ancestry link back to
 # the declaration survives. Sets JOB_PGID and JOB_CHILD_PIDS (one pid per line).
 start_detached_job_group() {  # <case-dir> <name> <child-count>
-  local case_dir=$1 name=$2 count=$3 launcher i pid child_pgid endpoint_pgid
+  local case_dir=$1 name=$2 count=$3 i pid child_pgid endpoint_pgid
   printf 'setsid bash -c %s &\necho $! > %s\n' \
     "'for i in \$(seq 1 $count); do sleep 300 & echo \$! >> $case_dir/$name.children; done'" \
     "$case_dir/$name.launcher-pid" > "$case_dir/$name.stdin"
-  sleep 1
-  launcher=$(cat "$case_dir/$name.launcher-pid" 2>/dev/null || true)
-  case "$launcher" in ''|*[!0-9]*) fail "$name: detached job launcher did not start" ;; esac
-  JOB_CHILD_PIDS=$(cat "$case_dir/$name.children" 2>/dev/null || true)
-  [ "$(printf '%s\n' "$JOB_CHILD_PIDS" | grep -c '^[0-9]')" = "$count" ] \
-    || fail "$name: expected $count job children, got: $JOB_CHILD_PIDS"
+  wait_until "$name: detached job launcher did not start" \
+    file_holds_pid_lines "$case_dir/$name.launcher-pid" 1
+  wait_until "$name: the detached job never reported $count children" \
+    file_holds_pid_lines "$case_dir/$name.children" "$count"
+  JOB_CHILD_PIDS=$(cat "$case_dir/$name.children")
   JOB_PGID=''
   while IFS= read -r pid; do
     [ -n "$pid" ] || continue
@@ -4302,7 +4335,7 @@ EOF
 }
 
 test_finished_declared_background_job_tears_down() {
-  local case_dir rc endpoint job state
+  local case_dir rc endpoint job
   case_dir=$(make_case declared-job-finished)
   write_meta "$case_dir" no-mistakes ship
   land_shippable_commit "$case_dir"
@@ -4313,12 +4346,7 @@ test_finished_declared_background_job_tears_down() {
   job=$ENDPOINT_CHILD_PID
   printf 'paused [job=%s] [at=%s]: background render until all 8 topic videos exist\n' \
     "$job" "$(date +%s)" > "$case_dir/state/task-x1.status"
-  sleep 3
-  state=$("$REAL_PS_FOR_TEST" -p "$job" -o stat= 2>/dev/null | tr -d '[:space:]' || true)
-  case "$state" in
-    ''|Z*) ;;
-    *) fail "declared-job-finished: the declared job was still running at $state" ;;
-  esac
+  wait_until "declared-job-finished: the declared job never finished" pid_is_gone "$job"
 
   rc=0
   run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
