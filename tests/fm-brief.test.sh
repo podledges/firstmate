@@ -951,8 +951,10 @@ test_ship_and_scout_teach_validation_round_pause() {
       "$kind brief still reads the job's group from \$! , which can name the agent's own group instead"
     assert_grep 'start it in its OWN process group' "$brief" \
       "$kind brief did not require launching the background job in its own process group"
-    assert_no_grep '.fm-job-pgid' "$brief" \
-      "$kind brief still writes the job's group id into the worktree, which makes teardown refuse the tree as dirty"
+    assert_grep '${TMPDIR:-/tmp}/fm-job-pgid' "$brief" \
+      "$kind brief does not keep the job's group id outside the worktree, so an untracked file makes teardown refuse the tree as dirty"
+    assert_grep 'rm -f ${TMPDIR:-/tmp}/fm-job-pgid' "$brief" \
+      "$kind brief does not clear the reused group-id path before each launch, so a worker can declare the previous job's dead group"
     assert_grep 'before waiting on your own pipeline run or a long foreground command' "$brief" \
       "$kind brief did not require declaring a pipeline or foreground wait"
     assert_grep 'Firstmate may still raise one first-sight alert' "$brief" \
