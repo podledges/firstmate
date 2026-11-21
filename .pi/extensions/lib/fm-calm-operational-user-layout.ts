@@ -104,6 +104,9 @@ export function installCalmOperationalUserLayout(): void {
 
     override render(width: number): string[] {
       if (patch.hidesOperationalInput()) return [];
+      // Pi 1.6.0 narrowed the base render result to `readonly string[]`, so the
+      // no-spacer branch copies instead of returning it directly. The rendered
+      // rows are unchanged; only the mutability this override declares is.
       const lines = super.render(width);
       return this.hasLeadingSpacer ? ["", ...lines] : [...lines];
     }
