@@ -263,7 +263,7 @@ test_a_clean_landed_slot_claimed_by_the_same_task_can_be_reused() {
   claim_slot "$case_dir" 2 "$id" "$case_dir/home"
   write_pool_status "$case_dir" 1:available 2:available
 
-  out=$(run_pool_spawn "$case_dir" "$id" "$(slot_path "$case_dir" 1)") || rc=$?
+  out=$(run_pool_spawn "$case_dir" "$id" "$(slot_path "$case_dir" 2)") || rc=$?
   expect_code 0 "$rc" "a same-task reclaim refused its own clean landed slot: $out"
   assert_contains "$out" "spawned $id" "the same-task reclaim did not launch: $out"
   pass "a task can reclaim when its own available slot is clean and landed"
