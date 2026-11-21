@@ -14,7 +14,7 @@ Channels fire in configured order, and a channel that several directives resolve
 
 - `off` disables every active alert while retaining the durable marker and tmux flash.
 - `auto` or `default` resolves to `osascript` on macOS.
-  For a Herdr primary it also fires the independent `herdr` channel, because macOS may accept an AppleScript notification while suppressing its banner.
+  On macOS it additionally fires the independent `herdr` channel when the supervisor backend is herdr and `herdr` is on `PATH`, because macOS may accept an AppleScript notification while suppressing its banner.
   Other platforms have no built-in OS channel, so configure `command:` when a durable marker alone is insufficient.
 - `osascript` posts a macOS Notification Center banner outside the terminal pane.
   Notification Center permissions can suppress that banner even when `osascript` exits successfully, which is why a macOS Herdr primary also receives the Herdr channel.
@@ -38,5 +38,5 @@ When the daemon is sourced as a library, that seam defaults to `discard`, so a t
 `tests/wake-helpers.sh` replaces it with a recorder when a suite needs to assert channel selection and summary propagation.
 Production leaves the seam unset and uses the configured real channels.
 
-`tests/fm-daemon.test.sh` covers directive parsing, rate limiting, timeout and process-group cleanup, argv-safe dispatch, channel fallback, and safe `command:` summary delivery.
+`tests/fm-daemon.test.sh` covers directive parsing, rate limiting, timeout and process-group cleanup, argv-safe dispatch, channel fallback, once-per-alarm channel dedupe, the `herdr` `shown: true` requirement, and safe `command:` summary delivery.
 [`verification/supervision.md`](verification/supervision.md#wedge-alarm-channels) records the bounded manual macOS and Herdr channel proof.
