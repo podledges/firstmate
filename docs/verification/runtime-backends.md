@@ -1348,6 +1348,35 @@ The watcher does not read the picker: a pane parked on it keeps the ordinary sta
 No recorded screen was available for a model-downgrade confirmation, an MCP approval, or a Claude exit confirmation other than this picker, so those dialogs are not covered.
 Refusing an Enter that would confirm a dialog restores an existing safety path, so it is not gated behind a flag.
 
+### Away-mode composer capture
+
+Refreshed 2026-10-25 against Herdr 0.8.0 and both the installed Claude Code 2.1.304 and Homebrew's then-latest 2.1.308.
+The 2.1.308 binary was downloaded to a private path and its SHA-256 (`9a0bc140f5fb06e6366624d770371ef290e6731d1e84c4def5daf4df946d1b59`) matched Homebrew metadata; the global installation was not upgraded, relinked, or reconfigured.
+Both versions were launched in separate guarded, non-default Herdr labs.
+
+```sh
+FM_HERDR_SUBMIT_CONFIRM_LIVE=1 \
+  HERDR_LAB_HELPER=/path/to/fm-herdr-lab.sh \
+  tests/fm-herdr-submit-confirm-live-e2e.test.sh
+
+FM_HERDR_SUBMIT_CONFIRM_LIVE=1 \
+  FM_HERDR_CLAUDE_BIN=/private/path/to/claude-2.1.308 \
+  HERDR_LAB_HELPER=/path/to/fm-herdr-lab.sh \
+  tests/fm-herdr-submit-confirm-live-e2e.test.sh
+```
+
+Observed output for each version:
+
+```text
+ok - live Herdr composer capture: Claude Code (2.1.304 (Claude Code)) on herdr 0.8.0 classifies idle, popup-pending, and cleared states
+ok - live Herdr submit confirm: Claude Code (2.1.304 (Claude Code)) on herdr 0.8.0 reports empty and renders the requested reply
+ok - live Herdr composer capture: Claude Code (2.1.308 (Claude Code)) on herdr 0.8.0 classifies idle, popup-pending, and cleared states
+ok - live Herdr submit confirm: Claude Code (2.1.308 (Claude Code)) on herdr 0.8.0 reports empty and renders the requested reply
+```
+
+The portable byte fixtures in `tests/fixtures/herdr/` preserve real idle and pending-overlay screens from both versions.
+A separate tall-overlay regression proved the old 20-row recent tail could omit the composer and return `unknown`; the full visible viewport preserves the same shared classifier, including its refusal to inject into pending text or a shell prompt.
+
 ### Prune and respawn
 
 The real label-collision reproduction is owned by:

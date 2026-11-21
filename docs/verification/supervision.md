@@ -558,15 +558,16 @@ Stale prior-generation tool callbacks could not mutate the active child, repeate
 The same portable suite covers the [current automatic first-cycle protocol](../supervision-protocols/pi.md): both extension orders, a bootstrap barrier after lock acquisition, discovery-before-settlement and settlement-before-discovery, stale and unsuccessful settlement events, and exactly one arm after both prerequisites.
 It also covers initially absent or stale locks, compaction contrast, factory-only inertness, registered-custom-check-only eligibility without executing checks, and lock, away-mode, unregistered-check, and no-supervision-need negative controls.
 The strict no-emit check used the installed Pi SDK declarations to hold the lifecycle event contract.
-It was refreshed on 2026-10-09 against installed Pi 1.1.0 using the existing TypeScript 5.9.3 verification dependency in a disposable npm cache:
+It was refreshed on 2026-11-21 against installed Pi 1.5.2 using the existing TypeScript 5.9.3 verification dependency in a disposable npm cache:
 
 ```sh
 npm_config_cache="$LAB/npm-cache" FM_HOME="$LAB/home" \
   npm exec --yes --package=typescript@5.9.3 -- bash tests/fm-pi-primary-types.test.sh
 ```
 
-Output: `ok - tracked Pi extensions pass strict no-emit typecheck against Pi 1.1.0`.
+Output: `ok - tracked Pi extensions pass strict no-emit typecheck against Pi 1.5.2`.
 No installed Pi package, global compiler or live home was changed.
+CI installs the current `@earendil-works/pi-coding-agent` release rather than a pinned one, so for declarations newer than the version in this record the authoritative evidence is CI's run of the same check, not this record.
 Plain Pi and pi-signed share the same tracked `.pi/extensions/fm-primary-pi-watch.ts` path, so both inherit the generation owner; other primary harnesses are not applicable because they do not use this Pi extension lifecycle.
 
 On 2026-09-22 the deterministic transition suite additionally proved that replacement shutdown leaves the established predecessor running under a `handoff` generation marker until a distinct `active` successor generation commits, an actionable reason observed before process close cannot reuse its predecessor as the successor, and a handoff marker from an absent replacement extension cannot suppress session-start or turn-end outage diagnostics.
@@ -810,5 +811,11 @@ Observed output:
 ```json
 {"id":"cli:notification:show","result":{"reason":"shown","shown":true,"type":"notification_show"}}
 ```
+
+A direct macOS `display notification` probe on 2026-10-25 exited successfully but produced no visible banner.
+The unified Notification Center log recorded the notification as `shouldDeliver: true` and then `notificationsAllowed: false` for `com.apple.ScriptEditor2`, proving that `osascript` success alone is not visible-delivery proof on this machine.
+An isolated Herdr notification probe separately returned `{"reason":"disabled","shown":false}`.
+The default macOS alarm therefore keeps the Notification Center attempt and, for a Herdr primary, also fires the independent Herdr UI channel; Firstmate accepts that channel only when Herdr reports `shown: true`.
+A captain who needs delivery beyond the machine should still configure the documented `command:` phone or pager channel.
 
 The safe command-channel contract is covered without a notification by `tests/fm-daemon.test.sh`: the summary reaches both `$1` and stdin, every channel is process-group bounded, and a failed channel falls through.
