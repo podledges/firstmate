@@ -1,0 +1,7 @@
+### Composer-classification cases from tests/fm-backend-herdr.test.sh, run directly because an
+### earlier, pre-existing client-selection failure on this host aborts the whole-file run.
+ok - fm_backend_herdr_composer_state: a tall overlay preserves idle and pending composer verdicts
+ok - fm_backend_herdr_composer_state: captured Claude Code 2.1.304 and 2.1.308 idle and pending-overlay composers classify safely in native and C locales
+ok - fm_backend_herdr_composer_state: a real-claude unbordered '❯' prompt row (no border box in view) reads empty
+ok - fm_backend_herdr_composer_state: a real-claude unbordered '❯ <text>' prompt row reads pending
+exit=0

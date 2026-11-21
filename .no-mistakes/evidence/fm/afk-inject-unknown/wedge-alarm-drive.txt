@@ -1,0 +1,50 @@
+Driving bin/fm-supervise-daemon.sh inject_wedge_alarm with the test notifier seam DISABLED,
+so every channel runs its real command against disposable osascript/herdr stand-ins.
+
+===== W1  macOS Herdr primary, no config (auto): both independent channels fire, once each =====
+--- notifier commands the daemon actually ran (in order) ---
+  osascript -e on\ run\ argv -e display\ notification\ \(item\ 1\ of\ argv\)\ with\ title\ \"firstmate:\ away-mode\ escalations\ WEDGED\"\ sound\ name\ \"Basso\" -e end\ run away-mode\ escalations\ WEDGED\ 900s\ undelivered\ -\ see\ /tmp/fm-wedge-drive.hA8A8L/state/.subsuper-inject-wedged
+  herdr notification show firstmate:\ away-mode\ escalations\ WEDGED --body away-mode\ escalations\ WEDGED\ 900s\ undelivered\ -\ see\ /tmp/fm-wedge-drive.hA8A8L/state/.subsuper-inject-wedged --sound request
+--- channel count: 1 osascript, 1 herdr (elapsed 0s) ---
+--- daemon log ---
+--- durable captain marker present: yes ---
+
+===== W2  adversarial - Herdr reports shown=false (Notification Center suppressed the banner) =====
+--- notifier commands the daemon actually ran (in order) ---
+  herdr notification show firstmate:\ away-mode\ escalations\ WEDGED --body away-mode\ escalations\ WEDGED\ 900s\ undelivered\ -\ see\ /tmp/fm-wedge-drive.hA8A8L/state/.subsuper-inject-wedged --sound request
+--- channel count: 0 osascript, 1 herdr (elapsed 0s) ---
+--- daemon log ---
+  [2026-11-21T13:12:55+0000] wedge alarm: herdr reported that the notification was not shown
+--- durable captain marker present: yes ---
+
+>> config/wedge-alarm now lists: auto, herdr, osascript
+
+===== W3  adversarial - overlapping directives must not double-notify the captain =====
+--- notifier commands the daemon actually ran (in order) ---
+  osascript -e on\ run\ argv -e display\ notification\ \(item\ 1\ of\ argv\)\ with\ title\ \"firstmate:\ away-mode\ escalations\ WEDGED\"\ sound\ name\ \"Basso\" -e end\ run away-mode\ escalations\ WEDGED\ 900s\ undelivered\ -\ see\ /tmp/fm-wedge-drive.hA8A8L/state/.subsuper-inject-wedged
+  herdr notification show firstmate:\ away-mode\ escalations\ WEDGED --body away-mode\ escalations\ WEDGED\ 900s\ undelivered\ -\ see\ /tmp/fm-wedge-drive.hA8A8L/state/.subsuper-inject-wedged --sound request
+--- channel count: 1 osascript, 1 herdr (elapsed 0s) ---
+--- daemon log ---
+--- durable captain marker present: yes ---
+
+===== W4  adversarial - hung herdr notifier must stay bounded (1s watchdog, notifier sleeps 30s) =====
+--- notifier commands the daemon actually ran (in order) ---
+  herdr notification show firstmate:\ away-mode\ escalations\ WEDGED --body away-mode\ escalations\ WEDGED\ 900s\ undelivered\ -\ see\ /tmp/fm-wedge-drive.hA8A8L/state/.subsuper-inject-wedged --sound request
+--- channel count: 0 osascript, 1 herdr (elapsed 1s) ---
+--- daemon log ---
+  [2026-11-21T13:12:56+0000] wedge alarm: herdr notifier timed out after 1s (limit 1s)
+  [2026-11-21T13:12:56+0000] wedge alarm: herdr notification failed
+--- durable captain marker present: yes ---
+
+===== W5  adversarial - non-macOS host on auto keeps the marker as the only signal =====
+--- notifier commands the daemon actually ran (in order) ---
+--- channel count: 0 osascript, 0 herdr (elapsed 0s) ---
+--- daemon log ---
+  [2026-11-21T13:12:56+0000] wedge alarm: no OS-level alert channel on Linux; durable marker /tmp/fm-wedge-drive.hA8A8L/state/.subsuper-inject-wedged is the only signal - set config/wedge-alarm (e.g. a command: directive)
+--- durable captain marker present: yes ---
+
+===== W6  adversarial - 'off' kills every active alert, marker survives =====
+--- notifier commands the daemon actually ran (in order) ---
+--- channel count: 0 osascript, 0 herdr (elapsed 0s) ---
+--- daemon log ---
+--- durable captain marker present: yes ---

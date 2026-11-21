@@ -1,0 +1,5 @@
+### Pi SDK: 1.6.0  TypeScript: Version 5.9.3
+
+### AFTER the fix (target e0ebe84, `[...lines]`):
+ok - tracked Pi extensions pass strict no-emit typecheck against Pi 1.6.0
+exit=0

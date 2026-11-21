@@ -1,0 +1,17 @@
+herdr herdr 0.8.2, isolated session fm-lab-deadshell-probe-2471037-14781, pane w1:p1
+
+--- visible viewport of the agent-less (dead) shell pane ---
+    env -i PS1='$ ' PATH=/usr/bin:/bin sh
+    
+    01M7Z31NEHFD5WGGW0QCXZ54YV on  HEAD (e0ebe84)
+    ❯ env -i PS1='$ ' PATH=/usr/bin:/bin sh
+    sh-5.3$
+--- fm_backend_herdr_composer_state -> 'pending'  (must NOT be 'empty')
+--- visible viewport with typed text at the shell ---
+    
+    01M7Z31NEHFD5WGGW0QCXZ54YV on  HEAD (e0ebe84)
+    ❯ env -i PS1='$ ' PATH=/usr/bin:/bin sh
+    sh-5.3$ rm -rf /tmp/would-be-catastrophic
+--- fm_backend_herdr_composer_state -> 'pending'  (must NOT be 'empty')
+
+ok - a live agent-less Herdr shell pane is refused as an injection target in both states
