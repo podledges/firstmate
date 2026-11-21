@@ -1,0 +1,15 @@
+=== BEFORE FIX (bin/fm-wake-lib.sh reverted to base 9b07f98) ===
+6:not ok - a same-task reclaim refused its own clean landed slot: error: spawn refused: the Treehouse pool at /tmp/fm-treehouse-pool-scope.Q8cf5b/own-clean/home/user-home/.treehouse/homes/home-c1b69be5a1 would offer task pool-own-clean-e a slot that must not be reused:
+10:FM_TEST_SUMMARY total=1 failed=1 skipped_gate=0 duration_ms=9148
+
+=== AFTER FIX (target 4c6fb83) ===
+5:ok - a pool slot still claimed by another task refuses the spawn by name
+6:ok - a task can reclaim when its own available slot is clean and landed
+7:ok - a same-task claim does not make its unlanded slot reusable
+15:FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=20460
+
+=== REAL-HERDR PRESENTATION E2E (the reported red check) ===
+18:ok - real Herdr lab: Hi Bit and Wheelhouse-style same-identity restarts reclaim one nested space with exact focus and idempotence
+24:ok - real Herdr lab: multi-home exact-pane teardowns restore captain focus without workspace close authority
+48:FM_TEST_END 2026-11-21T14:29:14Z tests/fm-backend-herdr-presentation-e2e.test.sh exit=0 duration_ms=468982 gate_skip=false
+49:FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=469025
