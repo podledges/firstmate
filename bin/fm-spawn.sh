@@ -325,13 +325,14 @@
 #   it overrides a repository treehouse.toml, which firstmate never writes.
 #   Before that line is sent, every slot the pool could hand out is screened and
 #   the spawn refuses, naming each slot and reason, when any of them is a
-#   worktree of a different clone, still claimed by a task, dirty, or holding
-#   commits that are not on the project's default branch. Treehouse reports a
-#   slot free from attached processes alone, which is blind to all four, and the
-#   refusal happens before anything is allocated so nothing is moved, reset, or
-#   removed. A pool that cannot be read refuses the same way rather than being
-#   treated as empty. After allocation, a slot that is still a pool worktree of
-#   another clone refuses the launch instead of being recorded.
+#   worktree of a different clone, still claimed by another task, dirty, or
+#   holding commits that are not on the project's default branch. Treehouse
+#   reports a slot free from attached processes alone, which is blind to all
+#   four, and the refusal happens before anything is allocated so nothing is
+#   moved, reset, or removed. A pool that cannot be read refuses the same way
+#   rather than being treated as empty. After allocation, a slot that is still
+#   a pool worktree of another clone refuses the launch instead of being
+#   recorded.
 #   bin/fm-teardown.sh returns a slot to the pool its own path names, so every
 #   worktree recorded under any earlier root stays returnable.
 # Batch dispatch: pass one or more `id=repo` pairs instead of a single <id> <project>, e.g.
