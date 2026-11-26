@@ -1,0 +1,21 @@
+### ADVERSARIAL: composition stage fails -- must fail closed, never emit an empty document with exit 0
+
+--- BEFORE (base 9b07f98) : bin/fm-fleet-snapshot.sh --contribution-input with a jq that dies on the composition call
+exit status: 0
+stdout bytes: 0
+stderr:
+    /tmp/fm-snap-lab.Sn8ndL/base/bin/fm-fleet-snapshot.sh: line 1999: /tmp/fm-snap-lab.Sn8ndL/fakebin-jqfail/jq: Argument list too long
+
+--- AFTER  (target 23330fa) : bin/fm-fleet-snapshot.sh --contribution-input with a jq that dies on the composition call
+exit status: 1
+stdout bytes: 0
+stderr:
+    jq: simulated composition failure (killed / OOM / short write)
+    fm-fleet-snapshot: contribution input composition failed
+
+--- AFTER (target): --contribution-input with an unusable TMPDIR (transport directory cannot be created)
+exit status: 1
+stdout bytes: 0
+stderr:
+    mktemp: failed to create directory via template ‘/tmp/fm-snap-lab.Sn8ndL/does-not-exist/fm-fleet-snapshot.XXXXXX’: No such file or directory
+    fm-fleet-snapshot: temporary transport directory creation failed

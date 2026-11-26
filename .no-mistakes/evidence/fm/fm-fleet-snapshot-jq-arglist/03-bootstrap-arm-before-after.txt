@@ -1,0 +1,10 @@
+### BEFORE (base 9b07f98) -- bin/fm-contributions.sh arm --if-owned (the fm-bootstrap.sh:1611 session-start call)
+exit status: 0
+stderr: [/tmp/fm-snap-lab.Sn8ndL/base/bin/fm-fleet-snapshot.sh: line 1999: /etc/profiles/per-user/podles/bin/jq: Argument list too long]
+contribution check NOT ARMED: state/contributions.check.sh missing (owned contributions were silently dropped)
+
+### AFTER  (target 23330fa) -- bin/fm-contributions.sh arm --if-owned (the fm-bootstrap.sh:1611 session-start call)
+exit status: 0
+stderr: []
+contribution check ARMED: state/contributions.check.sh exists
+

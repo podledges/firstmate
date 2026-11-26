@@ -1,0 +1,6 @@
+### BEFORE (base 9b07f98) -- bin/fm-fleet-snapshot.sh --contribution-input on oversized home
+$ FM_HOME=<lab-home> base/bin/fm-fleet-snapshot.sh --contribution-input > out.json
+exit status: 0
+stderr:
+/tmp/fm-snap-lab.Sn8ndL/base/bin/fm-fleet-snapshot.sh: line 1999: /etc/profiles/per-user/podles/bin/jq: Argument list too long
+stdout bytes: 0

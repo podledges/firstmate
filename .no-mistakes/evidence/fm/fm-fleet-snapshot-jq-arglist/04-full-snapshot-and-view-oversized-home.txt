@@ -1,0 +1,28 @@
+### Full fleet snapshot + human view on the oversized disposable home (target 23330fa)
+
+$ FM_HOME=<lab-home> bin/fm-fleet-snapshot.sh --json   -> exit 0, empty stderr, 7100895 bytes (ARG_MAX=2097152)
+{
+  "schema": "fm-fleet-snapshot.v1",
+  "backlog_records": 2458,
+  "tasks": 24,
+  "contributions_known_urls": 24,
+  "contributions_errors": null
+}
+
+$ FM_HOME=<lab-home> bin/fm-fleet-view.sh   -> exit 0, empty stderr
+(first rows, long synthetic worktree paths elided)
+# Fleet View
+
+Schema: fm-fleet-snapshot.v1
+Home: /tmp/fm-snap-lab.Sn8ndL/home
+
+## Under Way
+| ID | Current | Kind | Repo/Project | Backend | Endpoint | Artifact | Path | Watch / return channel |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| task-00 | unknown / none | ship | alpha | tmux | present | https://github.com/example/demo/pull/100 | /tmp/fm-snap-lab.Sn8ndL/home/projects/task-00-<900-char-pad> (absent) | bin/fm-peek.sh fm-task-00 |
+| task-01 | unknown / none | ship | alpha | tmux | present | https://github.com/example/demo/pull/101 | /tmp/fm-snap-lab.Sn8ndL/home/projects/task-01-<900-char-pad> (absent) | bin/fm-peek.sh fm-task-01 |
+| task-02 | unknown / none | ship | alpha | tmux | present | https://github.com/example/demo/pull/102 | /tmp/fm-snap-lab.Sn8ndL/home/projects/task-02-<900-char-pad> (absent) | bin/fm-peek.sh fm-task-02 |
+| task-03 | unknown / none | ship | alpha | tmux | present | https://github.com/example/demo/pull/103 | /tmp/fm-snap-lab.Sn8ndL/home/projects/task-03-<900-char-pad> (absent) | bin/fm-peek.sh fm-task-03 |
+...
+task rows rendered: 24
+queued backlog rows rendered: 2458

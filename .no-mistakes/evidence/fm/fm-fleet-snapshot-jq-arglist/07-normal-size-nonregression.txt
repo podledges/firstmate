@@ -1,0 +1,13 @@
+### NON-REGRESSION: normal-size home -- the file-backed transport must not change the emitted document
+(jq emits object keys in unstable order, so the oracle is semantic equality under 'jq -S', not bytes)
+
+base   9b07f98 --contribution-input: exit=0, empty stderr
+target 23330fa --contribution-input: exit=0, empty stderr
+RESULT: emitted contribution-input document is semantically IDENTICAL before and after
+
+emitted document (projection):
+{"backlog_present":true,"backlog_ids":["ship-task","queued-task","done-task"],"backlog_states":["in_flight","queued","done"],"tasks":[{"id":"ship-task","merge_authority":"attended"}]}
+
+downstream consumer over that document (bin/fm-contributions.sh snapshot, forge-free):
+{"complete":false,"errors":null,"known_count":2,"captain":[]}
+  (known=2 -> both owned PR URLs from the backlog rows were recovered)

@@ -1,0 +1,7 @@
+### ADVERSARIAL (sibling site): the main --json path's shared contribution composition must also fail closed
+--- AFTER (target 23330fa): bin/fm-fleet-snapshot.sh --json with a jq that dies on the composition call
+exit status: 1
+stdout bytes: 0
+stderr:
+    jq: simulated composition failure (killed / OOM / short write)
+    fm-fleet-snapshot: contribution input composition failed
