@@ -53,7 +53,14 @@ pf_test_cleanup() {
   fi
   if [ -f "$pid_file" ]; then
     pid=$(cat "$pid_file" 2>/dev/null) || pid=
-    [ -z "$pid" ] || kill "$pid" 2>/dev/null || true
+    if [ -n "$pid" ]; then
+      # The published pid is the serving child; killing it alone lets its
+      # detached supervisor restart it while the fixture root is being removed,
+      # which leaves a live worker writing into the tree rm -rf is walking.
+      # shellcheck source=bin/fm-remote-job-lib.sh
+      . "$ROOT/bin/fm-remote-job-lib.sh"
+      fm_remote_job_stop_worker_tree "$pid" || true
+    fi
   fi
   fm_test_cleanup
 }

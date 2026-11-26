@@ -104,7 +104,9 @@ export function installCalmOperationalUserLayout(): void {
 
     override render(width: number): string[] {
       if (patch.hidesOperationalInput()) return [];
-      const lines = super.render(width);
+      // Pi 1.6.0 narrowed Component.render to `readonly string[]`; copy so this
+      // override keeps returning a mutable array on either side of that change.
+      const lines = [...super.render(width)];
       return this.hasLeadingSpacer ? ["", ...lines] : lines;
     }
   }
