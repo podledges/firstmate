@@ -1984,9 +1984,10 @@ BACKLOG_JSON=$(backlog_json) || { echo "fm-fleet-snapshot: backlog read failed" 
 # "Argument list too long". The transport directory is created for every output
 # mode, including --contribution-input, because that mode composes a payload of
 # the same size. tests/fm-fleet-snapshot-view.test.sh pins the invariant: it
-# drives an oversized fleet through every output mode and proves, with an argv
-# counterfactual per composed payload, that the same payload really does
-# overflow the host argument limit.
+# drives an oversized fleet through every output mode, and two argv
+# counterfactuals - one on the --contribution-input backlog/tasks pair, one on
+# the aggregated registered-home summaries - prove that those same payloads
+# really do overflow the host argument limit.
 JSON_TRANSPORT_DIR=$(mktemp -d "${TMPDIR:-/tmp}/fm-fleet-snapshot.XXXXXX") \
   || { echo "fm-fleet-snapshot: temporary transport directory creation failed" >&2; exit 1; }
 BACKLOG_JSON_FILE="$JSON_TRANSPORT_DIR/backlog.json"
