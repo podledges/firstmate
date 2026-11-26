@@ -27,6 +27,9 @@ SESSION_START="$ROOT/bin/fm-session-start.sh"
 TMP_ROOT=$(fm_test_tmproot fm-public-followup)
 PF_TEST_NOW=1787539200
 PF_TEST_LOCK_HOLDER=
+# Resolved once here, before any fakebin `rm` shim can shadow it, so the shims
+# below delegate to the host's real rm instead of assuming it sits at /bin/rm.
+REAL_RM=$(command -v rm)
 
 write_promotion_brief() {  # <home> <id>
   local home=$1 id=$2
@@ -1751,7 +1754,7 @@ test_failed_rechain_retirement_keeps_source_claimed() {
 for arg in "\$@"; do
   [ "\$arg" != '$registry_file' ] || exit 1
 done
-exec /bin/rm "\$@"
+exec '$REAL_RM' "\$@"
 EOF
   chmod +x "$home/fakebin/rm"
   FMX_NOW_OVERRIDE=1787539200 expect_failure "rechain must surface a failed source retirement" \
@@ -1768,7 +1771,7 @@ EOF
   assert_absent "$home/state/public-followup/registry/public-final-retire-c" \
     "a refused competing destination must not be registered"
 
-  /bin/rm "$home/fakebin/rm"
+  "$REAL_RM" "$home/fakebin/rm"
   out=$(FMX_NOW_OVERRIDE=1787539200 run_pf "$home" rechain public-final-retire-b --from public-final-retire-a \
     --work-home main --work-id ship-retire-b --expected pr-merged) \
     || fail "the claimed destination must remain resumable: $out"
@@ -2113,7 +2116,7 @@ test_retire_reason_closes_the_open_loop() {
 for arg in "\$@"; do
   [ "\$arg" != '$registry_file' ] || exit 1
 done
-exec /bin/rm "\$@"
+exec '$REAL_RM' "\$@"
 EOF
   chmod +x "$home/fakebin/rm"
   expect_failure "retire must report registration removal failure" \
@@ -2122,7 +2125,7 @@ EOF
     "retire removal failure must report the truthful loop state"
   assert_present "$registry_file" \
     "retire removal failure must retain the registration"
-  /bin/rm "$home/fakebin/rm"
+  "$REAL_RM" "$home/fakebin/rm"
   out=$(run_pf "$home" retire pf-retire --reason "the public loop is finished") \
     || fail "retire --reason failed"
   assert_contains "$out" "retired pf-retire reason=the public loop is finished" \
