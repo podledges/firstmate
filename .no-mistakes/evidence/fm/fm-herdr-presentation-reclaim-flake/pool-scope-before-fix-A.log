@@ -1,0 +1,9 @@
+# PRE-FIX reproduction: 'mine' folded back into the refusing 'other' branch
+ok - each Firstmate home allocates worker worktrees from its own pool root
+ok - a pool slot still holding unlanded commits refuses the spawn by name
+ok - a pool slot that is a worktree of another home's clone refuses the spawn by name
+ok - a pool slot still claimed by another task refuses the spawn by name
+not ok - a same-task reclaim refused its own clean landed slot: error: spawn refused: the Treehouse pool at /tmp/fm-treehouse-pool-scope.OGr2Zk/own-clean/home/user-home/.treehouse/homes/home-3b8adba1d1 would offer task pool-own-clean-e a slot that must not be reused:
+/tmp/fm-treehouse-pool-scope.OGr2Zk/own-clean/root/.treehouse/pool/2/project: it is still claimed by task pool-own-clean-e of home /tmp/fm-treehouse-pool-scope.OGr2Zk/own-clean/home
+reconcile each slot's task before dispatching to /tmp/fm-treehouse-pool-scope.OGr2Zk/own-clean/project again; nothing was allocated, moved, or removed: expected exit 0, got 1
+PRE-FIX EXIT=1

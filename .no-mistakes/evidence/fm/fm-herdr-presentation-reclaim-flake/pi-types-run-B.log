@@ -1,0 +1,15 @@
+disposable npm prefix: /tmp/fm-pi-types2.4KoaeC
+installed pi-coding-agent 1.6.0
+--- oracle: pi-tui Component.render signature shipped in Pi 1.6.0 ---
+/tmp/fm-pi-types2.4KoaeC/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-tui/dist/alt-screen-search.d.ts:44:    render(width: number): string[];
+/tmp/fm-pi-types2.4KoaeC/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-tui/dist/tui-alt-screen.d.ts:98:    render(width: number): readonly string[];
+/tmp/fm-pi-types2.4KoaeC/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-tui/dist/tui.d.ts:74:    render(width: number): readonly string[];
+/tmp/fm-pi-types2.4KoaeC/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-tui/dist/tui.d.ts:232:    render(width: number): readonly string[];
+--- tsc version ---
+Version 5.9.3
+--- AFTER (this change): tests/fm-pi-primary-types.test.sh against Pi 1.6.0 ---
+ok - tracked Pi extensions pass strict no-emit typecheck against Pi 1.6.0
+PI-TYPES-AFTER EXIT=0
+--- BEFORE (pre-fix line reinstated: 'const lines = super.render(width);') ---
+../../../../../../tmp/fm-pi-primary-types.6UAsSw/lib/fm-calm-operational-user-layout.ts(110,55): error TS4104: The type 'readonly string[]' is 'readonly' and cannot be assigned to the mutable type 'string[]'.
+PI-TYPES-BEFORE EXIT=1

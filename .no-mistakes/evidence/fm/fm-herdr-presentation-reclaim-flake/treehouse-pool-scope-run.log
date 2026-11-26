@@ -1,0 +1,17 @@
+FM_TEST_BEGIN 2026-11-26T06:43:50Z tests/fm-treehouse-pool-scope.test.sh family=unclassified expected_gate_skip=none
+ok - each Firstmate home allocates worker worktrees from its own pool root
+ok - a pool slot still holding unlanded commits refuses the spawn by name
+ok - a pool slot that is a worktree of another home's clone refuses the spawn by name
+ok - a pool slot still claimed by another task refuses the spawn by name
+ok - a task can reclaim when its own available slot is clean and landed
+ok - a same-task claim does not make its unlanded slot reusable
+ok - a pool whose slot list cannot be read refuses the spawn instead of being treated as empty
+ok - a pool whose free slots hold nothing worth keeping still allocates normally
+ok - a slot a live worker is running in never blocks another dispatch
+ok - a slot allocated out of another home's clone refuses the launch instead of being recorded
+ok - a pooled worktree is returned to the pool root its own path names, whatever root allocates today
+ok - a recorded worktree that is not a pool slot still returns against the ambient root
+FM_TEST_END 2026-11-26T06:44:11Z tests/fm-treehouse-pool-scope.test.sh exit=0 duration_ms=20918 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=20965
+FM_TEST_SUMMARY_FAMILY family=unclassified count=1 duration_ms=20918 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-treehouse-pool-scope.test.sh duration_ms=20918

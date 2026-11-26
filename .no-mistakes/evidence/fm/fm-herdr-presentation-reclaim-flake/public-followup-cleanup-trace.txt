@@ -1,0 +1,28 @@
+=== xtrace excerpt: pf_test_cleanup on the failing public-followup exit (HEAD 7f16101, NixOS host) ===
+Command: PS4='+${BASH_SOURCE##*/}:${LINENO}: ' bash -x tests/fm-public-followup.test.sh
+Reading: line 57 is '[ -f $pid_file ]'; control jumps to line 68 (fm_test_cleanup),
+so the line 65 fm_remote_job_stop_worker_tree call was NOT entered - no worker.pid was ever published.
+
+8867:+lib.sh:1: pf_test_cleanup
+8868-+fm-public-followup.test.sh:51: local pid_file=/tmp/fm-public-followup.gkxPLt/remote-jobs/worker.pid pid
+8869-+fm-public-followup.test.sh:52: '[' -n '' ']'
+8870-+fm-public-followup.test.sh:57: '[' -f /tmp/fm-public-followup.gkxPLt/remote-jobs/worker.pid ']'
+8871-+fm-public-followup.test.sh:68: fm_test_cleanup
+8872-+lib.sh:254: local d
+8873-+lib.sh:255: fm_test_reap_watchers
+8874-+lib.sh:213: local state lock_home $'seen=\n'
+8875-+lib.sh:214: '[' -f /tmp/.fm-test-watcher.2389303.hhZfC9 ']'
+8876-+lib.sh:215: IFS=
+8877-+lib.sh:215: read -r state
+8878-+lib.sh:230: rm -f /tmp/.fm-test-watcher.2389303.hhZfC9
+8879-+lib.sh:256: fm_test_reap_procevent_homes
+8880-+lib.sh:174: local home claim_root $'seen=\n'
+8881-+lib.sh:175: '[' -f /tmp/.fm-test-procevent.2389303.t9PjIK ']'
+8882-+lib.sh:176: IFS=$'\t'
+8883-+lib.sh:176: read -r home claim_root
+8884-+lib.sh:189: rm -f /tmp/.fm-test-procevent.2389303.t9PjIK
+8885-+lib.sh:257: for d in "${FM_TEST_CLEANUP_DIRS[@]:-}"
+8886-+lib.sh:258: '[' -n '' ']'
+8887-+lib.sh:260: '[' -f /tmp/.fm-test-cleanup.2389303.7A1TN3 ']'
+8888-+lib.sh:261: IFS=
+8889-+lib.sh:261: read -r d

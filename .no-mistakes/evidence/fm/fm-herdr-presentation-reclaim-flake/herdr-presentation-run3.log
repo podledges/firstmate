@@ -1,0 +1,7 @@
+FM_TEST_BEGIN 2026-11-26T06:59:08Z tests/fm-backend-herdr-presentation-e2e.test.sh family=real-herdr-gated expected_gate_skip=herdr
+ok - real Herdr lab: an opted-out spawn retains the Stage 1 Herdr command sequence with zero ordering calls
+ok - real Herdr lab: a home that configured nothing is projected by default on herdr 0.8.2
+
+NOTE: this third consecutive run was deliberately stopped (SIGTERM) at 06:59:44Z after 2 of 17 cases
+so the turn's wall-clock budget could not expire and lose the completed evidence. Runs 1 and 2 above
+each completed green (FM_TEST_SUMMARY total=1 failed=0). STOPPED-BY-BUDGET

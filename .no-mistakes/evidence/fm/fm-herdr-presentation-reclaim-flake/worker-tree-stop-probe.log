@@ -1,0 +1,31 @@
+[ns] /usr/bin/ps provided namespace-locally -> /nix/store/5ckqfb66kj5g68d51wgvjknb4hi8fi0z-procps-4.0.6/bin/ps
+=== CONTROL: pre-change teardown, kill "$pid" only ===
+[control] published worker pid=3441866 pgid=3441859
+[control] worker group 3441859: STILL ALIVE
+[control] serving writes into the fixture root after the stop: 10 new lines (before=5 after=15)
+[control] rm -rf of the fixture root: clean
+
+=== FIX: pf_test_cleanup's path, fm_remote_job_stop_worker_tree "$pid" ===
+[fixed] published worker pid=3444381 pgid=3444373
+[fixed] fm_remote_job_worker_process_group resolved: 3444373
+[fixed] fm_remote_job_stop_worker_tree rc=0
+[fixed] worker group 3444373: gone
+[fixed] serving writes into the fixture root after the stop: 0 new lines (before=1 after=1)
+[fixed] rm -rf of the fixture root: clean
+
+
+--- how this was driven ---
+Real product code under test: bin/fm-remote-job-lib.sh's fm_remote_job_stop_worker_tree,
+invoked exactly as tests/fm-public-followup.test.sh:60-66 (pf_test_cleanup) invokes it
+after reading remote-jobs/worker.pid. The supervisor/child process tree and the fixture
+root are disposable stand-ins for the environment, not for the product.
+CONTROL arm replays the pre-change teardown (`kill "$pid"` only): the detached supervisor
+survives and restarts a serving child that writes 10 more lines into the fixture root while
+rm -rf walks it. FIX arm resolves the worker process group and takes the whole tree down:
+group gone, zero further writes.
+Host note: this NixOS host has neither /bin/ps nor /usr/bin/ps, so
+fm_remote_job_process_command (bin/fm-remote-job-lib.sh:982) cannot resolve the group leader
+and the stop silently degrades to a lone-process kill. The run above therefore supplied
+/usr/bin/ps inside an ephemeral user+mount namespace (`unshare -r -m`, tmpfs over /usr/bin,
+symlink to the store ps) - no host filesystem change. CI's Ubuntu images ship /bin/ps, so the
+group path is the one that runs there.
