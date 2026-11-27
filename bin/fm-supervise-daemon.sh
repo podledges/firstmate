@@ -1123,11 +1123,12 @@ wedge_alarm_emit_once() {  # <resolved-directive> <summary>
 
 # Fire every configured active-alert channel, best-effort. Always returns 0: a
 # channel failure can never abort inject_wedge_alarm or the daemon loop. Any
-# `off` directive disables the alert, regardless of position; an `auto` that
-# emits no channel at all logs that the durable marker is the only signal.
+# `off` directive disables the alert, regardless of position; an `auto` whose
+# alarm emitted no channel at all logs, once the whole directive list has run,
+# that the durable marker is the only signal.
 # Every notifier routes through the test-forced recorder seam.
 wedge_alarm_notify() {  # <summary> <marker>
-  local summary=$1 marker=$2 ch
+  local summary=$1 marker=$2 ch saw_auto=0
   local -a channels=() emitted=()
   while IFS= read -r ch; do
     [ -n "$ch" ] || continue
@@ -1139,20 +1140,21 @@ wedge_alarm_notify() {  # <summary> <marker>
   for ch in "${channels[@]}"; do
     case "$ch" in
       auto|default)
+        saw_auto=1
         ch=$(wedge_alarm_platform_default)
         [ -n "$ch" ] && wedge_alarm_emit_once "$ch" "$summary"
         if [ "$(uname)" = Darwin ] && [ "${FM_SUPERVISOR_BACKEND:-}" = herdr ] \
           && command -v herdr >/dev/null 2>&1; then
           wedge_alarm_emit_once herdr "$summary"
         fi
-        [ -z "${emitted[*]+x}" ] \
-          && log "wedge alarm: no OS-level alert channel on $(uname); durable marker $marker is the only signal - set config/wedge-alarm (e.g. a command: directive)"
         ;;
       osascript|herdr) wedge_alarm_emit_once "$ch" "$summary" ;;
       command:*) wedge_alarm_emit_once "$ch" "$summary" ;;
       *) log "wedge alarm: unrecognized active-alert channel directive (redacted); marker still written" ;;
     esac
   done
+  [ "$saw_auto" -eq 1 ] && [ -z "${emitted[*]+x}" ] \
+    && log "wedge alarm: no OS-level alert channel on $(uname); durable marker $marker is the only signal - set config/wedge-alarm (e.g. a command: directive)"
   return 0
 }
 

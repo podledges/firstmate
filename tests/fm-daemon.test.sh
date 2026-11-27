@@ -2750,6 +2750,7 @@ test_wedge_alarm_herdr_channel_selected() {
 
 test_wedge_alarm_herdr_requires_shown_result() {
   local dir daemon_log rc
+  command -v jq >/dev/null 2>&1 || { echo "skip: jq not found (required to read the herdr result)"; return 0; }
   dir=$(make_wedge_case wedge-herdr-shown); daemon_log="$dir/daemon.log"
   if PATH="$dir/fakebin:$PATH" LOG="$daemon_log" FM_WEDGE_ALARM_EXEC='' \
     FM_FAKE_HERDR_NOTIFICATION_JSON='{"result":{"reason":"disabled","shown":false}}' \
@@ -2873,6 +2874,10 @@ test_wedge_alarm_auto_herdr_without_osascript_still_alerts() {
   dir=$(make_wedge_case wedge-auto-herdr-no-osascript); log="$dir/alert.log"
   daemon_log="$dir/daemon.log"
   rm -f "$dir/fakebin/osascript"
+  if PATH="$dir/fakebin:$PATH" command -v osascript >/dev/null 2>&1; then
+    echo "skip: osascript resolves on this host, so an unresolvable macOS channel cannot be staged"
+    return 0
+  fi
   PATH="$dir/fakebin:$PATH" FM_WEDGE_ALARM_LOG="$log" LOG="$daemon_log" FM_FAKE_UNAME=Darwin \
     FM_WEDGE_ALARM_CHANNEL=auto FM_SUPERVISOR_BACKEND=herdr \
     wedge_alarm_notify "away-mode WEDGED 900s" "/s/.marker"
@@ -2902,6 +2907,24 @@ test_wedge_alarm_auto_non_darwin_has_no_os_channel() {
     wedge_alarm_notify "away-mode WEDGED 900s" "/s/.marker"
   [ ! -s "$log" ] || fail "auto selected a built-in OS channel on a non-macOS platform: $(cat "$log")"
   pass "auto on a non-macOS platform selects no built-in OS channel (the marker or a configured command carries it)"
+}
+
+test_wedge_alarm_auto_before_command_keeps_the_advisory_honest() {
+  # docs/examples/wedge-alarm pairs `auto` with a `command:` pager, so on Linux
+  # the unresolvable auto directive must not advise configuring a command the
+  # captain already configured and the alarm is about to page.
+  local dir daemon_log paged chan
+  dir=$(make_wedge_case wedge-auto-then-command); daemon_log="$dir/daemon.log"
+  paged="$dir/paged.txt"
+  chan=$'auto\ncommand: printf "%s" "$1" > '"'$paged'"
+  PATH="$dir/fakebin:$PATH" LOG="$daemon_log" FM_FAKE_UNAME=Linux FM_WEDGE_ALARM_EXEC='' \
+    FM_WEDGE_ALARM_CHANNEL="$chan" \
+    wedge_alarm_notify "away-mode WEDGED 900s" "/s/.marker"
+  [ "$(cat "$paged" 2>/dev/null)" = "away-mode WEDGED 900s" ] \
+    || fail "a command: directive after auto never paged the captain"
+  grep -F 'only signal' "$daemon_log" >/dev/null 2>&1 \
+    && fail "the alarm claimed the marker was its only signal while it paged a command channel: $(cat "$daemon_log")"
+  pass "auto ahead of a command: directive never records the marker as the alarm's only signal"
 }
 
 test_wedge_alarm_config_file_multi_channel() {
@@ -3468,6 +3491,7 @@ test_wedge_alarm_auto_darwin_herdr_adds_independent_channel
 test_wedge_alarm_auto_herdr_without_osascript_still_alerts
 test_wedge_alarm_auto_plus_herdr_fires_herdr_once
 test_wedge_alarm_auto_non_darwin_has_no_os_channel
+test_wedge_alarm_auto_before_command_keeps_the_advisory_honest
 test_wedge_alarm_config_file_multi_channel
 test_wedge_alarm_failing_channel_degrades_gracefully
 test_wedge_alarm_hung_channel_times_out_and_falls_through
