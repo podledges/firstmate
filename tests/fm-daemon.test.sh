@@ -2632,10 +2632,15 @@ test_max_defer_afk_inactive_does_not_flush_or_alarm() {
 # osascript/herdr argv is verified once by the bounded manual evidence in
 # docs/wedge-alarm.md, never from a suite.
 #
-# The herdr result cases below are the one exception: the shown/unreadable
-# confirmation logic lives past the seam, so they empty FM_WEDGE_ALARM_EXEC on
-# purpose and stay safe only because make_wedge_case's fakebin shadows `herdr`
-# on PATH. Keep that fake, and keep $dir/fakebin FIRST on their PATH.
+# Several cases below set FM_WEDGE_ALARM_EXEC='' on purpose, because the
+# behavior they test lives PAST that seam: the herdr shown/unreadable result
+# classification, and the captain's `sh -c` command: contract. Emptying the
+# seam runs the real notifier code, so such a case is safe only while no real
+# OS notifier can be selected - either every directive it configures is a
+# command:, or make_wedge_case's fakebin (uname, osascript, herdr) is FIRST on
+# its PATH so `auto` resolves into the fakes. Emptying the seam for a case that
+# reaches a real osascript or herdr would post a genuine desktop notification
+# from the suite.
 make_wedge_case() {  # <name> -> echoes dir; creates state/, fakebin/{uname,osascript,herdr}, alert.log
   local name=$1 dir fakebin
   dir="$TMP_ROOT/$name"; fakebin="$dir/fakebin"

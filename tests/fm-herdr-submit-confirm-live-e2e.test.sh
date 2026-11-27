@@ -30,8 +30,6 @@ pass() { printf 'ok - %s\n' "$1"; }
 CLAUDE_BIN=${FM_HERDR_CLAUDE_BIN:-claude}
 fm_live_gate opt-in FM_HERDR_SUBMIT_CONFIRM_LIVE herdr jq "$CLAUDE_BIN"
 CLAUDE_BIN=$(command -v "$CLAUDE_BIN" 2>/dev/null || true)
-[ -n "$CLAUDE_BIN" ] && [ -x "$CLAUDE_BIN" ] \
-  || fail "FM_HERDR_SUBMIT_CONFIRM_LIVE=1 but Claude Code is not executable (set FM_HERDR_CLAUDE_BIN for a private copy)"
 [ -x "$LAB_HELPER" ] || fail "FM_HERDR_SUBMIT_CONFIRM_LIVE=1 but the Herdr lab helper is not executable at $LAB_HELPER"
 
 # shellcheck source=tests/herdr-test-safety.sh
