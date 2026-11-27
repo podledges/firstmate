@@ -1962,41 +1962,46 @@ secondmate_landed_from_current_json() {  # <secondmate-current-json-file> <outpu
     | .records |= sort_by([(.completion.date // ""), .id]) | .records |= reverse' > "$2"
 }
 
-scout_report_lines() {
+scout_report_lines() (
   local report id
   if [ ! -d "$DATA" ]; then
     jq -n '[]'
     return 0
   fi
+  set -o pipefail
   LC_ALL=C find "$DATA" -mindepth 2 -maxdepth 2 -type f -name report.md -print \
     | sort \
     | while IFS= read -r report; do
       id=$(basename "$(dirname "$report")")
-      jq -n --arg id "$id" --arg path "$report" '{id:$id,path:$path}'
+      jq -n --arg id "$id" --arg path "$report" '{id:$id,path:$path}' || exit 1
     done \
     | jq -s 'sort_by(.id)'
-}
+)
 
-BACKLOG_JSON=$(backlog_json) || { echo "fm-fleet-snapshot: backlog read failed" >&2; exit 1; }
-# Every composed payload reaches jq through --slurpfile, never through --argjson
-# or another argv/environment argument: at current fleet size the backlog, task,
-# and contribution payloads exceed the host argument limit and jq dies with
-# "Argument list too long". The transport directory is created for every output
-# mode, including --contribution-input, because that mode composes a payload of
-# the same size. tests/fm-fleet-snapshot-view.test.sh pins the invariant: it
-# drives an oversized fleet through every output mode, and two argv
-# counterfactuals - one on the --contribution-input backlog/tasks pair, one on
-# the aggregated registered-home summaries - prove that those same payloads
+# The fleet-sized composed payloads - the backlog, the task snapshot, the
+# contribution input, and the aggregated registered-home summaries - reach jq
+# through --slurpfile, never through --argjson or another argv/environment
+# argument: at current fleet size they exceed the host argument limit and jq
+# dies with "Argument list too long". The per-task supplements above stay on
+# argv because FM_SNAPSHOT_PARENT_ACTIVITIES and
+# FM_SNAPSHOT_PARENT_ACTIVITY_BYTES cap each one to a fixed record budget that
+# does not grow with the fleet. The transport directory is created for every
+# output mode, including --contribution-input, because that mode composes a
+# payload of the same size. tests/fm-fleet-snapshot-view.test.sh pins the
+# invariant: it drives an oversized fleet through every output mode, and two
+# argv counterfactuals - one on the --contribution-input backlog/tasks pair, one
+# on the aggregated registered-home summaries - prove that those same payloads
 # really do overflow the host argument limit.
 JSON_TRANSPORT_DIR=$(mktemp -d "${TMPDIR:-/tmp}/fm-fleet-snapshot.XXXXXX") \
   || { echo "fm-fleet-snapshot: temporary transport directory creation failed" >&2; exit 1; }
 BACKLOG_JSON_FILE="$JSON_TRANSPORT_DIR/backlog.json"
 CONTRIBUTION_TASKS_JSON_FILE="$JSON_TRANSPORT_DIR/contribution-tasks.json"
-printf '%s\n' "$BACKLOG_JSON" > "$BACKLOG_JSON_FILE" \
-  || { echo "fm-fleet-snapshot: temporary backlog file write failed" >&2; exit 1; }
+backlog_json > "$BACKLOG_JSON_FILE" \
+  || { echo "fm-fleet-snapshot: backlog read failed" >&2; exit 1; }
 
-contribution_tasks_json() {
+contribution_tasks_json() (
   local meta id merge_authority
+  set -o pipefail
   for meta in "$STATE"/*.meta; do
     [ -f "$meta" ] && [ ! -L "$meta" ] || continue
     id=$(basename "$meta" .meta)
@@ -2006,9 +2011,10 @@ contribution_tasks_json() {
     fi
     jq -n --arg id "$id" --arg kind "$(meta_value "$meta" kind)" \
       --arg url "$(meta_value "$meta" pr)" --arg head "$(meta_value "$meta" pr_head)" \
-      --arg merge_authority "$merge_authority" '{id:$id,kind:$kind,pr:{url:$url,head:$head},merge_authority:$merge_authority}'
+      --arg merge_authority "$merge_authority" '{id:$id,kind:$kind,pr:{url:$url,head:$head},merge_authority:$merge_authority}' \
+      || exit 1
   done | jq -s .
-}
+)
 
 contribution_input_json() {
   contribution_tasks_json > "$CONTRIBUTION_TASKS_JSON_FILE" \
