@@ -1155,10 +1155,17 @@ wedge_alarm_notify() {  # <summary> <marker>
       auto|default)
         saw_auto=1
         ch=$(wedge_alarm_platform_default)
-        [ -n "$ch" ] && wedge_alarm_emit_once "$ch" "$summary"
-        if [ "$(uname)" = Darwin ] && [ "${FM_SUPERVISOR_BACKEND:-}" = herdr ] \
-          && command -v herdr >/dev/null 2>&1; then
-          wedge_alarm_emit_once herdr "$summary"
+        if [ -n "$ch" ]; then
+          wedge_alarm_emit_once "$ch" "$summary"
+        elif [ "$(uname)" = Darwin ]; then
+          log "wedge alarm: osascript not found; the macOS notification channel is unavailable"
+        fi
+        if [ "$(uname)" = Darwin ] && [ "${FM_SUPERVISOR_BACKEND:-}" = herdr ]; then
+          if command -v herdr >/dev/null 2>&1; then
+            wedge_alarm_emit_once herdr "$summary"
+          else
+            log "wedge alarm: herdr not found; the independent Herdr channel is unavailable for this Herdr primary"
+          fi
         fi
         ;;
       osascript|herdr) wedge_alarm_emit_once "$ch" "$summary" ;;
