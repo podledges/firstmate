@@ -1,0 +1,16 @@
+ok - stuck inbox escalation reaches supervision in away mode and survives buffering failure
+ok - stuck inbox escalation reaches supervision in quiet mode and survives buffering failure
+ok - write inbox escalation reaches supervision in away mode and survives buffering failure
+ok - write inbox escalation reaches supervision in quiet mode and survives buffering failure
+ok - reset inbox escalation reaches supervision in away mode and survives buffering failure
+ok - reset inbox escalation reaches supervision in quiet mode and survives buffering failure
+ok - herdr notifier requires the server to report shown=true
+ok - a non-JSON herdr result is logged as unconfirmed, never as a reported suppression
+ok - a herdr error envelope or a result without shown is unconfirmed, never a reported suppression
+ok - a hung herdr notifier stays bounded while its JSON result is captured
+ok - auto on a macOS Herdr primary fires both independent alert channels
+ok - auto still alerts through herdr when osascript is unresolvable, and records the missing macOS channel
+ok - auto on a Herdr primary records an unresolvable herdr instead of dropping the channel silently
+ok - auto plus explicit herdr/osascript directives fire each resolved channel once, in order
+ok - auto on a non-macOS platform selects no built-in OS channel (the marker or a configured command carries it)
+ok - auto ahead of a command: directive never records the marker as the alarm's only signal

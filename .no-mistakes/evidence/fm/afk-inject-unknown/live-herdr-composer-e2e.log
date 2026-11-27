@@ -1,0 +1,9 @@
+FM_TEST_BEGIN 2026-11-27T14:16:23Z tests/fm-herdr-submit-confirm-live-e2e.test.sh family=live-harness-optin expected_gate_skip=live-capability
+ok - live Herdr composer capture: Claude Code (2.1.223 (Claude Code)) on herdr 0.8.2 classifies idle, popup-pending, and cleared states
+ok - live Herdr submit confirm: Claude Code (2.1.223 (Claude Code)) on herdr 0.8.2 reports empty and renders the requested reply in isolated session fm-lab-herdr-submit-con-4047315-26393
+ok - live Herdr submit confirm: Claude Code (2.1.223 (Claude Code)) on herdr 0.8.2 submits a U+2063 away-supervisor payload whose read-back drops the mark
+ok - live Herdr submit confirm: Claude Code (2.1.223 (Claude Code)) on herdr 0.8.2 proves and submits a typed /exit behind its command popup
+FM_TEST_END 2026-11-27T14:16:46Z tests/fm-herdr-submit-confirm-live-e2e.test.sh exit=0 duration_ms=23193 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=23239
+FM_TEST_SUMMARY_FAMILY family=live-harness-optin count=1 duration_ms=23193 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-herdr-submit-confirm-live-e2e.test.sh duration_ms=23193

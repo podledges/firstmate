@@ -1,0 +1,17 @@
+# Real wedge_alarm_notify driven with herdr absent from the daemon PATH
+### macOS Herdr primary, auto, herdr MISSING from PATH
+channels fired:
+    osascript	away-mode WEDGED 900s
+daemon log:
+    [2026-11-27T14:18:08+0000] wedge alarm: herdr not found; the independent Herdr channel is unavailable for this Herdr primary
+
+### macOS tmux primary, auto, herdr MISSING (no Herdr channel expected)
+channels fired:
+    osascript	away-mode WEDGED 900s
+daemon log:
+
+### Linux Herdr primary, auto (no OS channel; marker-only advisory)
+channels fired:
+daemon log:
+    [2026-11-27T14:18:08+0000] wedge alarm: no OS-level alert channel on Linux; durable marker /s/.marker is the only signal - set config/wedge-alarm (e.g. a command: directive)
+

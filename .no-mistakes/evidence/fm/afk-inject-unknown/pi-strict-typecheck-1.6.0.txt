@@ -1,0 +1,7 @@
+### BASE d550a2e (before the Pi 1.6.0 repair), Pi 1.6.0 + tsc 5.9.3
+ok - tracked Pi extensions pass strict no-emit typecheck against Pi 1.6.0
+exit=0
+
+### HEAD a2c4111 (with the repair), Pi 1.6.0 + tsc 5.9.3
+ok - tracked Pi extensions pass strict no-emit typecheck against Pi 1.6.0
+exit=0

@@ -1,0 +1,14 @@
+# Strict Pi extension typecheck against installed Pi 1.6.0 (tsc 5.9.3)
+
+## As shipped on this branch
+ok - tracked Pi extensions pass strict no-emit typecheck against Pi 1.6.0
+exit=0
+
+## Adversarial: drop the defensive copy (const lines = super.render(width))
+111:      const lines = super.render(width);
+../../../../../../tmp/fm-pi-primary-types.FGvkSX/lib/fm-calm-operational-user-layout.ts(112,55): error TS4104: The type 'readonly string[]' is 'readonly' and cannot be assigned to the mutable type 'string[]'.
+exit=1
+
+## Restored
+ok - tracked Pi extensions pass strict no-emit typecheck against Pi 1.6.0
+exit=0
