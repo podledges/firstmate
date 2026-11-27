@@ -2793,6 +2793,32 @@ test_wedge_alarm_herdr_unreadable_result_is_not_a_report() {
   pass "a non-JSON herdr result is logged as unconfirmed, never as a reported suppression"
 }
 
+test_wedge_alarm_herdr_error_envelope_is_not_a_suppression_report() {
+  # herdr answers in its documented JSON envelope, which bin/backends/herdr.sh
+  # already reads as `.error.code` instead of a process exit status. Neither an
+  # error envelope nor a result without `shown` says Herdr suppressed anything.
+  local dir daemon_log body rc
+  command -v jq >/dev/null 2>&1 || { echo "skip: jq not found (required to read the herdr result)"; return 0; }
+  dir=$(make_wedge_case wedge-herdr-envelope); daemon_log="$dir/daemon.log"
+  for body in '{"id":"cli:notification:show","error":{"code":"notifications_disabled"}}' \
+    '{"id":"cli:notification:show","result":{"reason":"disabled","type":"notification_show"}}'; do
+    : > "$daemon_log"
+    if PATH="$dir/fakebin:$PATH" LOG="$daemon_log" FM_WEDGE_ALARM_EXEC='' \
+      FM_FAKE_HERDR_NOTIFICATION_JSON="$body" \
+      wedge_alarm_via_herdr "away-mode WEDGED 900s"; then
+      rc=0
+    else
+      rc=$?
+    fi
+    [ "$rc" -ne 0 ] || fail "herdr result without shown=true was accepted as a visible notification: $body"
+    grep -F 'notification result was unreadable' "$daemon_log" >/dev/null \
+      || fail "a herdr envelope carrying no shown field was not recorded as unconfirmed: $body -> $(cat "$daemon_log")"
+    grep -F 'herdr reported that the notification was not shown' "$daemon_log" >/dev/null \
+      && fail "a herdr envelope carrying no shown field was logged as a suppression herdr never reported: $body"
+  done
+  pass "a herdr error envelope or a result without shown is unconfirmed, never a reported suppression"
+}
+
 test_wedge_alarm_hung_herdr_notifier_times_out() {
   local dir daemon_log start elapsed rc
   dir=$(make_wedge_case wedge-herdr-hung); daemon_log="$dir/daemon.log"
@@ -3507,6 +3533,7 @@ test_wedge_alarm_osascript_channel_selected
 test_wedge_alarm_herdr_channel_selected
 test_wedge_alarm_herdr_requires_shown_result
 test_wedge_alarm_herdr_unreadable_result_is_not_a_report
+test_wedge_alarm_herdr_error_envelope_is_not_a_suppression_report
 test_wedge_alarm_hung_herdr_notifier_times_out
 test_wedge_alarm_command_channel_receives_summary
 test_wedge_alarm_command_failure_hides_configured_command

@@ -1060,7 +1060,12 @@ wedge_alarm_via_herdr() {  # <summary>
     jq -e '.result.shown == true' "$out" >/dev/null 2>&1
     case $? in
       0) shown=1 ;;
-      1) reported=not-shown ;;
+      1) if jq -e '(has("error")|not) and (.result|type == "object") and (.result|has("shown"))' \
+           "$out" >/dev/null 2>&1; then
+           reported=not-shown
+         else
+           reported=unreadable
+         fi ;;
       *) reported=unreadable ;;
     esac
   else
