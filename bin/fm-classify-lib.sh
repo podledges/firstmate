@@ -432,6 +432,52 @@ status_paused_until() {  # <status-line> -> epoch on stdout
   fm_utc_iso_to_epoch "$token"
 }
 
+# --- optional declared background-job group ---------------------------------
+# A worker waiting on its OWN background job NAMES that job, by writing its
+# PROCESS GROUP id in a "[job=<id>]" tag before the first colon - the same
+# bracketed-tag position [at=...] and [key=...] occupy, so verb, key, note and
+# time readers are unaffected:
+#   paused [job=4821] [at=1788576000]: background render until 8 videos exist
+# bin/fm-brief.sh owns the instruction that tells a worker to start the job in
+# its own process group and write that group here; bin/fm-teardown.sh is the
+# reader that must not destroy a job still running under one. A group and never
+# a bare pid, because the cleanup this guards finds processes by working
+# directory, not by ancestry: when a launcher exits, its renders are reparented
+# to init and no pid link back to the declaration survives, while the group id
+# they still carry does.
+# The tag exists because process topology cannot tell an idle agent tree from a
+# background job running inside it: the declaration is the only thing that
+# knows which process is the work. A declaration naming NO group names no job,
+# and nothing here guesses one for it.
+# Only the head is read, and where the head ends comes from the shared
+# _fm_status_unstamped rule rather than a naive split on the first colon: a
+# worker may write a readable time like "[at=2026-11-17T10:30Z]", whose colons
+# would otherwise end the head mid-tag and hide the job declaration behind it.
+# Hiding it is the destroy direction, which the three-way return exists to
+# prevent. A "[job=" byte run that appears solely in the note is ordinary prose
+# - a worker writing "waiting on CI [job=1234] to finish" declared nothing -
+# and must never be mistaken for a declaration that then holds teardown forever.
+# The id is canonical unsigned decimal (no leading zero), greater than 1, at
+# most 10 digits. Return codes are three-way on purpose: 0 with the id, 1 when
+# the line names no job at all, and 2 when it tried to and the tag cannot be
+# read. The caller must not collapse 2 into 1 - the worker said it had
+# something to protect, so destroying it is the one outcome worse than refusing.
+FM_CLASSIFY_JOB_ID_MAX_DIGITS=10
+status_declared_job_group() {  # <status-line> -> group id; 1 none; 2 unreadable
+  local unstamped head rest id
+  _fm_status_unstamped "$1" unstamped
+  case "$unstamped" in *:*) head=${unstamped%%:*} ;; *) head=$unstamped ;; esac
+  case "$head" in *\[job=*) ;; *) return 1 ;; esac
+  case "$head" in *\[job=*\]*) ;; *) return 2 ;; esac
+  rest=${head#*\[job=}
+  id=${rest%%\]*}
+  case "${rest#*\]}" in *\[job=*) return 2 ;; esac
+  case "$id" in ''|*[!0-9]*|0*) return 2 ;; esac
+  [ "${#id}" -le "$FM_CLASSIFY_JOB_ID_MAX_DIGITS" ] || return 2
+  [ "$id" -gt 1 ] || return 2
+  printf '%s' "$id"
+}
+
 # --- optional event emission time -------------------------------------------
 # New writers may append "[at=<epoch>]" before the first colon, alongside key
 # and corr tags in any order. Epoch is UTC Unix seconds: canonical unsigned

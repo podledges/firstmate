@@ -150,17 +150,6 @@ esac
 . "$SCRIPT_DIR/fm-classify-lib.sh"
 # shellcheck source=bin/fm-dod-lib.sh
 . "$SCRIPT_DIR/fm-dod-lib.sh"
-PAUSED_VERB=${FM_CLASSIFY_PAUSED_VERB:-$FM_CLASSIFY_PAUSED_VERB_DEFAULT}
-IFS= read -r -d '' CREWMATE_PAUSE_INSTRUCTIONS <<EOF || true
-   Use \`$PAUSED_VERB: {why}\` - distinct from \`blocked:\` - when deliberately waiting for work or an external condition expected to clear on its own, including your own validation round.
-   Before ending your turn with your own background shell or monitor still running, or before waiting on your own pipeline run or a long foreground command, append \`$PAUSED_VERB [at=<epoch>]: {job and completion condition}\` to the status file.
-   Name what you are waiting for and what will let you resume; do not repeat the declaration on every poll.
-   Do not declare active implementation or reasoning as a wait.
-   Firstmate may still raise one first-sight alert; the declared wait then uses the existing long recheck cadence instead of repeated possible-wedge alarms.
-   When you know when the wait clears, include \`until <YYYY-MM-DDTHH:MMZ>\` (UTC) for a recheck at that time.
-   Follow the resolution rule below when the wait clears, then resume the task.
-   Use \`blocked:\` when you are stuck and need help.
-EOF
 
 resolve_directory_input() {
   local name=$1 path=$2 resolved
@@ -359,6 +348,22 @@ shell_quote() {
 }
 
 STATUS_FILE=$(shell_quote "$STATE/$ID.status")
+JOB_PGID_FILE="\${TMPDIR:-/tmp}/fm-job-pgid-$ID"
+PAUSED_VERB=${FM_CLASSIFY_PAUSED_VERB:-$FM_CLASSIFY_PAUSED_VERB_DEFAULT}
+IFS= read -r -d '' CREWMATE_PAUSE_INSTRUCTIONS <<EOF || true
+   Use \`$PAUSED_VERB: {why}\` - distinct from \`blocked:\` - when deliberately waiting for work or an external condition expected to clear on its own, including your own validation round.
+   Before ending your turn with your own background shell or monitor still running, or before waiting on your own pipeline run or a long foreground command, append \`$PAUSED_VERB [at=<epoch>]: {job and completion condition}\` to the status file.
+   When that job is a process of your own - a background command, a render, a build - start it in its OWN process group and have the job report that group from inside itself, so you never read a group the job does not have yet: \`rm -f $JOB_PGID_FILE; perl -MPOSIX=setsid -e 'setsid() >= 0 or exit 1; exec @ARGV' sh -c 'echo \$\$ > $JOB_PGID_FILE; exec <command>' &\` (perl, not \`setsid\`, which stock macOS does not ship).
+   The clear is what makes the next step honest - that path is reused by every launch of this task, so without it you would read the PREVIOUS job's group and declare a group that is already dead.
+   Wait until $JOB_PGID_FILE is NON-EMPTY, then add \`[job=<the id in it>]\` before the colon. Still empty means the job never got its own group - fix the launch; never declare an empty \`[job=]\`, which refuses your own teardown until a human rewrites the line.
+   Cleanup can only preserve a background job the declaration names, and only a process group keeps naming it after its launcher exits and leaves the real work running. Read the group from \`\$!\` instead and you may record the group this agent runs in, which protects nothing and blocks your own teardown. That scratch path is outside the worktree on purpose: an untracked file left in the tree makes the task's own teardown refuse it as dirty.
+   Name what you are waiting for and what will let you resume; do not repeat the declaration on every poll.
+   Do not declare active implementation or reasoning as a wait.
+   Firstmate may still raise one first-sight alert; the declared wait then uses the existing long recheck cadence instead of repeated possible-wedge alarms.
+   When you know when the wait clears, include \`until <YYYY-MM-DDTHH:MMZ>\` (UTC) for a recheck at that time.
+   Follow the resolution rule below when the wait clears, then resume the task.
+   Use \`blocked:\` when you are stuck and need help.
+EOF
 # The worker's status command: the plain append always carries the line, then
 # the opt-in fleet ledger (docs/fleet-ledger.md) records it at once, costing one
 # file test when the flag is absent. A host without that flag, such as a remote
