@@ -2033,15 +2033,13 @@ if [ "$OUTPUT_MODE" = contribution-input ]; then
   exit 0
 fi
 prefetch_task_current_states || { echo "fm-fleet-snapshot: task observation failed" >&2; exit 1; }
-TASKS_JSON=$(task_json_lines) || { echo "fm-fleet-snapshot: task snapshot failed" >&2; exit 1; }
-
 TASKS_JSON_FILE="$JSON_TRANSPORT_DIR/tasks.json"
 MAIN_INVENTORY_JSON_FILE="$JSON_TRANSPORT_DIR/main-inventory.json"
 SCOUT_REPORTS_JSON_FILE="$JSON_TRANSPORT_DIR/scout-reports.json"
 SECONDMATE_CURRENT_JSON_FILE="$JSON_TRANSPORT_DIR/secondmate-current.json"
 SECONDMATE_LANDED_JSON_FILE="$JSON_TRANSPORT_DIR/secondmate-landed.json"
-printf '%s\n' "$TASKS_JSON" > "$TASKS_JSON_FILE" \
-  || { echo "fm-fleet-snapshot: temporary task file write failed" >&2; exit 1; }
+task_json_lines > "$TASKS_JSON_FILE" \
+  || { echo "fm-fleet-snapshot: task snapshot failed" >&2; exit 1; }
 
 CONTRIBUTIONS_JSON_FILE="$JSON_TRANSPORT_DIR/contributions.json"
 contribution_input_json > "$JSON_TRANSPORT_DIR/contribution-input.json" || exit 1
