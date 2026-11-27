@@ -742,13 +742,14 @@ prefetch_task_current_states() {
   fi
 }
 
-task_json_lines() {
+task_json_lines() (
   local meta original_meta id kind harness mode yolo project worktree home projects spawn_gen backend target status_log report_path
   local remote_host remote_root current_file endpoint_file observation_line index=0
   local pr pr_source event_json current_json endpoint_exists agent_alive meta_json status_json report_json worktree_json home_json
   local last_event_raw current_state current_source pending_decision blocked_event report_present=0 pr_from_status
-  local open_decisions_tsv open_decisions_json
+  local open_decisions_tsv open_decisions_json rows_file
 
+  rows_file="$JSON_TRANSPORT_DIR/task-rows.jsonl"
   while [ "$index" -lt "$SNAPSHOT_TASK_META_COUNT" ]; do
     meta=${SNAPSHOT_TASK_METAS[index]}
     index=$((index + 1))
@@ -931,9 +932,10 @@ task_json_lines() {
              steer:"bin/fm-send.sh fm-\($id) \u0027<instruction>\u0027",
              return_channel_note:null}
           end)
-      }'
-  done | jq -s 'sort_by(.id)'
-}
+      }' || exit 1
+  done > "$rows_file"
+  jq -s 'sort_by(.id)' "$rows_file"
+)
 
 # Main-home current-inventory validity: same orphan / unstructured-current checks
 # used by secondmate_home_summary_json, without inventing live task rows.
@@ -1963,19 +1965,19 @@ secondmate_landed_from_current_json() {  # <secondmate-current-json-file> <outpu
 }
 
 scout_report_lines() (
-  local report id
+  local report id list_file rows_file
   if [ ! -d "$DATA" ]; then
     jq -n '[]'
     return 0
   fi
-  set -o pipefail
-  LC_ALL=C find "$DATA" -mindepth 2 -maxdepth 2 -type f -name report.md -print \
-    | sort \
-    | while IFS= read -r report; do
-      id=$(basename "$(dirname "$report")")
-      jq -n --arg id "$id" --arg path "$report" '{id:$id,path:$path}' || exit 1
-    done \
-    | jq -s 'sort_by(.id)'
+  list_file="$JSON_TRANSPORT_DIR/scout-report-paths.txt"
+  rows_file="$JSON_TRANSPORT_DIR/scout-report-rows.jsonl"
+  LC_ALL=C find "$DATA" -mindepth 2 -maxdepth 2 -type f -name report.md -print > "$list_file" || true
+  while IFS= read -r report; do
+    id=$(basename "$(dirname "$report")")
+    jq -n --arg id "$id" --arg path "$report" '{id:$id,path:$path}' || exit 1
+  done < "$list_file" > "$rows_file"
+  jq -s 'sort_by(.id)' "$rows_file"
 )
 
 # The fleet-sized composed payloads - the backlog, the task snapshot, the
@@ -2000,8 +2002,8 @@ backlog_json > "$BACKLOG_JSON_FILE" \
   || { echo "fm-fleet-snapshot: backlog read failed" >&2; exit 1; }
 
 contribution_tasks_json() (
-  local meta id merge_authority
-  set -o pipefail
+  local meta id merge_authority rows_file
+  rows_file="$JSON_TRANSPORT_DIR/contribution-task-rows.jsonl"
   for meta in "$STATE"/*.meta; do
     [ -f "$meta" ] && [ ! -L "$meta" ] || continue
     id=$(basename "$meta" .meta)
@@ -2013,7 +2015,8 @@ contribution_tasks_json() (
       --arg url "$(meta_value "$meta" pr)" --arg head "$(meta_value "$meta" pr_head)" \
       --arg merge_authority "$merge_authority" '{id:$id,kind:$kind,pr:{url:$url,head:$head},merge_authority:$merge_authority}' \
       || exit 1
-  done | jq -s .
+  done > "$rows_file"
+  jq -s . "$rows_file"
 )
 
 contribution_input_json() {
