@@ -18,8 +18,9 @@ Channels fire in configured order, and a channel that several directives resolve
   Other platforms have no built-in OS channel, so configure `command:` when a durable marker alone is insufficient.
 - `osascript` posts a macOS Notification Center banner outside the terminal pane.
   Notification Center permissions can suppress that banner even when `osascript` exits successfully, which is why a macOS Herdr primary also receives the Herdr channel.
-- `herdr` calls `herdr notification show` outside the supervised pane and counts it as delivered only when Herdr reports `shown: true`.
-  Reading that result needs `jq`; when `jq` is missing or Herdr's result is unreadable the notification is still posted and the log says delivery is unconfirmed rather than attributing a suppression to Herdr.
+- `herdr` calls `herdr notification show` outside the supervised pane and records the alert as confirmed only when Herdr reports `shown: true`.
+  That result annotates the alarm log: like every channel the alert is fired best-effort, and an unconfirmed Herdr notification is neither retried nor escalated to another channel.
+  Reading the result needs `jq`; a missing `jq` and an unreadable Herdr result are logged as separate unconfirmed outcomes, never as a suppression Herdr reported.
 - `command:<cmd>` runs `<cmd>` through `sh -c` with the alarm summary as `$1` and on stdin, allowing delivery to a phone or pager service.
 
 An absent `config/wedge-alarm` behaves as `auto`, which is default-on on macOS.

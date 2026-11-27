@@ -815,7 +815,7 @@ Observed output:
 A direct macOS `display notification` probe on 2026-10-25 exited successfully but produced no visible banner.
 The unified Notification Center log recorded the notification as `shouldDeliver: true` and then `notificationsAllowed: false` for `com.apple.ScriptEditor2`, proving that `osascript` success alone is not visible-delivery proof on this machine.
 An isolated Herdr notification probe separately returned `{"reason":"disabled","shown":false}`.
-The default macOS alarm therefore keeps the Notification Center attempt and, for a Herdr primary, also fires the independent Herdr UI channel; Firstmate accepts that channel only when Herdr reports `shown: true`.
+The default macOS alarm therefore keeps the Notification Center attempt and, for a Herdr primary, also fires the independent Herdr UI channel; Firstmate records that channel as confirmed only when Herdr reports `shown: true`, and logs an unconfirmed result otherwise.
 A captain who needs delivery beyond the machine should still configure the documented `command:` phone or pager channel.
 
 The safe command-channel contract is covered without a notification by `tests/fm-daemon.test.sh`: the summary reaches both `$1` and stdin, every channel is process-group bounded, and a failed channel falls through.

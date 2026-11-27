@@ -1054,22 +1054,26 @@ wedge_alarm_via_herdr() {  # <summary>
   wedge_alarm_run_bounded herdr herdr notification show "firstmate: away-mode escalations WEDGED" \
     --body "$summary" --sound request >"$out" 2>/dev/null
   rc=$?
-  if [ "$rc" -eq 0 ] && command -v jq >/dev/null 2>&1; then
+  if [ "$rc" -ne 0 ]; then
+    reported=failed
+  elif command -v jq >/dev/null 2>&1; then
     jq -e '.result.shown == true' "$out" >/dev/null 2>&1
     case $? in
       0) shown=1 ;;
       1) reported=not-shown ;;
+      *) reported=unreadable ;;
     esac
+  else
+    reported=no-jq
   fi
   rm -f "$out"
   [ "$shown" -eq 1 ] && return 0
-  if [ "$rc" -ne 0 ]; then
-    log "wedge alarm: herdr notification failed"
-  elif [ "$reported" = not-shown ]; then
-    log "wedge alarm: herdr reported that the notification was not shown"
-  else
-    log "wedge alarm: herdr exited 0 but its notification result was unreadable; delivery is unconfirmed"
-  fi
+  case "$reported" in
+    not-shown) log "wedge alarm: herdr reported that the notification was not shown" ;;
+    no-jq) log "wedge alarm: herdr exited 0 but delivery cannot be confirmed (jq not found)" ;;
+    unreadable) log "wedge alarm: herdr exited 0 but its notification result was unreadable; delivery is unconfirmed" ;;
+    *) log "wedge alarm: herdr notification failed" ;;
+  esac
   return 1
 }
 
