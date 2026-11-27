@@ -2951,15 +2951,23 @@ test_wedge_alarm_auto_records_an_unavailable_herdr_channel() {
   # herdr keeps only the osascript banner, which docs/verification/supervision.md
   # records Notification Center can silently suppress, so the alarm must say the
   # independent Herdr channel was unavailable instead of skipping it in silence.
-  local dir log daemon_log
+  # The captain hosts this protects are exactly the ones that HAVE herdr
+  # installed, so the case must stage the missing channel rather than skip
+  # wherever the developer's own PATH can resolve herdr: drop every PATH entry
+  # holding a herdr executable. The notifier the case does reach is osascript,
+  # whose fake lives in $dir/fakebin, so the pruning cannot take its tools away.
+  local dir log daemon_log entry pruned=
   dir=$(make_wedge_case wedge-auto-no-herdr); log="$dir/alert.log"
   daemon_log="$dir/daemon.log"
   rm -f "$dir/fakebin/herdr"
-  if PATH="$dir/fakebin:$PATH" command -v herdr >/dev/null 2>&1; then
-    echo "skip: herdr resolves on this host, so an unresolvable Herdr channel cannot be staged"
-    return 0
-  fi
-  PATH="$dir/fakebin:$PATH" FM_WEDGE_ALARM_LOG="$log" LOG="$daemon_log" FM_FAKE_UNAME=Darwin \
+  while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+    [ -x "$entry/herdr" ] && continue
+    pruned="${pruned:+$pruned:}$entry"
+  done <<<"${PATH//:/$'\n'}"
+  PATH="$dir/fakebin:$pruned" command -v herdr >/dev/null 2>&1 \
+    && fail "could not stage an unresolvable herdr: it still resolves after pruning PATH"
+  PATH="$dir/fakebin:$pruned" FM_WEDGE_ALARM_LOG="$log" LOG="$daemon_log" FM_FAKE_UNAME=Darwin \
     FM_WEDGE_ALARM_CHANNEL=auto FM_SUPERVISOR_BACKEND=herdr \
     wedge_alarm_notify "away-mode WEDGED 900s" "/s/.marker"
   grep -F 'osascript' "$log" >/dev/null \
