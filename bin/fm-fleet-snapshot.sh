@@ -742,13 +742,14 @@ prefetch_task_current_states() {
   fi
 }
 
-task_json_lines() {
+task_json_lines() (
   local meta original_meta id kind harness mode yolo project worktree home projects spawn_gen backend target status_log report_path
   local remote_host remote_root current_file endpoint_file observation_line index=0
   local pr pr_source event_json current_json endpoint_exists agent_alive meta_json status_json report_json worktree_json home_json
   local last_event_raw current_state current_source pending_decision blocked_event report_present=0 pr_from_status
-  local open_decisions_tsv open_decisions_json
+  local open_decisions_tsv open_decisions_json rows_file
 
+  rows_file="$JSON_TRANSPORT_DIR/task-rows.jsonl"
   while [ "$index" -lt "$SNAPSHOT_TASK_META_COUNT" ]; do
     meta=${SNAPSHOT_TASK_METAS[index]}
     index=$((index + 1))
@@ -931,9 +932,10 @@ task_json_lines() {
              steer:"bin/fm-send.sh fm-\($id) \u0027<instruction>\u0027",
              return_channel_note:null}
           end)
-      }'
-  done | jq -s 'sort_by(.id)'
-}
+      }' || exit 1
+  done > "$rows_file"
+  jq -s 'sort_by(.id)' "$rows_file"
+)
 
 # Main-home current-inventory validity: same orphan / unstructured-current checks
 # used by secondmate_home_summary_json, without inventing live task rows.
@@ -1962,24 +1964,48 @@ secondmate_landed_from_current_json() {  # <secondmate-current-json-file> <outpu
     | .records |= sort_by([(.completion.date // ""), .id]) | .records |= reverse' > "$2"
 }
 
-scout_report_lines() {
-  local report id
+scout_report_lines() (
+  local report id list_file rows_file
   if [ ! -d "$DATA" ]; then
     jq -n '[]'
     return 0
   fi
-  LC_ALL=C find "$DATA" -mindepth 2 -maxdepth 2 -type f -name report.md -print \
-    | sort \
-    | while IFS= read -r report; do
-      id=$(basename "$(dirname "$report")")
-      jq -n --arg id "$id" --arg path "$report" '{id:$id,path:$path}'
-    done \
-    | jq -s 'sort_by(.id)'
-}
+  list_file="$JSON_TRANSPORT_DIR/scout-report-paths.txt"
+  rows_file="$JSON_TRANSPORT_DIR/scout-report-rows.jsonl"
+  LC_ALL=C find "$DATA" -mindepth 2 -maxdepth 2 -type f -name report.md -print > "$list_file" || true
+  while IFS= read -r report; do
+    id=$(basename "$(dirname "$report")")
+    jq -n --arg id "$id" --arg path "$report" '{id:$id,path:$path}' || exit 1
+  done < "$list_file" > "$rows_file"
+  jq -s 'sort_by(.id)' "$rows_file"
+)
 
-BACKLOG_JSON=$(backlog_json) || { echo "fm-fleet-snapshot: backlog read failed" >&2; exit 1; }
-contribution_tasks_json() {
-  local meta id merge_authority
+# The fleet-sized composed payloads - the backlog, the task snapshot, the
+# contribution input, and the aggregated registered-home summaries - reach jq
+# through --slurpfile, never through --argjson or another argv/environment
+# argument: at current fleet size they exceed the host argument limit and jq
+# dies with "Argument list too long". The per-task and per-home supplements
+# above stay on argv because each one is bounded by a single task's own record
+# set - activity scans by FM_SNAPSHOT_PARENT_ACTIVITIES and
+# FM_SNAPSHOT_PARENT_ACTIVITY_BYTES, open decisions by that task's keyed
+# decision fold - so none of them grows with the fleet. The transport directory
+# is created for every output mode, including --contribution-input, because that
+# mode composes a payload of the same size.
+# tests/fm-fleet-snapshot-view.test.sh pins the invariant: it drives an
+# oversized fleet through every output mode, and two argv counterfactuals - one
+# on the --contribution-input backlog/tasks pair, one on the aggregated
+# registered-home summaries - prove that those same payloads really do overflow
+# the host argument limit.
+JSON_TRANSPORT_DIR=$(mktemp -d "${TMPDIR:-/tmp}/fm-fleet-snapshot.XXXXXX") \
+  || { echo "fm-fleet-snapshot: temporary transport directory creation failed" >&2; exit 1; }
+BACKLOG_JSON_FILE="$JSON_TRANSPORT_DIR/backlog.json"
+CONTRIBUTION_TASKS_JSON_FILE="$JSON_TRANSPORT_DIR/contribution-tasks.json"
+backlog_json > "$BACKLOG_JSON_FILE" \
+  || { echo "fm-fleet-snapshot: backlog read failed" >&2; exit 1; }
+
+contribution_tasks_json() (
+  local meta id merge_authority rows_file
+  rows_file="$JSON_TRANSPORT_DIR/contribution-task-rows.jsonl"
   for meta in "$STATE"/*.meta; do
     [ -f "$meta" ] && [ ! -L "$meta" ] || continue
     id=$(basename "$meta" .meta)
@@ -1989,39 +2015,36 @@ contribution_tasks_json() {
     fi
     jq -n --arg id "$id" --arg kind "$(meta_value "$meta" kind)" \
       --arg url "$(meta_value "$meta" pr)" --arg head "$(meta_value "$meta" pr_head)" \
-      --arg merge_authority "$merge_authority" '{id:$id,kind:$kind,pr:{url:$url,head:$head},merge_authority:$merge_authority}'
-  done | jq -s .
+      --arg merge_authority "$merge_authority" '{id:$id,kind:$kind,pr:{url:$url,head:$head},merge_authority:$merge_authority}' \
+      || exit 1
+  done > "$rows_file"
+  jq -s . "$rows_file"
+)
+
+contribution_input_json() {
+  contribution_tasks_json > "$CONTRIBUTION_TASKS_JSON_FILE" \
+    || { echo "fm-fleet-snapshot: contribution task read failed" >&2; return 1; }
+  jq -n --slurpfile backlog "$BACKLOG_JSON_FILE" --slurpfile tasks "$CONTRIBUTION_TASKS_JSON_FILE" \
+    '{backlog:$backlog[0],tasks:$tasks[0]}' \
+    || { echo "fm-fleet-snapshot: contribution input composition failed" >&2; return 1; }
 }
 
 if [ "$OUTPUT_MODE" = contribution-input ]; then
   # Reuse the canonical backlog parser, without observing workers or other homes.
-  contribution_tasks=$(contribution_tasks_json) || { echo "fm-fleet-snapshot: contribution task read failed" >&2; exit 1; }
-  jq -n --argjson backlog "$BACKLOG_JSON" --argjson tasks "$contribution_tasks" '{backlog:$backlog,tasks:$tasks}'
+  contribution_input_json || exit 1
   exit 0
 fi
 prefetch_task_current_states || { echo "fm-fleet-snapshot: task observation failed" >&2; exit 1; }
-TASKS_JSON=$(task_json_lines) || { echo "fm-fleet-snapshot: task snapshot failed" >&2; exit 1; }
-
-JSON_TRANSPORT_DIR=$(mktemp -d "${TMPDIR:-/tmp}/fm-fleet-snapshot.XXXXXX") \
-  || { echo "fm-fleet-snapshot: temporary transport directory creation failed" >&2; exit 1; }
-BACKLOG_JSON_FILE="$JSON_TRANSPORT_DIR/backlog.json"
 TASKS_JSON_FILE="$JSON_TRANSPORT_DIR/tasks.json"
 MAIN_INVENTORY_JSON_FILE="$JSON_TRANSPORT_DIR/main-inventory.json"
 SCOUT_REPORTS_JSON_FILE="$JSON_TRANSPORT_DIR/scout-reports.json"
 SECONDMATE_CURRENT_JSON_FILE="$JSON_TRANSPORT_DIR/secondmate-current.json"
 SECONDMATE_LANDED_JSON_FILE="$JSON_TRANSPORT_DIR/secondmate-landed.json"
-printf '%s\n' "$BACKLOG_JSON" > "$BACKLOG_JSON_FILE" \
-  || { echo "fm-fleet-snapshot: temporary backlog file write failed" >&2; exit 1; }
-printf '%s\n' "$TASKS_JSON" > "$TASKS_JSON_FILE" \
-  || { echo "fm-fleet-snapshot: temporary task file write failed" >&2; exit 1; }
+task_json_lines > "$TASKS_JSON_FILE" \
+  || { echo "fm-fleet-snapshot: task snapshot failed" >&2; exit 1; }
 
 CONTRIBUTIONS_JSON_FILE="$JSON_TRANSPORT_DIR/contributions.json"
-CONTRIBUTION_TASKS_JSON=$(contribution_tasks_json) \
-  || { echo "fm-fleet-snapshot: contribution task read failed" >&2; exit 1; }
-printf '%s\n' "$CONTRIBUTION_TASKS_JSON" > "$JSON_TRANSPORT_DIR/contribution-tasks.json" \
-  || { echo "fm-fleet-snapshot: contribution task staging failed" >&2; exit 1; }
-jq -n --slurpfile backlog "$BACKLOG_JSON_FILE" --slurpfile tasks "$JSON_TRANSPORT_DIR/contribution-tasks.json" \
-  '{backlog:$backlog[0],tasks:$tasks[0]}' > "$JSON_TRANSPORT_DIR/contribution-input.json"
+contribution_input_json > "$JSON_TRANSPORT_DIR/contribution-input.json" || exit 1
 FM_CONTRIBUTIONS_NOW="$SNAPSHOT_NOW" "$SCRIPT_DIR/fm-contributions.sh" snapshot \
   "$JSON_TRANSPORT_DIR/contribution-input.json" > "$CONTRIBUTIONS_JSON_FILE" \
   || { echo "fm-fleet-snapshot: contribution coverage unavailable" >&2; exit 1; }
