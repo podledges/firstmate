@@ -2865,6 +2865,24 @@ test_wedge_alarm_auto_darwin_herdr_adds_independent_channel() {
   pass "auto on a macOS Herdr primary fires both independent alert channels"
 }
 
+test_wedge_alarm_auto_herdr_without_osascript_still_alerts() {
+  # A Herdr primary whose daemon PATH cannot resolve osascript (a stripped
+  # launchd PATH) still gets the independent Herdr banner, so the alarm must
+  # never record that the durable marker was its only signal.
+  local dir log daemon_log
+  dir=$(make_wedge_case wedge-auto-herdr-no-osascript); log="$dir/alert.log"
+  daemon_log="$dir/daemon.log"
+  rm -f "$dir/fakebin/osascript"
+  PATH="$dir/fakebin:$PATH" FM_WEDGE_ALARM_LOG="$log" LOG="$daemon_log" FM_FAKE_UNAME=Darwin \
+    FM_WEDGE_ALARM_CHANNEL=auto FM_SUPERVISOR_BACKEND=herdr \
+    wedge_alarm_notify "away-mode WEDGED 900s" "/s/.marker"
+  grep -F 'herdr' "$log" >/dev/null \
+    || fail "an unresolvable osascript suppressed the independent Herdr channel: $(cat "$log")"
+  grep -F 'only signal' "$daemon_log" >/dev/null 2>&1 \
+    && fail "the alarm claimed the marker was its only signal while it fired herdr: $(cat "$daemon_log")"
+  pass "auto still alerts through herdr when osascript is unresolvable, without claiming the marker was alone"
+}
+
 test_wedge_alarm_auto_plus_herdr_fires_herdr_once() {
   local dir log
   dir=$(make_wedge_case wedge-auto-plus-herdr); log="$dir/alert.log"
@@ -3447,6 +3465,7 @@ test_wedge_alarm_unknown_channel_hides_configured_directive
 test_wedge_alarm_off_disables_active_alert_regardless_of_position
 test_wedge_alarm_auto_darwin_selects_osascript
 test_wedge_alarm_auto_darwin_herdr_adds_independent_channel
+test_wedge_alarm_auto_herdr_without_osascript_still_alerts
 test_wedge_alarm_auto_plus_herdr_fires_herdr_once
 test_wedge_alarm_auto_non_darwin_has_no_os_channel
 test_wedge_alarm_config_file_multi_channel
