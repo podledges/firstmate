@@ -1984,12 +1984,14 @@ scout_report_lines() (
 # contribution input, and the aggregated registered-home summaries - reach jq
 # through --slurpfile, never through --argjson or another argv/environment
 # argument: at current fleet size they exceed the host argument limit and jq
-# dies with "Argument list too long". The per-task supplements above stay on
-# argv because FM_SNAPSHOT_PARENT_ACTIVITIES and
-# FM_SNAPSHOT_PARENT_ACTIVITY_BYTES cap each one to a fixed record budget that
-# does not grow with the fleet. The transport directory is created for every
-# output mode, including --contribution-input, because that mode composes a
-# payload of the same size. tests/fm-fleet-snapshot-view.test.sh pins the
+# dies with "Argument list too long". The per-task and per-home supplements
+# above stay on argv because each one is bounded by a single task's own record
+# set - activity scans by FM_SNAPSHOT_PARENT_ACTIVITIES and
+# FM_SNAPSHOT_PARENT_ACTIVITY_BYTES, open decisions by that task's keyed
+# decision fold - so none of them grows with the fleet. The transport directory
+# is created for every output mode, including --contribution-input, because that
+# mode composes a payload of the same size.
+# tests/fm-fleet-snapshot-view.test.sh pins the
 # invariant: it drives an oversized fleet through every output mode, and two
 # argv counterfactuals - one on the --contribution-input backlog/tasks pair, one
 # on the aggregated registered-home summaries - prove that those same payloads
