@@ -1,0 +1,15 @@
+######## D. a path under $DATA vanishes/becomes unreadable mid-scan (find exits 1) ########
+--- find's own behaviour on this home ---
+find exit=1
+bfs: error: /tmp/fm-repro.b4JhBH/small/data/locked-dir: Permission denied.
+rows found: 2
+
+--- TARGET (71e4e6a) default snapshot ---
+exit=0
+stderr: find: '/tmp/fm-repro.b4JhBH/small/data/locked-dir': Permission denied
+{"schema":"fm-fleet-snapshot.v1","tasks":10,"scout_reports":2}
+
+--- counterfactual: intermediate fix round d991e04 (pipefail also covered find) ---
+exit=1
+stderr: fm-fleet-snapshot: scout report snapshot failed
+stdout bytes=0

@@ -1,0 +1,10 @@
+######## E. transport dir is now created in every output mode - does it leak? ########
+transport dirs in TMPDIR before: 2
+transport dirs in TMPDIR after 5 runs: 2
+
+--- --secondmate-home-summary output ---
+{"schema":"fm-secondmate-home-summary.v1","valid":false,"queued":1}
+
+--- hard-failure path still cleans up (injected task-row jq failure) ---
+exit=1
+transport dirs after failure run: 2

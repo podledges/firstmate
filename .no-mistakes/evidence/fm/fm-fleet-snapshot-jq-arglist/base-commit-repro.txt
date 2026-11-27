@@ -1,0 +1,12 @@
+=== BASE (d550a2e) bin/fm-fleet-snapshot.sh --contribution-input on a 2458-row fleet home ===
+exit=0
+--- stderr ---
+/tmp/fm-repro.b4JhBH/base-bin/fm-fleet-snapshot.sh: line 1999: /etc/profiles/per-user/podles/bin/jq: Argument list too long
+--- stdout bytes: 0 ---
+
+=== BASE bin/fm-contributions.sh poll (the session-start consumer) ===
+exit=0
+--- stderr ---
+/tmp/fm-repro.b4JhBH/base-bin/fm-fleet-snapshot.sh: line 1999: /etc/profiles/per-user/podles/bin/jq: Argument list too long
+--- stdout (head) ---
+

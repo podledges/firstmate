@@ -1,0 +1,20 @@
+######## A. one task row's jq dies (task-007) ########
+--- TARGET default snapshot ---
+exit=1
+stderr: fm-fleet-snapshot: task snapshot failed
+stdout bytes=0
+--- BASE default snapshot ---
+exit=0
+stderr: 
+stdout bytes=7078528
+{"tasks":23,"ids_missing_007":true}
+
+######## B. one contribution row's jq dies (task-007) ########
+--- TARGET --contribution-input ---
+exit=1
+stderr: fm-fleet-snapshot: contribution task read failed
+stdout bytes=0
+--- BASE --contribution-input ---
+exit=0
+stderr: /tmp/fm-repro.b4JhBH/base-bin/fm-fleet-snapshot.sh: line 1999: /tmp/fm-repro.b4JhBH/jqbin/jq: Argument list too long
+stdout bytes=0

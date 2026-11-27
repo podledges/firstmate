@@ -1,0 +1,22 @@
+=== TARGET (71e4e6a) bin/fm-fleet-snapshot.sh --contribution-input, same home ===
+exit=0
+--- stderr ---
+--- stdout bytes: 7031198 ---
+--- payload shape ---
+{"backlog_records":2458,"tasks":24,"first":"task-000","last":"task-023","merge_authority_everywhere":true}
+
+=== TARGET bin/fm-contributions.sh poll (the session-start consumer) ===
+exit=0
+--- stderr ---
+--- stdout ---
+contributions: observation unavailable for https://github.com/example/example/pull/15
+contributions: observation unavailable for https://github.com/example/example/pull/16
+contributions: observation unavailable for https://github.com/example/example/pull/17
+contributions: observation unavailable for https://github.com/example/example/pull/18
+contributions: observation unavailable for https://github.com/example/example/pull/19
+contributions: observation unavailable for https://github.com/example/example/pull/2
+contributions: observation unavailable for https://github.com/example/example/pull/20
+contributions: observation unavailable for https://github.com/example/example/pull/21
+contributions: observation unavailable for https://github.com/example/example/pull/22
+contributions: observation 
+(base poll stdout bytes: 0; target poll stdout bytes: 1115)

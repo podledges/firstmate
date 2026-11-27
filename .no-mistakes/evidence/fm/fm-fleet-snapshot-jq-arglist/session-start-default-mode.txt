@@ -1,0 +1,21 @@
+=== TARGET bin/fm-fleet-snapshot.sh (default, session-start bootstrap path) ===
+exit=0
+--- stderr ---
+--- stdout bytes: 7080489 (ARG_MAX=2097152) ---
+{"schema":"fm-fleet-snapshot.v1","backlog_records":2458,"tasks":24,"first":"task-000","last":"task-023","contributions_present":true}
+
+=== TARGET bin/fm-fleet-view.sh (what the captain actually sees) ===
+exit=0
+--- stderr ---
+--- view rows task-000 / task-023 present ---
+24
+| task-000 | unknown / pane | ship | alpha | tmux | present | https://github.com/example/example/pull/1 | /tmp/fm-repro.b4JhBH/home/projects/task-000 | bin/fm-peek.sh fm-task-000 |
+| task-023 | unknown / pane | ship | alpha | tmux | present | https://github.com/example/example/pull/24 | /tmp/fm-repro.b4JhBH/home/projects/task-023 | bin/fm-peek.sh fm-task-023 |
+
+=== BASE bin/fm-fleet-snapshot.sh (default) for comparison ===
+exit=0
+--- stderr ---
+--- stdout bytes: 7080434 ---
+{"backlog_records":2458,"tasks":24,"contributions_known":24,"contributions_complete":false}
+--- TARGET same projection ---
+{"backlog_records":2458,"tasks":24,"contributions_known":24,"contributions_complete":false}

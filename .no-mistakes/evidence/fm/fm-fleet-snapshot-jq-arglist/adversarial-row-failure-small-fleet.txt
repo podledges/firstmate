@@ -1,0 +1,28 @@
+######## B2. contribution row jq dies, SMALL fleet (base fits in argv) ########
+--- TARGET --contribution-input ---
+exit=1
+stderr: fm-fleet-snapshot: contribution task read failed
+stdout bytes=0
+--- BASE --contribution-input ---
+exit=0
+stderr: 
+stdout bytes=2997
+{"tasks":9,"has_007":false}
+
+######## C. a scout report row's jq dies (scout-beta) ########
+--- TARGET default snapshot ---
+exit=1
+stderr: fm-fleet-snapshot: scout report snapshot failed
+stdout bytes=0
+--- BASE default snapshot ---
+exit=0
+stderr: 
+stdout bytes=24989
+{"tasks":10,"has_007":true,"scout_reports":1}
+
+######## baseline: same small home, no injected failure ########
+--- TARGET default snapshot (clean) ---
+exit=0
+stderr: 
+stdout bytes=25175
+{"tasks":10,"has_007":true,"scout_reports":2}
