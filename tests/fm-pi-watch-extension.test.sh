@@ -4272,7 +4272,7 @@ async function waitFor(pred, label, attempts = 250) {
   throw new Error(`timeout waiting for ${label}`);
 }
 
-function liveArmPids() {
+function armPids() {
   if (!existsSync(process.env.FM_ARM_LOG)) return [];
   return readFileSync(process.env.FM_ARM_LOG, "utf8")
     .trim()
@@ -4282,8 +4282,22 @@ function liveArmPids() {
       const match = /pid=(\d+)/.exec(line);
       return match ? match[1] : "";
     })
-    .filter(Boolean)
-    .filter(pidAlive);
+    .filter(Boolean);
+}
+
+function liveArmPids() {
+  return armPids().filter(pidAlive);
+}
+
+// The fake arm publishes its pid file before appending its arm-log row, so a
+// fresh child pid on its own does not prove the row is readable yet - and every
+// wait below is followed by an arm-log assertion. Treat a cycle as observable
+// only once the newest arm row names the child the pid file records.
+function armedChild() {
+  if (!existsSync(process.env.FM_CHILD_PID_FILE)) return "";
+  const child = readFileSync(process.env.FM_CHILD_PID_FILE, "utf8").trim();
+  const rows = armPids();
+  return child && rows[rows.length - 1] === child ? child : "";
 }
 
 function armCount() {
@@ -4352,8 +4366,7 @@ async function replaceSession(previous, reason) {
     previousSessionFile: `/tmp/previous-${reason}.jsonl`,
   }, {});
   await waitFor(() => {
-    if (!existsSync(process.env.FM_CHILD_PID_FILE)) return false;
-    const child = readFileSync(process.env.FM_CHILD_PID_FILE, "utf8").trim();
+    const child = armedChild();
     return child && child !== previousChild && pidAlive(child);
   }, `${reason} auto first cycle`);
   if (armCount() !== before + 1) {
@@ -4377,9 +4390,8 @@ await current.handlers.get("session_shutdown")?.({ type: "session_shutdown", rea
 if (!pidAlive(sameInstanceChild)) throw new Error("same-instance predecessor retired before activation");
 await current.handlers.get("session_start")?.({ type: "session_start", reason: "new" }, {});
 await waitFor(() => {
-  if (!existsSync(process.env.FM_CHILD_PID_FILE)) return false;
-  const child = readFileSync(process.env.FM_CHILD_PID_FILE, "utf8").trim();
-  return child !== sameInstanceChild && pidAlive(child);
+  const child = armedChild();
+  return child && child !== sameInstanceChild && pidAlive(child);
 }, "same-instance auto first cycle");
 await waitFor(() => !pidAlive(sameInstanceChild), "same-instance predecessor retired after successor");
 if (liveArmPids().length !== 1) {
@@ -4435,8 +4447,7 @@ mod.default(sourcePi.pi);
 setNeed("source");
 await sourcePi.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, {});
 await waitFor(() => {
-  if (!existsSync(process.env.FM_CHILD_PID_FILE)) return false;
-  const child = readFileSync(process.env.FM_CHILD_PID_FILE, "utf8").trim();
+  const child = armedChild();
   return child && child !== relayChild && pidAlive(child);
 }, "process-event first cycle");
 await waitFor(() => !pidAlive(relayChild), "Relay predecessor retired after source successor");

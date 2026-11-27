@@ -9,13 +9,18 @@ The durable marker and tmux flash remain as additional signals.
 
 `config/wedge-alarm` is local and gitignored.
 It lists channel directives, one per non-empty, non-comment line, and every listed non-`off` channel fires best-effort.
+Channels fire in configured order, and a channel that several directives resolve to (for example `auto` plus `herdr` on a macOS Herdr primary) fires only once per alarm.
 `FM_WEDGE_ALARM_CHANNEL` overrides the file with one directive for focused testing.
 
 - `off` disables every active alert while retaining the durable marker and tmux flash.
 - `auto` or `default` resolves to `osascript` on macOS.
+  On macOS it additionally fires the independent `herdr` channel when the supervisor backend is herdr and `herdr` is on `PATH`, because macOS may accept an AppleScript notification while suppressing its banner.
   Other platforms have no built-in OS channel, so configure `command:` when a durable marker alone is insufficient.
 - `osascript` posts a macOS Notification Center banner outside the terminal pane.
-- `herdr` calls `herdr notification show` outside the supervised pane.
+  Notification Center permissions can suppress that banner even when `osascript` exits successfully, which is why a macOS Herdr primary also receives the Herdr channel.
+- `herdr` calls `herdr notification show` outside the supervised pane and records the alert as confirmed only when Herdr reports `shown: true`.
+  That result annotates the alarm log: like every channel the alert is fired best-effort, and an unconfirmed Herdr notification is neither retried nor escalated to another channel.
+  Reading the result needs `jq`; a missing `jq` and an unreadable Herdr result are logged as separate unconfirmed outcomes, never as a suppression Herdr reported.
 - `command:<cmd>` runs `<cmd>` through `sh -c` with the alarm summary as `$1` and on stdin, allowing delivery to a phone or pager service.
 
 An absent `config/wedge-alarm` behaves as `auto`, which is default-on on macOS.
@@ -35,5 +40,5 @@ When the daemon is sourced as a library, that seam defaults to `discard`, so a t
 `tests/wake-helpers.sh` replaces it with a recorder when a suite needs to assert channel selection and summary propagation.
 Production leaves the seam unset and uses the configured real channels.
 
-`tests/fm-daemon.test.sh` covers directive parsing, rate limiting, timeout and process-group cleanup, argv-safe dispatch, channel fallback, and safe `command:` summary delivery.
+`tests/fm-daemon.test.sh` covers directive parsing, rate limiting, timeout and process-group cleanup, argv-safe dispatch, channel fallback, once-per-alarm channel dedupe, the `herdr` `shown: true` requirement, and safe `command:` summary delivery.
 [`verification/supervision.md`](verification/supervision.md#wedge-alarm-channels) records the bounded manual macOS and Herdr channel proof.

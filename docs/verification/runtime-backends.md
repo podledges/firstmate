@@ -1320,7 +1320,7 @@ ok - fm_backend_herdr_composer_state: a slash-command popup cannot hide a typed 
 ok - fm_backend_herdr_send_text_submit: a typed slash command hidden behind its popup is still proven and submitted
 ```
 
-Live guard (third scenario of the opt-in guard, verifying the agent actually exited):
+Live guard (the `/exit`-behind-popup scenario of the opt-in guard, verifying the agent actually exited):
 
 ```sh
 FM_HERDR_SUBMIT_CONFIRM_LIVE=1 tests/fm-herdr-submit-confirm-live-e2e.test.sh
@@ -1347,6 +1347,37 @@ Exit does not report a stopped agent whose pane still shows the picker text as b
 The watcher does not read the picker: a pane parked on it keeps the ordinary stale triage.
 No recorded screen was available for a model-downgrade confirmation, an MCP approval, or a Claude exit confirmation other than this picker, so those dialogs are not covered.
 Refusing an Enter that would confirm a dialog restores an existing safety path, so it is not gated behind a flag.
+
+### Away-mode composer capture
+
+Refreshed 2026-10-25 against Herdr 0.8.0 and both the installed Claude Code 2.1.304 and Homebrew's then-latest 2.1.308.
+The 2.1.308 binary was downloaded to a private path and its SHA-256 (`9a0bc140f5fb06e6366624d770371ef290e6731d1e84c4def5daf4df946d1b59`) matched Homebrew metadata; the global installation was not upgraded, relinked, or reconfigured.
+Both versions were launched in separate guarded, non-default Herdr labs.
+
+```sh
+FM_HERDR_SUBMIT_CONFIRM_LIVE=1 \
+  HERDR_LAB_HELPER=/path/to/fm-herdr-lab.sh \
+  tests/fm-herdr-submit-confirm-live-e2e.test.sh
+
+FM_HERDR_SUBMIT_CONFIRM_LIVE=1 \
+  FM_HERDR_CLAUDE_BIN=/private/path/to/claude-2.1.308 \
+  HERDR_LAB_HELPER=/path/to/fm-herdr-lab.sh \
+  tests/fm-herdr-submit-confirm-live-e2e.test.sh
+```
+
+Excerpt of the output for each version - each run also printed its away-supervisor payload and `/exit`-behind-popup pass lines, and the trailing isolated-session name of the submit-confirm line is elided here:
+
+```text
+ok - live Herdr composer capture: Claude Code (2.1.304 (Claude Code)) on herdr 0.8.0 classifies idle, popup-pending, and cleared states
+ok - live Herdr submit confirm: Claude Code (2.1.304 (Claude Code)) on herdr 0.8.0 reports empty and renders the requested reply
+ok - live Herdr composer capture: Claude Code (2.1.308 (Claude Code)) on herdr 0.8.0 classifies idle, popup-pending, and cleared states
+ok - live Herdr submit confirm: Claude Code (2.1.308 (Claude Code)) on herdr 0.8.0 reports empty and renders the requested reply
+```
+
+The portable byte fixtures in `tests/fixtures/herdr/` preserve real idle and pending-overlay screens from both versions.
+The failure a bounded composer read actually produced is the dated "Claude exit behind the slash-command popup" measurement above, where the composer landed outside a 20-row tail and was misread.
+The portable tall-overlay regression in `tests/fm-backend-herdr.test.sh` guards the `--source visible` arguments of that capture rather than reproducing the misread, because its fake herdr replays one recorded screen for any read.
+The full visible viewport preserves the same shared classifier, including its refusal to inject into pending text or a shell prompt.
 
 ### Prune and respawn
 
