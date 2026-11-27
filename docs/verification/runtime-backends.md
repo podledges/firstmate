@@ -1320,7 +1320,7 @@ ok - fm_backend_herdr_composer_state: a slash-command popup cannot hide a typed 
 ok - fm_backend_herdr_send_text_submit: a typed slash command hidden behind its popup is still proven and submitted
 ```
 
-Live guard (third scenario of the opt-in guard, verifying the agent actually exited):
+Live guard (the `/exit`-behind-popup scenario of the opt-in guard, verifying the agent actually exited):
 
 ```sh
 FM_HERDR_SUBMIT_CONFIRM_LIVE=1 tests/fm-herdr-submit-confirm-live-e2e.test.sh
