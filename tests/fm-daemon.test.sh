@@ -2984,7 +2984,7 @@ test_wedge_alarm_auto_plus_herdr_fires_herdr_once() {
   dir=$(make_wedge_case wedge-auto-plus-herdr); log="$dir/alert.log"
   printf '%s\n' auto herdr osascript > "$dir/wedge-alarm"
   PATH="$dir/fakebin:$PATH" FM_WEDGE_ALARM_LOG="$log" FM_FAKE_UNAME=Darwin \
-    FM_WEDGE_ALARM_CHANNEL= FM_CONFIG_OVERRIDE="$dir" FM_SUPERVISOR_BACKEND=herdr \
+    FM_WEDGE_ALARM_CHANNEL='' FM_CONFIG_OVERRIDE="$dir" FM_SUPERVISOR_BACKEND=herdr \
     wedge_alarm_notify "away-mode WEDGED 900s" "/s/.marker"
   [ "$(cut -f1 "$log" | tr '\n' ' ')" = "osascript herdr " ] \
     || fail "auto plus explicit channels did not fire each channel once in order: $(cat "$log")"
@@ -3008,9 +3008,10 @@ test_wedge_alarm_auto_before_command_keeps_the_advisory_honest() {
   dir=$(make_wedge_case wedge-auto-then-command); daemon_log="$dir/daemon.log"
   cfgdir="$dir/config"; mkdir -p "$cfgdir"
   paged="$dir/paged.txt"
+  # shellcheck disable=SC2016 # $1 expands in the command: directive's own shell.
   printf 'auto\ncommand: printf "%%s" "$1" > %s\n' "'$paged'" > "$cfgdir/wedge-alarm"
   PATH="$dir/fakebin:$PATH" LOG="$daemon_log" FM_FAKE_UNAME=Linux FM_WEDGE_ALARM_EXEC='' \
-    FM_WEDGE_ALARM_CHANNEL= FM_CONFIG_OVERRIDE="$cfgdir" \
+    FM_WEDGE_ALARM_CHANNEL='' FM_CONFIG_OVERRIDE="$cfgdir" \
     wedge_alarm_notify "away-mode WEDGED 900s" "/s/.marker"
   [ "$(cat "$paged" 2>/dev/null)" = "away-mode WEDGED 900s" ] \
     || fail "a command: directive after auto never paged the captain"
