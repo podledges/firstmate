@@ -1040,7 +1040,7 @@ wedge_alarm_via_osascript() {  # <summary>
 # Post a herdr UI notification - herdr's own surface, separate from the pane and
 # its status-line. Best-effort: logs and returns 1 on failure.
 wedge_alarm_via_herdr() {  # <summary>
-  local summary=$1 rc out shown=0 confirmable=1
+  local summary=$1 rc out shown=0 reported=
   wedge_alarm_os_notifier_override herdr "$summary"
   rc=$?
   case "$rc" in
@@ -1054,17 +1054,21 @@ wedge_alarm_via_herdr() {  # <summary>
   wedge_alarm_run_bounded herdr herdr notification show "firstmate: away-mode escalations WEDGED" \
     --body "$summary" --sound request >"$out" 2>/dev/null
   rc=$?
-  command -v jq >/dev/null 2>&1 || confirmable=0
-  [ "$rc" -eq 0 ] && [ "$confirmable" -eq 1 ] \
-    && jq -e '.result.shown == true' "$out" >/dev/null 2>&1 && shown=1
+  if [ "$rc" -eq 0 ] && command -v jq >/dev/null 2>&1; then
+    jq -e '.result.shown == true' "$out" >/dev/null 2>&1
+    case $? in
+      0) shown=1 ;;
+      1) reported=not-shown ;;
+    esac
+  fi
   rm -f "$out"
   [ "$shown" -eq 1 ] && return 0
   if [ "$rc" -ne 0 ]; then
     log "wedge alarm: herdr notification failed"
-  elif [ "$confirmable" -eq 0 ]; then
-    log "wedge alarm: herdr exited 0 but delivery cannot be confirmed (jq not found)"
-  else
+  elif [ "$reported" = not-shown ]; then
     log "wedge alarm: herdr reported that the notification was not shown"
+  else
+    log "wedge alarm: herdr exited 0 but its notification result was unreadable; delivery is unconfirmed"
   fi
   return 1
 }
